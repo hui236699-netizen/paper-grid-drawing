@@ -94,10 +94,10 @@ function draw() {
   gridSizeSlider.run();
 }
 
-// ----- UI 背景 -----
+// ----- UI 背景（左侧栏变成浅色）-----
 function drawUIBackground() {
   noStroke();
-  fill(31, 30, 36);
+  fill(240);          // 原来是深灰 31,30,36，现在改成和底色一样的浅灰
   rect(0, 0, cw, height);
 }
 
@@ -119,7 +119,7 @@ function drawColorPalette() {
   let yStart = 40;
   let sw = 30, sh = 30;
 
-  fill(255);
+  fill(0);           // 浅背景上用深色文字
   noStroke();
   textAlign(CENTER, CENTER);
   textSize(14);
@@ -142,7 +142,7 @@ function drawColorPalette() {
         green(c) === green(currentColor) &&
         blue(c) === blue(currentColor)) {
       noFill();
-      stroke(255);
+      stroke(0);
       strokeWeight(2);
       rect(px, py, sw + 6, sh + 6, 8);
     }
@@ -176,10 +176,11 @@ function updateCanvas() {
   canvasG.pop();
 }
 
-// ----- 添加图形 -----
+// ----- 添加图形（修好了用拖拽起点/终点） -----
 function addNewShape() {
-  let snappedStart = snapToGrid(mouseX - cw, dragStart.y);
-  let snappedEnd = snapToGrid(mouseX - cw, dragEnd.y);
+  // 之前这里用了 mouseX，导致形状位置错乱，现在用 dragStart/dragEnd
+  let snappedStart = snapToGrid(dragStart.x - cw, dragStart.y);
+  let snappedEnd   = snapToGrid(dragEnd.x   - cw, dragEnd.y);
 
   let x = min(snappedStart.x, snappedEnd.x);
   let y = min(snappedStart.y, snappedEnd.y);
@@ -190,10 +191,10 @@ function addNewShape() {
   undoStack = [];
 }
 
-// ----- 预览 -----
+// ----- 预览（也改成用 dragStart / dragEnd） -----
 function drawPreview() {
-  let snappedStart = snapToGrid(mouseX - cw, dragStart.y);
-  let snappedEnd = snapToGrid(mouseX - cw, dragEnd.y);
+  let snappedStart = snapToGrid(dragStart.x - cw, dragStart.y);
+  let snappedEnd   = snapToGrid(dragEnd.x   - cw, dragEnd.y);
 
   let x = min(snappedStart.x, snappedEnd.x) * cellSize;
   let y = min(snappedStart.y, snappedEnd.y) * cellSize;
@@ -470,7 +471,7 @@ class CapButton {
     rect(0, 0, this.w, this.h, 40);
     pop();
 
-    fill(255);
+    fill(0);
     textAlign(CENTER, CENTER);
     textSize(this.h * 0.5);
     text(this.str, 0, 0);
@@ -506,14 +507,14 @@ class Slider {
     translate(this.x, this.y);
     rectMode(CENTER);
 
-    fill(60);
+    fill(200);
     rect(0, 0, this.w, this.h, this.h);
 
     let vw = map(this.val, 0, 1, 0, this.w);
     fill(120);
     rect(-this.w / 2, -this.h / 2, vw, this.h, this.h);
 
-    fill(255);
+    fill(0);
     textAlign(CENTER, CENTER);
     textSize(this.h * 0.4);
     text(this.str, 0, 0);
