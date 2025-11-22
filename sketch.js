@@ -63,9 +63,9 @@ function setup() {
     }
   }
 
-  gridSizeSlider = new Slider(cw / 2, 250, 120, 40, 'GridSize');
-  undoButton = new CapButton(cw / 2 - 45, 330, 75, 30, 'Undo');
-  clearButton = new CapButton(cw / 2 + 45, 330, 75, 30, 'Clear');
+  gridSizeSlider = new Slider(cw / 2, 250, 120, 40, "GridSize");
+  undoButton = new CapButton(cw / 2 - 45, 330, 75, 30, "Undo");
+  clearButton = new CapButton(cw / 2 + 45, 330, 75, 30, "Clear");
 }
 
 // ----- draw -----
@@ -97,7 +97,7 @@ function draw() {
 // ----- UI 背景（左侧栏变成浅色）-----
 function drawUIBackground() {
   noStroke();
-  fill(240);          // 原来是深灰 31,30,36，现在改成和底色一样的浅灰
+  fill(240);          // 你现在用的是浅灰侧边栏，这里保持不变
   rect(0, 0, cw, height);
 }
 
@@ -123,7 +123,7 @@ function drawColorPalette() {
   noStroke();
   textAlign(CENTER, CENTER);
   textSize(14);
-  text('Color', x, yStart - 20);
+  text("Color", x, yStart - 20);
 
   for (let i = 0; i < paletteColors.length; i++) {
     let row = floor(i / 2);
@@ -138,9 +138,11 @@ function drawColorPalette() {
     rect(px, py, sw, sh, 6);
 
     let c = color(paletteColors[i]);
-    if (red(c) === red(currentColor) &&
-        green(c) === green(currentColor) &&
-        blue(c) === blue(currentColor)) {
+    if (
+      red(c) === red(currentColor) &&
+      green(c) === green(currentColor) &&
+      blue(c) === blue(currentColor)
+    ) {
       noFill();
       stroke(0);
       strokeWeight(2);
@@ -178,9 +180,9 @@ function updateCanvas() {
 
 // ----- 添加图形（修好了用拖拽起点/终点） -----
 function addNewShape() {
-  // 之前这里用了 mouseX，导致形状位置错乱，现在用 dragStart/dragEnd
+  // 用 dragStart/dragEnd，并先转成网格坐标
   let snappedStart = snapToGrid(dragStart.x - cw, dragStart.y);
-  let snappedEnd   = snapToGrid(dragEnd.x   - cw, dragEnd.y);
+  let snappedEnd = snapToGrid(dragEnd.x - cw, dragEnd.y);
 
   let x = min(snappedStart.x, snappedEnd.x);
   let y = min(snappedStart.y, snappedEnd.y);
@@ -194,7 +196,7 @@ function addNewShape() {
 // ----- 预览（也改成用 dragStart / dragEnd） -----
 function drawPreview() {
   let snappedStart = snapToGrid(dragStart.x - cw, dragStart.y);
-  let snappedEnd   = snapToGrid(dragEnd.x   - cw, dragEnd.y);
+  let snappedEnd = snapToGrid(dragEnd.x - cw, dragEnd.y);
 
   let x = min(snappedStart.x, snappedEnd.x) * cellSize;
   let y = min(snappedStart.y, snappedEnd.y) * cellSize;
@@ -228,14 +230,27 @@ function drawPreview() {
   pop();
 }
 
+// ✅ 改 1：SVG 预览，按原比例缩放并居中在拖拽矩形里
 function drawSvgPreview(type, x, y, w, h) {
   let idx = type - 4;
-  if (!svgs[idx]) return;
+  const img = svgs[idx];
+  if (!img) return;
 
-  let scaledW = w * 0.707;
-  let offsetX = x + w * (1 - 0.707) / 2;
+  // 图片原始宽高
+  const iw = img.width;
+  const ih = img.height;
+  if (iw === 0 || ih === 0) return;
 
-  image(svgs[idx], cw + offsetX, ch + y, scaledW, h);
+  // 保持比例缩放到不超过 w,h
+  const scale = min(w / iw, h / ih);
+  const dw = iw * scale;
+  const dh = ih * scale;
+
+  // 在用户拖出的矩形中居中
+  const dx = x + (w - dw) / 2;
+  const dy = y + (h - dh) / 2;
+
+  image(img, dx, dy, dw, dh);
 }
 
 // ----- 鼠标交互 -----
@@ -293,9 +308,9 @@ function clearShapes() {
 
 // ----- 键盘快捷键 -----
 function keyPressed() {
-  if (key === 'z' || key === 'Z') {
+  if (key === "z" || key === "Z") {
     undo();
-  } else if (key === 'y' || key === 'Y') {
+  } else if (key === "y" || key === "Y") {
     redo();
   }
 }
@@ -372,15 +387,24 @@ function drawParallelogramPG(pg, x, y, w, h) {
   pg.endShape(CLOSE);
 }
 
-// ----- SVG 绘制 -----
+// ✅ 改 2：SVG 真正绘制到画布时，也用同样的逻辑（原比例缩放 + 居中）
 function pgDrawSvg(pg, type, x, y, w, h) {
   let idx = type - 4;
-  if (!svgs[idx]) return;
+  const img = svgs[idx];
+  if (!img) return;
 
-  let scaledW = w * 0.707;
-  let offsetX = x + w * (1 - 0.707) / 2;
+  const iw = img.width;
+  const ih = img.height;
+  if (iw === 0 || ih === 0) return;
 
-  pg.image(svgs[idx], offsetX, y, scaledW, h);
+  const scale = min(w / iw, h / ih);
+  const dw = iw * scale;
+  const dh = ih * scale;
+
+  const dx = x + (w - dw) / 2;
+  const dy = y + (h - dh) / 2;
+
+  pg.image(img, dx, dy, dw, dh);
 }
 
 // ----- 左侧图标按钮 -----
@@ -434,8 +458,9 @@ class IconButton {
   }
 
   hover() {
-    return (abs(mouseX - this.x) < this.s / 2 &&
-            abs(mouseY - this.y) < this.s / 2);
+    return (
+      abs(mouseX - this.x) < this.s / 2 && abs(mouseY - this.y) < this.s / 2
+    );
   }
 }
 
@@ -480,8 +505,10 @@ class CapButton {
   }
 
   hover() {
-    return (abs(mouseX - this.x) < this.w / 2 &&
-            abs(mouseY - this.y) < this.h / 2);
+    return (
+      abs(mouseX - this.x) < this.w / 2 &&
+      abs(mouseY - this.y) < this.h / 2
+    );
   }
 }
 
@@ -538,7 +565,9 @@ class Slider {
   }
 
   hover() {
-    return (abs(mouseX - this.x) < this.w / 2 &&
-            abs(mouseY - this.y) < this.h / 2);
+    return (
+      abs(mouseX - this.x) < this.w / 2 &&
+      abs(mouseY - this.y) < this.h / 2
+    );
   }
 }
