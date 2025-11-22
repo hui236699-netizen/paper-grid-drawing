@@ -23,30 +23,79 @@ let gridSizeSlider;
 let undoButton, clearButton;
 
 let paletteColors = [
-  '#FF0000', '#00FF00', '#0000FF',
-  '#FFFF00', '#FF00FF', '#00FFFF',
-  '#000000', '#FFFFFF'
+  "#FF0000", "#00FF00", "#0000FF",
+  "#FFFF00", "#FF00FF", "#00FFFF",
+  "#000000", "#FFFFFF"
 ];
+
+// 每个 SVG 自动计算的“有颜色区域”边界（0~1 比例）
+let svgBounds = new Array(8).fill(null);
 
 // ----- 预加载 -----
 function preload() {
   // 左侧按钮图标：0.png~11.png 放在 assets/ 里
   for (let i = 0; i < icons.length; i++) {
-    icons[i] = loadImage('assets/' + i + '.png');
+    icons[i] = loadImage("assets/" + i + ".png");
   }
 
   // SVG 图形：1.svg~8.svg 放在 svg/ 里
   for (let i = 0; i < svgs.length; i++) {
-    svgs[i] = loadImage('svg/' + (i + 1) + '.svg');
+    svgs[i] = loadImage("svg/" + (i + 1) + ".svg");
   }
+}
+
+// 计算某个 SVG 内部“非透明像素”的包围盒，得到去掉透明边后的区域
+function computeSvgBounds(index) {
+  const img = svgs[index];
+  if (!img) return;
+
+  const sampleW = 256;
+  const sampleH = 256;
+
+  const pg = createGraphics(sampleW, sampleH);
+  pg.pixelDensity(1);
+  pg.clear();
+  pg.image(img, 0, 0, sampleW, sampleH);
+  pg.loadPixels();
+
+  let minX = sampleW, minY = sampleH;
+  let maxX = -1, maxY = -1;
+
+  for (let y = 0; y < sampleH; y++) {
+    for (let x = 0; x < sampleW; x++) {
+      const idx4 = (y * sampleW + x) * 4;
+      const a = pg.pixels[idx4 + 3];
+      if (a > 10) { // 只要 alpha > 10，就认为是“有颜色”的区域
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+
+  if (maxX < minX || maxY < minY) {
+    // 整张图都是透明，退而求其次用整张图
+    svgBounds[index] = { x0: 0, y0: 0, w: 1, h: 1 };
+  } else {
+    const x0 = minX / sampleW;
+    const y0 = minY / sampleH;
+    const w = (maxX - minX + 1) / sampleW;
+    const h = (maxY - minY + 1) / sampleH;
+    svgBounds[index] = { x0, y0, w, h };
+  }
+
+  pg.remove();
 }
 
 // ----- setup -----
 function setup() {
+  pixelDensity(1); // 方便像素计算，避免 Retina 倍数问题
   createCanvas(1440, 900);
   currentColor = color(0, 0, 255);
 
   canvasG = createGraphics(webWidth - cw, webHeight - ch);
+  canvasG.pixelDensity(1);
   updateCanvas();
 
   // 左侧按钮布局
@@ -66,6 +115,11 @@ function setup() {
   gridSizeSlider = new Slider(cw / 2, 250, 120, 40, "GridSize");
   undoButton = new CapButton(cw / 2 - 45, 330, 75, 30, "Undo");
   clearButton = new CapButton(cw / 2 + 45, 330, 75, 30, "Clear");
+
+  // 为每个 SVG 计算一次“有颜色区域”边界
+  for (let j = 0; j < svgs.length; j++) {
+    computeSvgBounds(j);
+  }
 }
 
 // ----- draw -----
@@ -94,10 +148,10 @@ function draw() {
   gridSizeSlider.run();
 }
 
-// ----- UI 背景（左侧栏变成浅色）-----
+// ----- UI 背景（左侧栏是浅灰）-----
 function drawUIBackground() {
   noStroke();
-  fill(240);          // 你现在用的是浅灰侧边栏，这里保持不变
+  fill(240);
   rect(0, 0, cw, height);
 }
 
@@ -119,7 +173,7 @@ function drawColorPalette() {
   let yStart = 40;
   let sw = 30, sh = 30;
 
-  fill(0);           // 浅背景上用深色文字
+  fill(0); // 浅背景上用深色文字
   noStroke();
   textAlign(CENTER, CENTER);
   textSize(14);
@@ -178,9 +232,8 @@ function updateCanvas() {
   canvasG.pop();
 }
 
-// ----- 添加图形（修好了用拖拽起点/终点） -----
+// ----- 添加图形（用拖拽起点/终点） -----
 function addNewShape() {
-  // 用 dragStart/dragEnd，并先转成网格坐标
   let snappedStart = snapToGrid(dragStart.x - cw, dragStart.y);
   let snappedEnd = snapToGrid(dragEnd.x - cw, dragEnd.y);
 
@@ -193,7 +246,7 @@ function addNewShape() {
   undoStack = [];
 }
 
-// ----- 预览（也改成用 dragStart / dragEnd） -----
+// ----- 预览 -----
 function drawPreview() {
   let snappedStart = snapToGrid(dragStart.x - cw, dragStart.y);
   let snappedEnd = snapToGrid(dragEnd.x - cw, dragEnd.y);
@@ -230,27 +283,26 @@ function drawPreview() {
   pop();
 }
 
-// ✅ 改 1：SVG 预览，按原比例缩放并居中在拖拽矩形里
+// ----- SVG 预览：裁掉透明边，让有颜色部分从拖拽矩形左上角开始 -----
 function drawSvgPreview(type, x, y, w, h) {
   let idx = type - 4;
   const img = svgs[idx];
   if (!img) return;
 
-  // 图片原始宽高
-  const iw = img.width;
-  const ih = img.height;
-  if (iw === 0 || ih === 0) return;
+  const bounds = svgBounds[idx];
+  if (!bounds) {
+    // 兜底：没有检测到边界就整图拉伸
+    image(img, x, y, w, h);
+    return;
+  }
 
-  // 保持比例缩放到不超过 w,h
-  const scale = min(w / iw, h / ih);
-  const dw = iw * scale;
-  const dh = ih * scale;
+  const sx = img.width * bounds.x0;
+  const sy = img.height * bounds.y0;
+  const sw = img.width * bounds.w;
+  const sh = img.height * bounds.h;
 
-  // 在用户拖出的矩形中居中
-  const dx = x + (w - dw) / 2;
-  const dy = y + (h - dh) / 2;
-
-  image(img, dx, dy, dw, dh);
+  // 把“有颜色的那块”直接映射到你拖出的矩形里
+  image(img, x, y, w, h, sx, sy, sw, sh);
 }
 
 // ----- 鼠标交互 -----
@@ -387,24 +439,24 @@ function drawParallelogramPG(pg, x, y, w, h) {
   pg.endShape(CLOSE);
 }
 
-// ✅ 改 2：SVG 真正绘制到画布时，也用同样的逻辑（原比例缩放 + 居中）
+// ----- SVG 真正绘制到画布：同样裁掉透明边 -----
 function pgDrawSvg(pg, type, x, y, w, h) {
   let idx = type - 4;
   const img = svgs[idx];
   if (!img) return;
 
-  const iw = img.width;
-  const ih = img.height;
-  if (iw === 0 || ih === 0) return;
+  const bounds = svgBounds[idx];
+  if (!bounds) {
+    pg.image(img, x, y, w, h);
+    return;
+  }
 
-  const scale = min(w / iw, h / ih);
-  const dw = iw * scale;
-  const dh = ih * scale;
+  const sx = img.width * bounds.x0;
+  const sy = img.height * bounds.y0;
+  const sw = img.width * bounds.w;
+  const sh = img.height * bounds.h;
 
-  const dx = x + (w - dw) / 2;
-  const dy = y + (h - dh) / 2;
-
-  pg.image(img, dx, dy, dw, dh);
+  pg.image(img, x, y, w, h, sx, sy, sw, sh);
 }
 
 // ----- 左侧图标按钮 -----
