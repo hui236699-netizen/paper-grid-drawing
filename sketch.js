@@ -53,7 +53,7 @@ function computeSvgBounds(index) {
   const sampleH = 256;
 
   const pg = createGraphics(sampleW, sampleH);
-  pg.pixelDensity(1);
+  pg.pixelDensity(1); // 采样时用密度 1，方便计算
   pg.clear();
   pg.image(img, 0, 0, sampleW, sampleH);
   pg.loadPixels();
@@ -65,7 +65,7 @@ function computeSvgBounds(index) {
     for (let x = 0; x < sampleW; x++) {
       const idx4 = (y * sampleW + x) * 4;
       const a = pg.pixels[idx4 + 3];
-      if (a > 10) { // 只要 alpha > 10，就认为是“有颜色”的区域
+      if (a > 10) { // alpha > 10 认为是“有颜色”的区域
         if (x < minX) minX = x;
         if (y < minY) minY = y;
         if (x > maxX) maxX = x;
@@ -75,7 +75,7 @@ function computeSvgBounds(index) {
   }
 
   if (maxX < minX || maxY < minY) {
-    // 整张图都是透明，退而求其次用整张图
+    // 整张图都透明，就用整张图
     svgBounds[index] = { x0: 0, y0: 0, w: 1, h: 1 };
   } else {
     const x0 = minX / sampleW;
@@ -90,12 +90,15 @@ function computeSvgBounds(index) {
 
 // ----- setup -----
 function setup() {
-  pixelDensity(1); // 方便像素计算，避免 Retina 倍数问题
+  // 使用设备像素密度，让画面更清晰（Retina 等）
+  const d = window.devicePixelRatio || 1;
+  pixelDensity(d);
+
   createCanvas(1440, 900);
   currentColor = color(0, 0, 255);
 
   canvasG = createGraphics(webWidth - cw, webHeight - ch);
-  canvasG.pixelDensity(1);
+  canvasG.pixelDensity(d);
   updateCanvas();
 
   // 左侧按钮布局
@@ -283,25 +286,37 @@ function drawPreview() {
   pop();
 }
 
-// ----- SVG 预览：裁掉透明边，让有颜色部分从拖拽矩形左上角开始 -----
+// ----- SVG 预览：裁掉透明边 + 特殊处理第二列倒数第二个（currentShape 9） -----
 function drawSvgPreview(type, x, y, w, h) {
   let idx = type - 4;
   const img = svgs[idx];
   if (!img) return;
 
   const bounds = svgBounds[idx];
-  if (!bounds) {
-    // 兜底：没有检测到边界就整图拉伸
-    image(img, x, y, w, h);
-    return;
+  const hasBounds = !!bounds;
+
+  // 源区域（去掉透明边）
+  let sx, sy, sw, sh;
+  if (hasBounds) {
+    sx = img.width * bounds.x0;
+    sy = img.height * bounds.y0;
+    sw = img.width * bounds.w;
+    sh = img.height * bounds.h;
+  } else {
+    sx = 0;
+    sy = 0;
+    sw = img.width;
+    sh = img.height;
   }
 
-  const sx = img.width * bounds.x0;
-  const sy = img.height * bounds.y0;
-  const sw = img.width * bounds.w;
-  const sh = img.height * bounds.h;
+  // 👉 特殊：第二列倒数第二个图标（index 9 → type = 9）固定为一个格子宽
+  if (type === 9) {
+    const destW = cellSize; // 一个格子这么宽
+    const dx = x + (w - destW) / 2; // 在拖拽框中水平居中
+    w = destW;
+    x = dx;
+  }
 
-  // 把“有颜色的那块”直接映射到你拖出的矩形里
   image(img, x, y, w, h, sx, sy, sw, sh);
 }
 
@@ -439,22 +454,33 @@ function drawParallelogramPG(pg, x, y, w, h) {
   pg.endShape(CLOSE);
 }
 
-// ----- SVG 真正绘制到画布：同样裁掉透明边 -----
+// ----- SVG 真正绘制到画布：同样裁掉透明边 + 特殊加宽 type 9 -----
 function pgDrawSvg(pg, type, x, y, w, h) {
   let idx = type - 4;
   const img = svgs[idx];
   if (!img) return;
 
   const bounds = svgBounds[idx];
-  if (!bounds) {
-    pg.image(img, x, y, w, h);
-    return;
+  let sx, sy, sw, sh;
+  if (bounds) {
+    sx = img.width * bounds.x0;
+    sy = img.height * bounds.y0;
+    sw = img.width * bounds.w;
+    sh = img.height * bounds.h;
+  } else {
+    sx = 0;
+    sy = 0;
+    sw = img.width;
+    sh = img.height;
   }
 
-  const sx = img.width * bounds.x0;
-  const sy = img.height * bounds.y0;
-  const sw = img.width * bounds.w;
-  const sh = img.height * bounds.h;
+  // 同样对第二列倒数第二个（type 9）固定一个格子的宽度
+  if (type === 9) {
+    const destW = cellSize;
+    const dx = x + (w - destW) / 2;
+    w = destW;
+    x = dx;
+  }
 
   pg.image(img, x, y, w, h, sx, sy, sw, sh);
 }
