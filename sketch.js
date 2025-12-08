@@ -93,12 +93,14 @@ function setup() {
   // 使用设备像素密度，让画面更清晰（Retina 等）
   const d = window.devicePixelRatio || 1;
   pixelDensity(d);
-
   createCanvas(1440, 900);
+  noSmooth(); // 画布抗锯齿关闭，图形更锐利
+
   currentColor = color(0, 0, 255);
 
   canvasG = createGraphics(webWidth - cw, webHeight - ch);
   canvasG.pixelDensity(d);
+  canvasG.noSmooth();
   updateCanvas();
 
   // 左侧按钮布局
@@ -235,29 +237,29 @@ function updateCanvas() {
   canvasG.pop();
 }
 
-// ----- 添加图形（用拖拽起点/终点） -----
+// ----- 添加图形（使用“网格坐标”的拖拽起点/终点） -----
+// dragStart / dragEnd 现在存的是“第几格”，而不是像素
 function addNewShape() {
-  let snappedStart = snapToGrid(dragStart.x - cw, dragStart.y);
-  let snappedEnd = snapToGrid(dragEnd.x - cw, dragEnd.y);
-
-  let x = min(snappedStart.x, snappedEnd.x);
-  let y = min(snappedStart.y, snappedEnd.y);
-  let w = abs(snappedEnd.x - snappedStart.x);
-  let h = abs(snappedEnd.y - snappedStart.y);
+  let x = min(dragStart.x, dragEnd.x);
+  let y = min(dragStart.y, dragEnd.y);
+  let w = abs(dragEnd.x - dragStart.x);
+  let h = abs(dragEnd.y - dragStart.y);
 
   shapes.push(new Shape(x, y, w, h, currentShape, currentColor));
   undoStack = [];
 }
 
-// ----- 预览 -----
+// ----- 预览（同样用网格坐标，只画在格线上） -----
 function drawPreview() {
-  let snappedStart = snapToGrid(dragStart.x - cw, dragStart.y);
-  let snappedEnd = snapToGrid(dragEnd.x - cw, dragEnd.y);
+  let gx0 = min(dragStart.x, dragEnd.x);
+  let gy0 = min(dragStart.y, dragEnd.y);
+  let gw = abs(dragEnd.x - dragStart.x);
+  let gh = abs(dragEnd.y - dragStart.y);
 
-  let x = min(snappedStart.x, snappedEnd.x) * cellSize;
-  let y = min(snappedStart.y, snappedEnd.y) * cellSize;
-  let w = abs(snappedEnd.x - snappedStart.x) * cellSize;
-  let h = abs(snappedEnd.y - snappedStart.y) * cellSize;
+  let x = gx0 * cellSize;
+  let y = gy0 * cellSize;
+  let w = gw * cellSize;
+  let h = gh * cellSize;
 
   push();
   translate(cw, ch);
@@ -286,7 +288,7 @@ function drawPreview() {
   pop();
 }
 
-// ----- SVG 预览：裁掉透明边 + 特殊处理第二列倒数第二个（currentShape 9） -----
+// ----- SVG 预览：裁掉透明边，左上角对齐网格点 -----
 function drawSvgPreview(type, x, y, w, h) {
   let idx = type - 4;
   const img = svgs[idx];
@@ -295,7 +297,6 @@ function drawSvgPreview(type, x, y, w, h) {
   const bounds = svgBounds[idx];
   const hasBounds = !!bounds;
 
-  // 源区域（去掉透明边）
   let sx, sy, sw, sh;
   if (hasBounds) {
     sx = img.width * bounds.x0;
@@ -309,22 +310,17 @@ function drawSvgPreview(type, x, y, w, h) {
     sh = img.height;
   }
 
-  // 👉 特殊：第二列倒数第二个图标（index 9 → type = 9）固定为一个格子宽
-  if (type === 9) {
-    const destW = cellSize; // 一个格子这么宽
-    const dx = x + (w - destW) / 2; // 在拖拽框中水平居中
-    w = destW;
-    x = dx;
-  }
-
   image(img, x, y, w, h, sx, sy, sw, sh);
 }
 
 // ----- 鼠标交互 -----
+// 这里把鼠标位置直接转换成“网格坐标”（第几格），所以起点/终点永远是格点
 function mousePressed() {
   if (mouseX > cw && mouseY > ch) {
     isDragging = true;
-    dragStart = createVector(mouseX, mouseY - ch);
+    let gx = round((mouseX - cw) / cellSize);
+    let gy = round((mouseY - ch) / cellSize);
+    dragStart = createVector(gx, gy);
     dragEnd = dragStart.copy();
   } else {
     for (let i = 0; i < buttons.length; i++) {
@@ -339,7 +335,9 @@ function mousePressed() {
 
 function mouseDragged() {
   if (isDragging) {
-    dragEnd = createVector(mouseX, mouseY - ch);
+    let gx = round((mouseX - cw) / cellSize);
+    let gy = round((mouseY - ch) / cellSize);
+    dragEnd = createVector(gx, gy);
   }
 }
 
@@ -382,7 +380,7 @@ function keyPressed() {
   }
 }
 
-// ----- 网格对齐 -----
+// ----- 网格对齐辅助（暂时没用到，保留） -----
 function snapToGrid(x, y) {
   return createVector(round(x / cellSize), round(y / cellSize));
 }
@@ -392,7 +390,7 @@ function updateGridSize(newSize) {
   updateCanvas();
 }
 
-// ----- Shape 类 -----
+// ----- Shape 类（用网格坐标存储） -----
 class Shape {
   constructor(x, y, w, h, type, c) {
     this.x = x;
@@ -454,7 +452,7 @@ function drawParallelogramPG(pg, x, y, w, h) {
   pg.endShape(CLOSE);
 }
 
-// ----- SVG 真正绘制到画布：同样裁掉透明边 + 特殊加宽 type 9 -----
+// ----- SVG 真正绘制到画布：同样裁掉透明边，并对齐网格 -----
 function pgDrawSvg(pg, type, x, y, w, h) {
   let idx = type - 4;
   const img = svgs[idx];
@@ -472,14 +470,6 @@ function pgDrawSvg(pg, type, x, y, w, h) {
     sy = 0;
     sw = img.width;
     sh = img.height;
-  }
-
-  // 同样对第二列倒数第二个（type 9）固定一个格子的宽度
-  if (type === 9) {
-    const destW = cellSize;
-    const dx = x + (w - destW) / 2;
-    w = destW;
-    x = dx;
   }
 
   pg.image(img, x, y, w, h, sx, sy, sw, sh);
