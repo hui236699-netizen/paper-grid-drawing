@@ -1,641 +1,468 @@
-// ----- 全局变量 -----
-let minSize = 10, maxSize = 80;
-let cellSize = 20;
-let dragStart, dragEnd;
-let isDragging = false;
-let currentShape = 0;
-let currentColor;
-let shapes = [];
-let undoStack = [];
-let canvasG;
-let snapThreshold = 5;
-
-let webWidth = 1600;
-let webHeight = 1080;
-let ch = 0;
-let cw = 200;
-
-let icons = new Array(12);
-let buttons = new Array(12);
-let svgs = new Array(8);
-
-let gridSizeSlider;
-let undoButton, clearButton;
-
-let paletteColors = [
-  "#FF0000", "#00FF00", "#0000FF",
-  "#FFFF00", "#FF00FF", "#00FFFF",
-  "#000000", "#FFFFFF"
-];
-
-// 每个 SVG 自动计算的“有颜色区域”边界（0~1 比例）
-let svgBounds = new Array(8).fill(null);
-
-// ----- 预加载 -----
-function preload() {
-  // 左侧按钮图标：0.png~11.png 放在 assets/ 里
-  for (let i = 0; i < icons.length; i++) {
-    icons[i] = loadImage("assets/" + i + ".png");
-  }
-
-  // SVG 图形：1.svg~8.svg 放在 svg/ 里
-  for (let i = 0; i < svgs.length; i++) {
-    svgs[i] = loadImage("svg/" + (i + 1) + ".svg");
-  }
-}
-
-// 计算某个 SVG 内部“非透明像素”的包围盒，得到去掉透明边后的区域
-function computeSvgBounds(index) {
-  const img = svgs[index];
-  if (!img) return;
-
-  const sampleW = 256;
-  const sampleH = 256;
-
-  const pg = createGraphics(sampleW, sampleH);
-  pg.pixelDensity(1); // 采样时用密度 1，方便计算
-  pg.clear();
-  pg.image(img, 0, 0, sampleW, sampleH);
-  pg.loadPixels();
-
-  let minX = sampleW, minY = sampleH;
-  let maxX = -1, maxY = -1;
-
-  for (let y = 0; y < sampleH; y++) {
-    for (let x = 0; x < sampleW; x++) {
-      const idx4 = (y * sampleW + x) * 4;
-      const a = pg.pixels[idx4 + 3];
-      if (a > 10) { // alpha > 10 认为是“有颜色”的区域
-        if (x < minX) minX = x;
-        if (y < minY) minY = y;
-        if (x > maxX) maxX = x;
-        if (y > maxY) maxY = y;
-      }
-    }
-  }
-
-  if (maxX < minX || maxY < minY) {
-    // 整张图都透明，就用整张图
-    svgBounds[index] = { x0: 0, y0: 0, w: 1, h: 1 };
-  } else {
-    const x0 = minX / sampleW;
-    const y0 = minY / sampleH;
-    const w = (maxX - minX + 1) / sampleW;
-    const h = (maxY - minY + 1) / sampleH;
-    svgBounds[index] = { x0, y0, w, h };
-  }
-
-  pg.remove();
-}
-
-// ----- setup -----
-function setup() {
-  // 使用设备像素密度，让画面更清晰（Retina 等）
-  const d = window.devicePixelRatio || 1;
-  pixelDensity(d);
-  createCanvas(1440, 900);
-  noSmooth(); // 画布抗锯齿关闭，图形更锐利
-
-  currentColor = color(0, 0, 255);
-
-  canvasG = createGraphics(webWidth - cw, webHeight - ch);
-  canvasG.pixelDensity(d);
-  canvasG.noSmooth();
-  updateCanvas();
-
-  // 左侧按钮布局
-  let i = 0;
-  for (let y = 0; y <= 5; y++) {
-    for (let x = 0; x <= 1; x++) {
-      if (i < icons.length) {
-        let bx = map(x, -0.75, 1.75, 0, cw);
-        let by = map(y, 0, 4, 400, 750);
-        let s = 60;
-        buttons[i] = new IconButton(bx, by, s, i);
-        i++;
-      }
-    }
-  }
-
-  gridSizeSlider = new Slider(cw / 2, 250, 120, 40, "GridSize");
-  undoButton = new CapButton(cw / 2 - 45, 330, 75, 30, "Undo");
-  clearButton = new CapButton(cw / 2 + 45, 330, 75, 30, "Clear");
-
-  // 为每个 SVG 计算一次“有颜色区域”边界
-  for (let j = 0; j < svgs.length; j++) {
-    computeSvgBounds(j);
-  }
-}
-
-// ----- draw -----
-function draw() {
-  background(240);
-
-  image(canvasG, cw, ch);
-
-  if (isDragging) {
-    drawPreview();
-  }
-
-  drawGrid();
-  drawUIBackground();
-  drawColorPalette();
-
-  for (let i = 0; i < buttons.length; i++) {
-    buttons[i].display();
-  }
-
-  updateGridSize(int(map(gridSizeSlider.val, 0, 1, minSize, maxSize)));
-
-  undoButton.display();
-  clearButton.display();
-
-  gridSizeSlider.run();
-}
-
-// ----- UI 背景（左侧栏是浅灰）-----
-function drawUIBackground() {
-  noStroke();
-  fill(240);
-  rect(0, 0, cw, height);
-}
-
-// ----- 网格 -----
-function drawGrid() {
-  stroke(220);
-  strokeWeight(1);
-  for (let i = 0; i <= webWidth; i += cellSize) {
-    line(i + cw, ch, i + cw, webHeight);
-  }
-  for (let i = ch; i <= webHeight; i += cellSize) {
-    line(cw, i, webWidth + cw, i);
-  }
-}
-
-// ----- 颜色选择 -----
-function drawColorPalette() {
-  let x = cw / 2;
-  let yStart = 40;
-  let sw = 30, sh = 30;
-
-  fill(0); // 浅背景上用深色文字
-  noStroke();
-  textAlign(CENTER, CENTER);
-  textSize(14);
-  text("Color", x, yStart - 20);
-
-  for (let i = 0; i < paletteColors.length; i++) {
-    let row = floor(i / 2);
-    let col = i % 2;
-    let px = x + (col - 0.5) * (sw + 10);
-    let py = yStart + row * (sh + 10);
-
-    stroke(60);
-    strokeWeight(1);
-    fill(paletteColors[i]);
-    rectMode(CENTER);
-    rect(px, py, sw, sh, 6);
-
-    let c = color(paletteColors[i]);
-    if (
-      red(c) === red(currentColor) &&
-      green(c) === green(currentColor) &&
-      blue(c) === blue(currentColor)
-    ) {
-      noFill();
-      stroke(0);
-      strokeWeight(2);
-      rect(px, py, sw + 6, sh + 6, 8);
-    }
-  }
-}
-
-function handleColorClick() {
-  let x = cw / 2;
-  let yStart = 40;
-  let sw = 30, sh = 30;
-
-  for (let i = 0; i < paletteColors.length; i++) {
-    let row = floor(i / 2);
-    let col = i % 2;
-    let px = x + (col - 0.5) * (sw + 10);
-    let py = yStart + row * (sh + 10);
-
-    if (abs(mouseX - px) < sw / 2 && abs(mouseY - py) < sh / 2) {
-      currentColor = color(paletteColors[i]);
-    }
-  }
-}
-
-// ----- 更新画布 -----
-function updateCanvas() {
-  canvasG.push();
-  canvasG.background(240);
-  for (let s of shapes) {
-    s.display(canvasG);
-  }
-  canvasG.pop();
-}
-
-// ----- 添加图形（使用“网格坐标”的拖拽起点/终点） -----
-// dragStart / dragEnd 现在存的是“第几格”，而不是像素
-function addNewShape() {
-  let x = min(dragStart.x, dragEnd.x);
-  let y = min(dragStart.y, dragEnd.y);
-  let w = abs(dragEnd.x - dragStart.x);
-  let h = abs(dragEnd.y - dragStart.y);
-
-  shapes.push(new Shape(x, y, w, h, currentShape, currentColor));
-  undoStack = [];
-}
-
-// ----- 预览（同样用网格坐标，只画在格线上） -----
-function drawPreview() {
-  let gx0 = min(dragStart.x, dragEnd.x);
-  let gy0 = min(dragStart.y, dragEnd.y);
-  let gw = abs(dragEnd.x - dragStart.x);
-  let gh = abs(dragEnd.y - dragStart.y);
-
-  let x = gx0 * cellSize;
-  let y = gy0 * cellSize;
-  let w = gw * cellSize;
-  let h = gh * cellSize;
-
-  push();
-  translate(cw, ch);
-  stroke(currentColor);
-  strokeWeight(4);
-  noFill();
-
-  switch (currentShape) {
-    case 0:
-      rect(x, y, w, h);
-      break;
-    case 1:
-      ellipse(x + w / 2, y + h / 2, w, h);
-      break;
-    case 2:
-      triangle(x + w / 2, y, x, y + h, x + w, y + h);
-      break;
-    case 3:
-      drawParallelogramPreview(x, y, w, h);
-      break;
-    default:
-      drawSvgPreview(currentShape, x, y, w, h);
-      break;
-  }
-
-  pop();
-}
-
-// ----- SVG 预览：裁掉透明边，左上角对齐网格点 -----
-function drawSvgPreview(type, x, y, w, h) {
-  let idx = type - 4;
-  const img = svgs[idx];
-  if (!img) return;
-
-  const bounds = svgBounds[idx];
-  const hasBounds = !!bounds;
-
-  let sx, sy, sw, sh;
-  if (hasBounds) {
-    sx = img.width * bounds.x0;
-    sy = img.height * bounds.y0;
-    sw = img.width * bounds.w;
-    sh = img.height * bounds.h;
-  } else {
-    sx = 0;
-    sy = 0;
-    sw = img.width;
-    sh = img.height;
-  }
-
-  image(img, x, y, w, h, sx, sy, sw, sh);
-}
-
-// ----- 鼠标交互 -----
-// 这里把鼠标位置直接转换成“网格坐标”（第几格），所以起点/终点永远是格点
-function mousePressed() {
-  if (mouseX > cw && mouseY > ch) {
-    isDragging = true;
-    let gx = round((mouseX - cw) / cellSize);
-    let gy = round((mouseY - ch) / cellSize);
-    dragStart = createVector(gx, gy);
-    dragEnd = dragStart.copy();
-  } else {
-    for (let i = 0; i < buttons.length; i++) {
-      buttons[i].click();
-    }
-    gridSizeSlider.click();
-    if (undoButton.hover()) undo();
-    if (clearButton.hover()) clearShapes();
-    handleColorClick();
-  }
-}
-
-function mouseDragged() {
-  if (isDragging) {
-    let gx = round((mouseX - cw) / cellSize);
-    let gy = round((mouseY - ch) / cellSize);
-    dragEnd = createVector(gx, gy);
-  }
-}
-
-function mouseReleased() {
-  if (isDragging) {
-    isDragging = false;
-    addNewShape();
-    updateCanvas();
-  }
-  gridSizeSlider.state = false;
-}
-
-// ----- 撤销 / 重做 / 清空 -----
-function undo() {
-  if (shapes.length > 0) {
-    undoStack.push(shapes.pop());
-    updateCanvas();
-  }
-}
-
-function redo() {
-  if (undoStack.length > 0) {
-    shapes.push(undoStack.pop());
-    updateCanvas();
-  }
-}
-
-function clearShapes() {
-  shapes = [];
-  undoStack = [];
-  updateCanvas();
-}
-
-// ----- 键盘快捷键 -----
-function keyPressed() {
-  if (key === "z" || key === "Z") {
-    undo();
-  } else if (key === "y" || key === "Y") {
-    redo();
-  }
-}
-
-// ----- 网格对齐辅助（暂时没用到，保留） -----
-function snapToGrid(x, y) {
-  return createVector(round(x / cellSize), round(y / cellSize));
-}
-
-function updateGridSize(newSize) {
-  cellSize = newSize;
-  updateCanvas();
-}
-
-// ----- Shape 类（用网格坐标存储） -----
-class Shape {
-  constructor(x, y, w, h, type, c) {
-    this.x = x;
-    this.y = y;
-    this.w = w;
-    this.h = h;
-    this.type = type;
-    this.c = color(c);
-  }
-
-  display(pg) {
-    pg.push();
-    pg.fill(this.c);
-    pg.noStroke();
-
-    let px = this.x * cellSize;
-    let py = this.y * cellSize;
-    let pw = this.w * cellSize;
-    let ph = this.h * cellSize;
-
-    switch (this.type) {
-      case 0:
-        pg.rect(px, py, pw, ph);
-        break;
-      case 1:
-        pg.ellipse(px + pw / 2, py + ph / 2, pw, ph);
-        break;
-      case 2:
-        pg.triangle(px + pw / 2, py, px, py + ph, px + pw, py + ph);
-        break;
-      case 3:
-        drawParallelogramPG(pg, px, py, pw, ph);
-        break;
-      default:
-        pgDrawSvg(pg, this.type, px, py, pw, ph);
-        break;
-    }
-
-    pg.pop();
-  }
-}
-
-// ----- 平行四边形 -----
-function drawParallelogramPreview(x, y, w, h) {
-  beginShape();
-  vertex(x + w / 4, y);
-  vertex(x + w, y);
-  vertex(x + (3 * w) / 4, y + h);
-  vertex(x, y + h);
-  endShape(CLOSE);
-}
-
-function drawParallelogramPG(pg, x, y, w, h) {
-  pg.beginShape();
-  pg.vertex(x + w / 4, y);
-  pg.vertex(x + w, y);
-  pg.vertex(x + (3 * w) / 4, y + h);
-  pg.vertex(x, y + h);
-  pg.endShape(CLOSE);
-}
-
-// ----- SVG 真正绘制到画布：同样裁掉透明边，并对齐网格 -----
-function pgDrawSvg(pg, type, x, y, w, h) {
-  let idx = type - 4;
-  const img = svgs[idx];
-  if (!img) return;
-
-  const bounds = svgBounds[idx];
-  let sx, sy, sw, sh;
-  if (bounds) {
-    sx = img.width * bounds.x0;
-    sy = img.height * bounds.y0;
-    sw = img.width * bounds.w;
-    sh = img.height * bounds.h;
-  } else {
-    sx = 0;
-    sy = 0;
-    sw = img.width;
-    sh = img.height;
-  }
-
-  pg.image(img, x, y, w, h, sx, sy, sw, sh);
-}
-
-// ----- 左侧图标按钮 -----
-class IconButton {
-  constructor(x, y, s, index) {
-    this.x = x;
-    this.y = y;
-    this.s = s;
-    this.index = index;
-    this.img = icons[index];
-    this.scl = 1;
-    this.gray = 50;
-    this.state = false;
-  }
-
-  display() {
-    push();
-    rectMode(CENTER);
-    imageMode(CENTER);
-    noStroke();
-
-    if (this.hover() || this.state) {
-      this.gray = lerp(this.gray, 180, 0.12);
-      this.scl = lerp(this.scl, 1.2, 0.12);
-    } else {
-      this.gray = lerp(this.gray, 50, 0.12);
-      this.scl = lerp(this.scl, 1, 0.12);
-    }
-
-    fill(this.gray, 150);
-    translate(this.x, this.y);
-    scale(this.scl);
-    rect(0, 0, this.s, this.s, this.s * 0.4);
-
-    if (this.img) {
-      let factor = this.index < 4 ? 0.75 : 0.9;
-      image(this.img, 0, 0, this.s * factor, this.s * factor);
-    }
-
-    pop();
-  }
-
-  click() {
-    if (this.hover()) {
-      for (let b of buttons) {
-        b.state = false;
-      }
-      this.state = true;
-      currentShape = this.index;
-    }
-  }
-
-  hover() {
-    return (
-      abs(mouseX - this.x) < this.s / 2 && abs(mouseY - this.y) < this.s / 2
-    );
-  }
-}
-
-// ----- CapButton -----
-class CapButton {
-  constructor(x, y, w, h, str) {
-    this.x = x;
-    this.y = y;
-    this.w = w;
-    this.h = h;
-    this.str = str;
-    this.scl = 1;
-    this.gray = 150;
-    this.state = false;
-  }
-
-  display() {
-    push();
-    rectMode(CENTER);
-
-    if (this.hover() || this.state) {
-      this.gray = lerp(this.gray, 200, 0.12);
-      this.scl = lerp(this.scl, 1.2, 0.12);
-    } else {
-      this.gray = lerp(this.gray, 150, 0.12);
-      this.scl = lerp(this.scl, 1, 0.12);
-    }
-
-    translate(this.x, this.y);
-    push();
-    scale(this.scl);
-    fill(this.gray);
-    rect(0, 0, this.w, this.h, 40);
-    pop();
-
-    fill(0);
-    textAlign(CENTER, CENTER);
-    textSize(this.h * 0.5);
-    text(this.str, 0, 0);
-
-    pop();
-  }
-
-  hover() {
-    return (
-      abs(mouseX - this.x) < this.w / 2 &&
-      abs(mouseY - this.y) < this.h / 2
-    );
-  }
-}
-
-// ----- Slider -----
-class Slider {
-  constructor(x, y, w, h, str) {
-    this.x = x;
-    this.y = y;
-    this.w = w;
-    this.h = h;
-    this.str = str;
-    this.val = 0.5;
-    this.state = false;
-  }
-
-  run() {
-    this.drag();
-    this.display();
-  }
-
-  display() {
-    push();
-    translate(this.x, this.y);
-    rectMode(CENTER);
-
-    fill(200);
-    rect(0, 0, this.w, this.h, this.h);
-
-    let vw = map(this.val, 0, 1, 0, this.w);
-    fill(120);
-    rect(-this.w / 2, -this.h / 2, vw, this.h, this.h);
-
-    fill(0);
-    textAlign(CENTER, CENTER);
-    textSize(this.h * 0.4);
-    text(this.str, 0, 0);
-
-    pop();
-  }
-
-  click() {
-    if (this.hover()) {
-      this.state = true;
-    } else {
-      this.state = false;
-    }
-  }
-
-  drag() {
-    if (this.state) {
-      let v = map(mouseX, this.x - this.w / 2, this.x + this.w / 2, 0, 1);
-      this.val = constrain(v, 0, 1);
-    }
-  }
-
-  hover() {
-    return (
-      abs(mouseX - this.x) < this.w / 2 &&
-      abs(mouseY - this.y) < this.h / 2
-    );
-  }
-}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Path Method: Complete Experience</title>
+    <style>
+        /* --- 全局重置 --- */
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            color: #ccc;
+            font-family: 'Roboto Mono', 'Consolas', monospace;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* --- 通用背景网格 (所有界面共用) --- */
+        .grid-bg {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-image: 
+                linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        /* =========================================
+           LEVEL 1: LANDING PAGE (一级界面 - 首页)
+           ========================================= */
+        #level-1 {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            transition: opacity 0.8s ease;
+            background: radial-gradient(circle at center, rgba(0,20,0,0.4), #000 90%);
+        }
+
+        .hero-content {
+            max-width: 800px;
+            text-align: center;
+            padding: 40px;
+            border: 1px solid #333;
+            background: rgba(10, 10, 10, 0.8);
+            backdrop-filter: blur(5px);
+            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+        }
+
+        h1.main-title {
+            font-size: 3rem;
+            color: #fff;
+            margin-bottom: 10px;
+            letter-spacing: 5px;
+            text-transform: uppercase;
+            border-bottom: 2px solid #fff;
+            display: inline-block;
+            padding-bottom: 10px;
+        }
+
+        .subtitle {
+            font-size: 0.9rem;
+            color: #00ffcc;
+            margin-bottom: 30px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .manifesto {
+            font-size: 0.85rem;
+            line-height: 1.8;
+            color: #888;
+            text-align: left;
+            margin-bottom: 40px;
+            font-family: 'Helvetica', sans-serif; /* 阅读体验更好 */
+            border-left: 2px solid #333;
+            padding-left: 20px;
+        }
+
+        .start-btn {
+            background: transparent;
+            color: #00ffcc;
+            border: 1px solid #00ffcc;
+            padding: 15px 40px;
+            font-size: 1rem;
+            font-family: 'Roboto Mono', monospace;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .start-btn:hover {
+            background: #00ffcc;
+            color: #000;
+            box-shadow: 0 0 20px rgba(0, 255, 204, 0.4);
+        }
+
+        /* =========================================
+           LEVEL 2: LABORATORY (二级界面 - 实验台)
+           ========================================= */
+        #level-2 {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: flex;
+            opacity: 0;
+            pointer-events: none; /* 初始不可点击 */
+            transition: opacity 0.8s ease;
+            z-index: 5;
+        }
+
+        /* 激活状态 */
+        #level-2.active {
+            opacity: 1;
+            pointer-events: auto;
+            z-index: 20;
+        }
+
+        /* 实验台左侧画布 */
+        #canvas-container {
+            flex-grow: 1;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* 实验台右侧控制台 */
+        #controls {
+            width: 360px;
+            background: #0b0b0b;
+            border-left: 1px solid #333;
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            box-shadow: -10px 0 40px rgba(0,0,0,0.8);
+            overflow-y: auto;
+            z-index: 30;
+        }
+
+        /* 实验台内部样式 */
+        .lab-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 10px;
+        }
+
+        .back-btn {
+            font-size: 0.7rem;
+            color: #666;
+            cursor: pointer;
+            border: 1px solid #333;
+            padding: 5px 10px;
+            transition: 0.2s;
+        }
+        .back-btn:hover { border-color: #fff; color: #fff; }
+
+        h2.lab-title {
+            font-size: 0.9rem; margin: 0; color: #fff; letter-spacing: 1px;
+        }
+
+        .control-group { display: flex; flex-direction: column; gap: 5px; }
+        
+        .label-row {
+            display: flex; justify-content: space-between;
+            font-size: 0.7rem; color: #888; text-transform: uppercase; font-weight: bold;
+        }
+        .value-display { color: #00ffcc; font-family: 'Consolas', monospace; }
+
+        #scope-container {
+            border: 1px solid #333; background: #000; height: 80px; position: relative;
+        }
+        canvas#oscilloscope { width: 100%; height: 100%; display: block; }
+
+        select {
+            width: 100%; padding: 10px; background: #111; color: #fff;
+            border: 1px solid #444; outline: none; font-family: inherit;
+        }
+        input[type="range"] {
+            -webkit-appearance: none; width: 100%; height: 2px;
+            background: #444; outline: none; margin-top: 8px;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 12px; height: 12px;
+            background: #00ffcc; border-radius: 50%;
+            cursor: pointer; transition: transform 0.1s;
+        }
+        input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.5); }
+
+        .math-big {
+            font-family: 'Times New Roman', serif; font-style: italic;
+            font-size: 1.4rem; color: #fff; text-align: center; margin: 10px 0;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="grid-bg"></div>
+
+    <div id="level-1">
+        <div class="hero-content">
+            <h1 class="main-title">The Path Method</h1>
+            <div class="subtitle">Mathematical Logic & Typography</div>
+            
+            <div class="manifesto">
+                <p><strong>The Path Method:</strong> By cleverly combining the path of mathematical functions with the outline of letters, a dynamic and beautiful font design is formed.</p>
+                <p>This method not only demonstrates the close connection between mathematics and design but also provides users with a platform to explore new possibilities in digital art.</p>
+                <p style="margin-top:20px; color:#555; font-size:0.75rem;">
+                    CORE FUNCTIONS: f(x)=sin(x) | f(x)=tan(x) | f(x)=x² | f(x)=x³
+                </p>
+            </div>
+
+            <button class="start-btn" onclick="enterLab()">Enter Laboratory</button>
+        </div>
+    </div>
+
+    <div id="level-2">
+        <div id="canvas-container">
+            <canvas id="mainCanvas"></canvas>
+        </div>
+
+        <div id="controls">
+            <div class="lab-header">
+                <h2 class="lab-title">CONTROL PANEL</h2>
+                <div class="back-btn" onclick="exitLab()">← BACK TO HOME</div>
+            </div>
+
+            <div class="control-group">
+                <div class="label-row">Math Model</div>
+                <select id="funcSelect">
+                    <option value="sin">Sine Wave [ f(x) = sin(x) ]</option>
+                    <option value="tan">Tangent [ f(x) = tan(x) ]</option>
+                    <option value="sqr">Quadratic [ f(x) = x² ]</option>
+                    <option value="cub">Cubic [ f(x) = x³ ]</option>
+                </select>
+            </div>
+
+            <div class="math-big" id="formula-text">f(x) = sin(x)</div>
+
+            <div class="control-group">
+                <div class="label-row">Oscilloscope</div>
+                <div id="scope-container">
+                    <canvas id="oscilloscope"></canvas>
+                    <div style="position:absolute; top:50%; width:100%; height:1px; background:rgba(255,255,255,0.2);"></div>
+                    <div style="position:absolute; left:50%; top:0; height:100%; width:1px; background:rgba(255,255,255,0.1);"></div>
+                </div>
+            </div>
+
+            <hr style="border:0; border-top:1px solid #222; width:100%;">
+
+            <div class="control-group">
+                <div class="label-row"><label>Amplitude (振幅)</label><span id="val-amp" class="value-display">25</span></div>
+                <input type="range" id="amp" min="0" max="100" value="25">
+            </div>
+
+            <div class="control-group">
+                <div class="label-row"><label>Frequency (频率)</label><span id="val-freq" class="value-display">0.10</span></div>
+                <input type="range" id="freq" min="0.01" max="0.5" step="0.01" value="0.1">
+            </div>
+
+            <div class="control-group">
+                <div class="label-row"><label>Velocity (流速)</label><span id="val-speed" class="value-display">1.0x</span></div>
+                <input type="range" id="speed" min="0" max="3.0" step="0.1" value="1.0">
+            </div>
+
+            <div class="control-group">
+                <div class="label-row"><label>Sampling (采样点)</label><span id="val-res" class="value-display">200</span></div>
+                <input type="range" id="res" min="4" max="300" step="1" value="200">
+            </div>
+            
+            <div style="margin-top:auto; font-size:0.7rem; color:#555; border-top:1px solid #222; padding-top:10px;">
+                Drag "Sampling" to left (< 20) to view discrete vertices.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // === 页面切换逻辑 ===
+        function enterLab() {
+            document.getElementById('level-1').style.opacity = '0';
+            setTimeout(() => {
+                document.getElementById('level-1').style.display = 'none';
+                document.getElementById('level-2').classList.add('active');
+                resize(); // 重新计算画布大小
+            }, 800);
+        }
+
+        function exitLab() {
+            document.getElementById('level-2').classList.remove('active');
+            document.getElementById('level-1').style.display = 'flex';
+            setTimeout(() => {
+                document.getElementById('level-1').style.opacity = '1';
+            }, 100);
+        }
+
+        // === 实验室核心代码 (Math Logic) ===
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+        const oscCanvas = document.getElementById('oscilloscope');
+        const oscCtx = oscCanvas.getContext('2d');
+
+        // 状态
+        const state = {
+            func: 'sin',
+            amp: 25,
+            freq: 0.1,
+            speed: 1.0,
+            resolution: 200,
+            time: 0
+        };
+
+        // 辅助：锯齿波相位 (用于将非周期函数映射到循环动画)
+        function getSawtoothPhase(t) {
+            const period = Math.PI * 2;
+            let val = (t % period) / period; 
+            return (val * 2) - 1; // -1 到 1
+        }
+
+        const MathLogic = {
+            sin: (t) => Math.sin(t),
+            tan: (t) => Math.max(-5, Math.min(5, Math.tan(t))),
+            sqr: (t) => { let x = getSawtoothPhase(t); return x * x; },
+            cub: (t) => { let x = getSawtoothPhase(t); return x * x * x; }
+        };
+
+        const FormulaText = {
+            sin: "f(x) = sin(x)",
+            tan: "f(x) = tan(x)",
+            sqr: "f(x) = x²",
+            cub: "f(x) = x³"
+        };
+
+        function generatePath(w, h, count) {
+            const pts = [];
+            const sx = (canvas.width - w)/2;
+            const sy = (canvas.height - h)/2;
+            let segments = Math.floor(count/3);
+            if(segments < 1) segments = 1;
+
+            // N 的路径
+            for(let i=0; i<=segments; i++) {
+                let t = i/segments; pts.push({x:sx, y:sy+h*(1-t), ref:i});
+            }
+            for(let i=0; i<=segments; i++) {
+                let t = i/segments; pts.push({x:sx+w*t, y:sy+h*t, ref:segments+i});
+            }
+            for(let i=0; i<=segments; i++) {
+                let t = i/segments; pts.push({x:sx+w, y:sy+h*(1-t), ref:segments*2+i});
+            }
+            return pts;
+        }
+
+        function draw() {
+            state.time += state.speed * 0.03;
+
+            // 无论是否在显示，画布都需要刷新以保持动画连贯，
+            // 或者你可以判断 if(!level2.active) return; 来节省性能。
+            // 这里为了简单，一直运行。
+            
+            ctx.clearRect(0,0,canvas.width, canvas.height);
+
+            const nWidth = 250;
+            const points = generatePath(nWidth, 350, state.resolution);
+            
+            ctx.strokeStyle = '#00ffcc';
+            ctx.lineWidth = 3;
+            ctx.lineJoin = state.resolution < 50 ? 'miter' : 'round';
+            ctx.beginPath();
+
+            let first = true;
+            points.forEach(p => {
+                const input = (p.ref * state.freq * 0.1) - state.time;
+                let scale = state.amp;
+                if(state.func === 'sqr' || state.func === 'cub') scale = state.amp * 1.5;
+                const val = MathLogic[state.func](input);
+                const offset = val * scale;
+                
+                if(first) { ctx.moveTo(p.x + offset, p.y); first = false; }
+                else { ctx.lineTo(p.x + offset, p.y); }
+            });
+            ctx.stroke();
+
+            // 绘制采样点 (低分辨率模式)
+            if(state.resolution < 50) {
+                ctx.fillStyle = '#ff0044';
+                points.forEach(p => {
+                    const input = (p.ref * state.freq * 0.1) - state.time;
+                    let scale = state.amp;
+                    if(state.func === 'sqr' || state.func === 'cub') scale = state.amp * 1.5;
+                    const val = MathLogic[state.func](input);
+                    ctx.fillRect(p.x + val*scale - 2, p.y - 2, 4, 4);
+                });
+            }
+
+            drawOscilloscope();
+            requestAnimationFrame(draw);
+        }
+
+        function drawOscilloscope() {
+            const w = oscCanvas.width;
+            const h = oscCanvas.height;
+            oscCtx.clearRect(0, 0, w, h);
+            
+            // 中线
+            oscCtx.strokeStyle = '#333';
+            oscCtx.beginPath(); oscCtx.moveTo(0, h/2); oscCtx.lineTo(w, h/2); oscCtx.stroke();
+
+            oscCtx.strokeStyle = '#00ffcc';
+            oscCtx.lineWidth = 2;
+            oscCtx.beginPath();
+            const cx = w/2;
+            for(let i=0; i<w; i++) {
+                const x = (i - cx) * 0.05 * (state.freq * 10) - state.time;
+                let val = MathLogic[state.func](x);
+                if(state.func === 'tan') val = Math.max(-2, Math.min(2, val));
+                const y = h/2 - val * (h/5);
+                if(i===0) oscCtx.moveTo(i, y); else oscCtx.lineTo(i, y);
+            }
+            oscCtx.stroke();
+        }
+
+        // --- 初始化与绑定 ---
+        function resize() {
+            const cw = document.getElementById('controls').offsetWidth;
+            // 如果在 Level 1，canvas容器可能是隐藏的，取 window 宽度
+            // 这里为了安全，计算 Level 2 激活时的宽度
+            canvas.width = window.innerWidth - cw; 
+            canvas.height = window.innerHeight;
+            oscCanvas.width = document.getElementById('scope-container').clientWidth;
+            oscCanvas.height = 80;
+        }
+        window.addEventListener('resize', resize);
+
+        document.getElementById('funcSelect').addEventListener('change', (e) => {
+            state.func = e.target.value;
+            document.getElementById('formula-text').innerText = FormulaText[state.func];
+        });
+
+        const sliders = [
+            {id:'amp', disp:'val-amp'}, {id:'freq', disp:'val-freq'},
+            {id:'speed', disp:'val-speed', suffix:'x'}, {id:'res', disp:'val-res'}
+        ];
+        sliders.forEach(s => {
+            document.getElementById(s.id).addEventListener('input', (e) => {
+                let v = parseFloat(e.target.value);
+                state[s.id==='res'?'resolution':s.id] = v;
+                document.getElementById(s.disp).innerText = v + (s.suffix||'');
+            });
+        });
+
+        // 启动
+        resize();
+        draw();
+
+    </script>
+</body>
+</html>
