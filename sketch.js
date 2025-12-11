@@ -40,8 +40,8 @@ function preload() {
 
   // SVG 图形：1.svg~8.svg 放在 svg/ 里
   for (let i = 0; i < svgs.length; i++) {
-    svgs[i] = loadImage("svg/" + (i + 1) + ".svg");
-  }
+    svgs[i] = loadImage("svg/" + (i + 1) + ".svg?v=2");
+
 }
 
 // 计算某个 SVG 内部“非透明像素”的包围盒，得到去掉透明边后的区域
