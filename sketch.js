@@ -13,7 +13,9 @@ let snapThreshold = 5;
 let webWidth = 1600;
 let webHeight = 1080;
 let ch = 0;
-let cw = 200;
+
+// 左侧操作栏宽度：从 200 改为 260
+let cw = 260;
 
 let icons = new Array(12);
 let buttons = new Array(12);
@@ -22,11 +24,16 @@ let svgs = new Array(8);
 let gridSizeSlider;
 let undoButton, clearButton;
 
-let paletteColors = [
-  "#FF0000", "#00FF00", "#0000FF",
-  "#FFFF00", "#FF00FF", "#00FFFF",
-  "#000000", "#FFFFFF"
+// 颜色相关：默认的 5 个记忆颜色
+const defaultRecentHex = [
+  "#482BCC",
+  "#FF04A5",
+  "#FFE900",
+  "#8CE255",
+  "#8EC8EC"
 ];
+let recentColors = [];
+let colorWheelCX, colorWheelCY, colorWheelR;
 
 // 每个 SVG 自动计算的“有颜色区域”边界（0~1 比例）
 let svgBounds = new Array(8).fill(null);
@@ -40,6 +47,7 @@ function preload() {
 
   // SVG 图形：1.svg~8.svg 放在 svg/ 里
   for (let i = 0; i < svgs.length; i++) {
+    // ?v=2 用来绕过浏览器缓存
     svgs[i] = loadImage("svg/" + (i + 1) + ".svg?v=2");
   }
 }
@@ -115,23 +123,31 @@ function setup() {
   canvasG.pixelDensity(d);
   updateCanvas();
 
-  // 左侧按钮布局
+  // 颜色轮位置与大小
+  colorWheelCX = cw / 2;
+  colorWheelCY = 90;
+  colorWheelR  = 60;
+
+  // 初始化 5 个记忆颜色
+  recentColors = defaultRecentHex.map(h => color(h));
+
+  // 左侧按钮布局（加宽后图标也稍微放大）
   let i = 0;
   for (let y = 0; y <= 5; y++) {
     for (let x = 0; x <= 1; x++) {
       if (i < icons.length) {
         let bx = map(x, -0.75, 1.75, 0, cw);
-        let by = map(y, 0, 4, 400, 750);
-        let s = 60;
+        let by = map(y, 0, 5, 420, 820);
+        let s  = 70; // 图标从 60 放大到 70
         buttons[i] = new IconButton(bx, by, s, i);
         i++;
       }
     }
   }
 
-  gridSizeSlider = new Slider(cw / 2, 250, 120, 40, "GridSize");
-  undoButton = new CapButton(cw / 2 - 45, 330, 75, 30, "Undo");
-  clearButton = new CapButton(cw / 2 + 45, 330, 75, 30, "Clear");
+  gridSizeSlider = new Slider(cw / 2, 260, 140, 40, "GridSize");
+  undoButton = new CapButton(cw / 2 - 55, 340, 85, 32, "Undo");
+  clearButton = new CapButton(cw / 2 + 55, 340, 85, 32, "Clear");
 
   // 为每个 SVG 计算一次“有颜色区域”边界
   for (let j = 0; j < svgs.length; j++) {
@@ -151,7 +167,7 @@ function draw() {
 
   drawGrid();
   drawUIBackground();
-  drawColorPalette();
+  drawColorPanel(); // 新颜色选择 UI
 
   for (let i = 0; i < buttons.length; i++) {
     buttons[i].display();
@@ -184,59 +200,122 @@ function drawGrid() {
   }
 }
 
-// ----- 颜色选择 -----
-function drawColorPalette() {
-  let x = cw / 2;
-  let yStart = 40;
-  let sw = 30, sh = 30;
-
+// ----- 颜色面板：上方取色轮 + 下方 5 个记忆颜色 -----
+function drawColorPanel() {
+  // 标题
   fill(0);
   noStroke();
   textAlign(CENTER, CENTER);
   textSize(14);
-  text("Color", x, yStart - 20);
+  text("Color", colorWheelCX, colorWheelCY - colorWheelR - 20);
 
-  for (let i = 0; i < paletteColors.length; i++) {
-    let row = floor(i / 2);
-    let col = i % 2;
-    let px = x + (col - 0.5) * (sw + 10);
-    let py = yStart + row * (sh + 10);
+  // 颜色轮
+  push();
+  translate(colorWheelCX, colorWheelCY);
+  colorMode(HSB, 360, 100, 100);
+  noStroke();
+  let rOuter = colorWheelR;
+  let rInner = colorWheelR * 0.55;
 
+  for (let a = 0; a < 360; a += 3) {
+    let ang1 = radians(a);
+    let ang2 = radians(a + 3);
+    fill(a, 100, 100);
+    arc(0, 0, rOuter * 2, rOuter * 2, ang1, ang2, PIE);
+  }
+  // 中间挖掉一圈，视觉更干净
+  fill(240);
+  ellipse(0, 0, rInner * 2, rInner * 2);
+
+  pop();
+  colorMode(RGB, 255);
+
+  // 最近使用颜色
+  let sw = 30, sh = 30;
+  let gap = 8;
+  let n = recentColors.length;
+  let totalW = n * sw + (n - 1) * gap;
+  let startX = colorWheelCX - totalW / 2;
+  let y = colorWheelCY + colorWheelR + 25;
+
+  rectMode(CORNER);
+  for (let i = 0; i < n; i++) {
+    let px = startX + i * (sw + gap);
     stroke(60);
     strokeWeight(1);
-    fill(paletteColors[i]);
-    rectMode(CENTER);
-    rect(px, py, sw, sh, 6);
+    fill(recentColors[i]);
+    rect(px, y, sw, sh, 6);
 
-    let c = color(paletteColors[i]);
-    if (
-      red(c) === red(currentColor) &&
-      green(c) === green(currentColor) &&
-      blue(c) === blue(currentColor)
-    ) {
+    // 高亮当前颜色
+    if (colorsEqual(recentColors[i], currentColor)) {
       noFill();
       stroke(0);
       strokeWeight(2);
-      rect(px, py, sw + 6, sh + 6, 8);
+      rect(px - 3, y - 3, sw + 6, sh + 6, 8);
     }
   }
 }
 
-function handleColorClick() {
-  let x = cw / 2;
-  let yStart = 40;
+// 点击颜色面板：取色轮 + 记忆颜色
+function handleColorPanelClick() {
+  // 点击取色轮
+  let dx = mouseX - colorWheelCX;
+  let dy = mouseY - colorWheelCY;
+  let distSq = dx * dx + dy * dy;
+  if (distSq <= colorWheelR * colorWheelR) {
+    let angle = atan2(dy, dx); // -PI..PI
+    let deg = degrees(angle);
+    if (deg < 0) deg += 360;
+
+    // 用 HSB 生成颜色
+    push();
+    colorMode(HSB, 360, 100, 100);
+    let c = color(deg, 100, 100);
+    pop();
+
+    currentColor = c;
+    addRecentColor(c);
+    return;
+  }
+
+  // 点击 5 个记忆颜色
   let sw = 30, sh = 30;
+  let gap = 8;
+  let n = recentColors.length;
+  let totalW = n * sw + (n - 1) * gap;
+  let startX = colorWheelCX - totalW / 2;
+  let y = colorWheelCY + colorWheelR + 25;
 
-  for (let i = 0; i < paletteColors.length; i++) {
-    let row = floor(i / 2);
-    let col = i % 2;
-    let px = x + (col - 0.5) * (sw + 10);
-    let py = yStart + row * (sh + 10);
-
-    if (abs(mouseX - px) < sw / 2 && abs(mouseY - py) < sh / 2) {
-      currentColor = color(paletteColors[i]);
+  for (let i = 0; i < n; i++) {
+    let px = startX + i * (sw + gap);
+    if (mouseX >= px && mouseX <= px + sw && mouseY >= y && mouseY <= y + sh) {
+      currentColor = color(recentColors[i]);
+      addRecentColor(currentColor); // 选中后挪到最前
+      break;
     }
   }
+}
+
+// 把一个颜色加入最近使用列表
+function addRecentColor(c) {
+  let nc = color(c);
+  // 去掉相同的
+  recentColors = recentColors.filter(rc => !colorsEqual(rc, nc));
+  // 插到最前面
+  recentColors.unshift(nc);
+  // 限制最多 5 个
+  if (recentColors.length > 5) {
+    recentColors.length = 5;
+  }
+}
+
+// 比较两个 p5 颜色是否一样
+function colorsEqual(c1, c2) {
+  return (
+    red(c1) === red(c2) &&
+    green(c1) === green(c2) &&
+    blue(c1) === blue(c2)
+  );
 }
 
 // ----- 更新画布 -----
@@ -250,7 +329,7 @@ function updateCanvas() {
 }
 
 // ----- 添加图形 -----
-// 现在 dragStart / dragEnd 都是“网格坐标”
+// dragStart / dragEnd 都是“网格坐标”
 // 第一个点 = 左上角锚点，不会被 min() 改变
 function addNewShape() {
   let x = dragStart.x;
@@ -329,19 +408,21 @@ function drawSvgPreview(type, x, y, w, h) {
 // ----- 鼠标交互 -----
 function mousePressed() {
   if (mouseX > cw && mouseY > ch) {
+    // 在画布区域：开始拖拽绘制
     isDragging = true;
     let gx = round((mouseX - cw) / cellSize);
     let gy = round((mouseY - ch) / cellSize);
     dragStart = createVector(gx, gy);
     dragEnd = dragStart.copy();
   } else {
+    // 在左侧工具栏：按钮 / 颜色 / 滑块
     for (let i = 0; i < buttons.length; i++) {
       buttons[i].click();
     }
     gridSizeSlider.click();
     if (undoButton.hover()) undo();
     if (clearButton.hover()) clearShapes();
-    handleColorClick();
+    handleColorPanelClick();
   }
 }
 
