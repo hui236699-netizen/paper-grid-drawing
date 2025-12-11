@@ -84,8 +84,8 @@ function computeSvgBounds(index) {
     let w  = (maxX - minX + 1) / sampleW;
     let h  = (maxY - minY + 1) / sampleH;
 
-    // 👉 向外再扩一点点，让图形略微“吃”到边界，避免看到空隙
-    const margin = 0.03; // 可以理解为 3% 的溢出
+    // 向外再扩一点点，让图形略微“吃”到边界，减少空隙
+    const margin = 0.03;
     let x1 = x0 + w;
     let y1 = y0 + h;
 
@@ -106,17 +106,13 @@ function computeSvgBounds(index) {
 
 // ----- setup -----
 function setup() {
-  // 使用设备像素密度，让画面更清晰（Retina 等）
   const d = window.devicePixelRatio || 1;
   pixelDensity(d);
   createCanvas(1440, 900);
-  noSmooth(); // 画布抗锯齿关闭，边缘更锐利一点
-
   currentColor = color(0, 0, 255);
 
   canvasG = createGraphics(webWidth - cw, webHeight - ch);
   canvasG.pixelDensity(d);
-  canvasG.noSmooth();
   updateCanvas();
 
   // 左侧按钮布局
@@ -194,7 +190,7 @@ function drawColorPalette() {
   let yStart = 40;
   let sw = 30, sh = 30;
 
-  fill(0); // 浅背景上用深色文字
+  fill(0);
   noStroke();
   textAlign(CENTER, CENTER);
   textSize(14);
@@ -253,23 +249,26 @@ function updateCanvas() {
   canvasG.pop();
 }
 
-// ----- 添加图形（拖拽起点/终点，使用“网格坐标”） -----
+// ----- 添加图形 -----
+// 现在 dragStart / dragEnd 都是“网格坐标”
+// 第一个点 = 左上角锚点，不会被 min() 改变
 function addNewShape() {
-  let x = min(dragStart.x, dragEnd.x);
-  let y = min(dragStart.y, dragEnd.y);
-  let w = abs(dragEnd.x - dragStart.x);
-  let h = abs(dragEnd.y - dragStart.y);
+  let x = dragStart.x;
+  let y = dragStart.y;
+  let w = max(1, dragEnd.x - dragStart.x);
+  let h = max(1, dragEnd.y - dragStart.y);
 
   shapes.push(new Shape(x, y, w, h, currentShape, currentColor));
   undoStack = [];
 }
 
-// ----- 预览（同样用网格坐标，只画在格线上） -----
+// ----- 预览 -----
+// 用 dragStart 作为左上角，只往右 / 下生长
 function drawPreview() {
-  let gx0 = min(dragStart.x, dragEnd.x);
-  let gy0 = min(dragStart.y, dragEnd.y);
-  let gw = abs(dragEnd.x - dragStart.x);
-  let gh = abs(dragEnd.y - dragStart.y);
+  let gx0 = dragStart.x;
+  let gy0 = dragStart.y;
+  let gw = max(1, dragEnd.x - dragStart.x);
+  let gh = max(1, dragEnd.y - dragStart.y);
 
   let x = gx0 * cellSize;
   let y = gy0 * cellSize;
@@ -303,7 +302,7 @@ function drawPreview() {
   pop();
 }
 
-// ----- SVG 预览：裁掉透明边 + 向外扩一点，让边贴着网格 -----
+// ----- SVG 预览：裁掉透明边 + 轻微外扩 -----
 function drawSvgPreview(type, x, y, w, h) {
   let idx = type - 4;
   const img = svgs[idx];
@@ -328,7 +327,8 @@ function drawSvgPreview(type, x, y, w, h) {
 }
 
 // ----- 鼠标交互 -----
-// 把鼠标位置直接转换成“网格坐标”（第几格），所以起点/终点永远是格点
+// 第一个点：吸附到网格上（存成网格坐标）
+// 拖动时：只允许 dragEnd >= dragStart，让形状只向右 / 向下生长
 function mousePressed() {
   if (mouseX > cw && mouseY > ch) {
     isDragging = true;
@@ -351,6 +351,9 @@ function mouseDragged() {
   if (isDragging) {
     let gx = round((mouseX - cw) / cellSize);
     let gy = round((mouseY - ch) / cellSize);
+    // 锚点不动，只能往右 / 下拉
+    gx = max(gx, dragStart.x);
+    gy = max(gy, dragStart.y);
     dragEnd = createVector(gx, gy);
   }
 }
@@ -394,7 +397,7 @@ function keyPressed() {
   }
 }
 
-// ----- 网格对齐辅助（暂时没用到，保留） -----
+// ----- 网格对齐辅助（备用） -----
 function snapToGrid(x, y) {
   return createVector(round(x / cellSize), round(y / cellSize));
 }
@@ -466,7 +469,7 @@ function drawParallelogramPG(pg, x, y, w, h) {
   pg.endShape(CLOSE);
 }
 
-// ----- SVG 真正绘制到画布：同样裁掉透明边，并对齐网格 -----
+// ----- SVG 真正绘制到画布：同样裁掉透明边 -----
 function pgDrawSvg(pg, type, x, y, w, h) {
   let idx = type - 4;
   const img = svgs[idx];
@@ -541,7 +544,8 @@ class IconButton {
 
   hover() {
     return (
-      abs(mouseX - this.x) < this.s / 2 && abs(mouseY - this.y) < this.s / 2
+      abs(mouseX - this.x) < this.s / 2 &&
+      abs(mouseY - this.y) < this.s / 2
     );
   }
 }
