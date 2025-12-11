@@ -41,7 +41,7 @@ function preload() {
   // SVG 图形：1.svg~8.svg 放在 svg/ 里
   for (let i = 0; i < svgs.length; i++) {
     svgs[i] = loadImage("svg/" + (i + 1) + ".svg?v=2");
-
+  }
 }
 
 // 计算某个 SVG 内部“非透明像素”的包围盒，得到去掉透明边后的区域
@@ -233,7 +233,7 @@ function handleColorClick() {
     let px = x + (col - 0.5) * (sw + 10);
     let py = yStart + row * (sh + 10);
 
-    if (abs(mouseX - px) < sw / 2 && abs(mouseY - py) < sw / 2) {
+    if (abs(mouseX - px) < sw / 2 && abs(mouseY - py) < sh / 2) {
       currentColor = color(paletteColors[i]);
     }
   }
@@ -327,8 +327,6 @@ function drawSvgPreview(type, x, y, w, h) {
 }
 
 // ----- 鼠标交互 -----
-// 第一个点：吸附到网格上（存成网格坐标）
-// 拖动时：只允许 dragEnd >= dragStart，让形状只向右 / 向下生长
 function mousePressed() {
   if (mouseX > cw && mouseY > ch) {
     isDragging = true;
