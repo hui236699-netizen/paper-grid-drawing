@@ -1,6 +1,6 @@
-// ----- 全局变量 -----
+// ===== 全局设置 =====
 let minSize = 10, maxSize = 80;
-// 默认网格稍微大一点
+// 默认网格大小（适中）
 let cellSize = 30;
 
 let dragStart, dragEnd;
@@ -10,26 +10,24 @@ let currentColor;
 let shapes = [];
 let undoStack = [];
 let canvasG;
-let snapThreshold = 5;
 
 let webWidth = 1600;
 let webHeight = 1080;
 let ch = 0;
+let cw = 260; // 左侧操作栏宽度
 
-// 左侧操作栏宽度：260 像素
-let cw = 260;
+// 只保留前 10 个图标按钮
+let icons = new Array(10);
+let buttons = new Array(10);
 
-let icons = new Array(12);
-let buttons = new Array(12);
+// svg 还是按 1~8.svg 预加载，用前 6 个即可
 let svgs = new Array(8);
 
 // 4 个功能按钮：Undo / Clear / Grid / Save
 let undoButton, clearButton, gridButton, saveButton;
-
-// 网格是否显示
 let showGrid = true;
 
-// 颜色相关：默认的 5 个记忆颜色
+// 颜色记忆
 const defaultRecentHex = [
   "#482BCC",
   "#FF04A5",
@@ -39,38 +37,39 @@ const defaultRecentHex = [
 ];
 let recentColors = [];
 
-// 色轮位置和缓存图像
-let colorWheelCX, colorWheelCY, colorWheelR;
-let colorWheelSize = 140;
-let colorWheelG;
+// --- 新颜色面板（方块+色条） ---
+let pickerHue = 240;   // 色相
+let pickerSat = 100;   // 饱和度
+let pickerBri = 100;   // 明度
 
-// 每个 SVG 自动计算的“有颜色区域”边界（0~1 比例）
+let sbX, sbY, sbSize;      // Saturation/Brightness 方块
+let hueX, hueY, hueW, hueH; // Hue 色条
+
+let sbGraphic, hueGraphic;
+let sbDirty = true; // 当 hue 变化时，重新生成 SB 方块图像
+
+// 每个 SVG 自动计算“有颜色区域”边界（0~1 比例）
 let svgBounds = new Array(8).fill(null);
 
-// ----- 预加载 -----
+// ===== 预加载资源 =====
 function preload() {
-  // 左侧按钮图标：0.png~11.png 放在 assets/ 里
   for (let i = 0; i < icons.length; i++) {
     icons[i] = loadImage("assets/" + i + ".png");
   }
-
-  // SVG 图形：1.svg~8.svg 放在 svg/ 里
   for (let i = 0; i < svgs.length; i++) {
-    // ?v=2 用来绕过浏览器缓存
     svgs[i] = loadImage("svg/" + (i + 1) + ".svg?v=2");
   }
 }
 
-// 计算某个 SVG 内部“非透明像素”的包围盒，得到去掉透明边后的区域
+// ===== 计算 SVG 内有颜色的包围盒 =====
 function computeSvgBounds(index) {
   const img = svgs[index];
   if (!img) return;
 
   const sampleW = 256;
   const sampleH = 256;
-
   const pg = createGraphics(sampleW, sampleH);
-  pg.pixelDensity(1); // 采样时用密度 1，方便计算
+  pg.pixelDensity(1);
   pg.clear();
   pg.image(img, 0, 0, sampleW, sampleH);
   pg.loadPixels();
@@ -82,7 +81,7 @@ function computeSvgBounds(index) {
     for (let x = 0; x < sampleW; x++) {
       const idx4 = (y * sampleW + x) * 4;
       const a = pg.pixels[idx4 + 3];
-      if (a > 10) { // alpha > 10 认为是“有颜色”的区域
+      if (a > 10) {
         if (x < minX) minX = x;
         if (y < minY) minY = y;
         if (x > maxX) maxX = x;
@@ -93,7 +92,6 @@ function computeSvgBounds(index) {
 
   let bounds;
   if (maxX < minX || maxY < minY) {
-    // 整张图都透明，就用整张图
     bounds = { x0: 0, y0: 0, w: 1, h: 1 };
   } else {
     let x0 = minX / sampleW;
@@ -101,7 +99,6 @@ function computeSvgBounds(index) {
     let w  = (maxX - minX + 1) / sampleW;
     let h  = (maxY - minY + 1) / sampleH;
 
-    // 向外再扩一点点，让图形略微“吃”到边界，减少空隙
     const margin = 0.03;
     let x1 = x0 + w;
     let y1 = y0 + h;
@@ -121,84 +118,98 @@ function computeSvgBounds(index) {
   pg.remove();
 }
 
-// 预生成一个高质量的色轮图片（有明暗变化）
-function buildColorWheelGraphic() {
-  colorWheelG = createGraphics(colorWheelSize, colorWheelSize);
-  colorWheelG.pixelDensity(1);
-  colorWheelG.colorMode(HSB, 360, 100, 100);
-  colorWheelG.noStroke();
+// ===== 颜色面板图像：Hue 色条 =====
+function buildHueGraphic() {
+  hueGraphic = createGraphics(20, 150);
+  hueGraphic.pixelDensity(1);
+  hueGraphic.colorMode(HSB, 360, 100, 100);
+  hueGraphic.noStroke();
 
-  const r = colorWheelSize / 2;
+  hueGraphic.loadPixels();
+  const w = hueGraphic.width;
+  const h = hueGraphic.height;
 
-  colorWheelG.loadPixels();
-  for (let y = 0; y < colorWheelSize; y++) {
-    for (let x = 0; x < colorWheelSize; x++) {
-      const dx = x - r;
-      const dy = y - r;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist <= r) {
-        let angle = Math.atan2(dy, dx);
-        let deg = degrees(angle);
-        if (deg < 0) deg += 360;
-
-        let t = dist / r;                 // 0 中心 → 1 边缘
-        let b = 100 - t * 70;             // 明度从 100 减到 ~30
-        let s = 100;                      // 饱和度固定 100
-        const c = colorWheelG.color(deg, s, b);
-
-        const idx4 = (y * colorWheelSize + x) * 4;
-        colorWheelG.pixels[idx4 + 0] = red(c);
-        colorWheelG.pixels[idx4 + 1] = green(c);
-        colorWheelG.pixels[idx4 + 2] = blue(c);
-        colorWheelG.pixels[idx4 + 3] = 255;
-      } else {
-        const idx4 = (y * colorWheelSize + x) * 4;
-        colorWheelG.pixels[idx4 + 3] = 0; // 透明
-      }
+  for (let y = 0; y < h; y++) {
+    const deg = map(y, 0, h - 1, 0, 360);
+    const c = hueGraphic.color(deg, 100, 100);
+    for (let x = 0; x < w; x++) {
+      const idx4 = (y * w + x) * 4;
+      hueGraphic.pixels[idx4 + 0] = red(c);
+      hueGraphic.pixels[idx4 + 1] = green(c);
+      hueGraphic.pixels[idx4 + 2] = blue(c);
+      hueGraphic.pixels[idx4 + 3] = 255;
     }
   }
-  colorWheelG.updatePixels();
+  hueGraphic.updatePixels();
 }
 
-// ----- setup -----
+// ===== 颜色面板图像：Sat/Bri 方块（随 Hue 变化） =====
+function buildSBGraphic() {
+  sbGraphic = createGraphics(sbSize, sbSize);
+  sbGraphic.pixelDensity(1);
+  sbGraphic.colorMode(HSB, 360, 100, 100);
+  sbGraphic.noStroke();
+
+  sbGraphic.loadPixels();
+  const w = sbGraphic.width;
+  const h = sbGraphic.height;
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const s = map(x, 0, w - 1, 0, 100);
+      const b = map(h - 1 - y, 0, h - 1, 0, 100); // 上亮下暗
+      const c = sbGraphic.color(pickerHue, s, b);
+      const idx4 = (y * w + x) * 4;
+      sbGraphic.pixels[idx4 + 0] = red(c);
+      sbGraphic.pixels[idx4 + 1] = green(c);
+      sbGraphic.pixels[idx4 + 2] = blue(c);
+      sbGraphic.pixels[idx4 + 3] = 255;
+    }
+  }
+  sbGraphic.updatePixels();
+}
+
+// HSB 转 p5 Color 小工具
+function hsbToColor(h, s, b) {
+  let c;
+  push();
+  colorMode(HSB, 360, 100, 100);
+  c = color(h, s, b);
+  pop();
+  return c;
+}
+
+// ===== setup =====
 function setup() {
   const d = window.devicePixelRatio || 1;
   pixelDensity(d);
   createCanvas(1440, 900);
+
   currentColor = color(0, 0, 255);
 
   canvasG = createGraphics(webWidth - cw, webHeight - ch);
   canvasG.pixelDensity(d);
   updateCanvas();
 
-  // 颜色轮位置与大小
-  colorWheelCX = cw / 2;
-  colorWheelCY = 110;
-  colorWheelR  = colorWheelSize / 2;
+  // 颜色面板布局
+  sbSize = 150;
+  sbX = 20;
+  sbY = 40;
+  hueW = 20;
+  hueH = sbSize;
+  hueX = sbX + sbSize + 12;
+  hueY = sbY;
 
   // 初始化 5 个记忆颜色
   recentColors = defaultRecentHex.map(h => color(h));
+  // 初始化色板图像
+  buildHueGraphic();
+  buildSBGraphic();
 
-  // 生成色轮图像
-  buildColorWheelGraphic();
-
-  // 左侧图形按钮布局（向下挪一点，避免和操作按钮重叠）
-  let i = 0;
-  for (let y = 0; y <= 5; y++) {
-    for (let x = 0; x <= 1; x++) {
-      if (i < icons.length) {
-        let bx = map(x, -0.75, 1.75, 0, cw);
-        let by = map(y, 0, 5, 460, 860); // 比之前整体下移
-        let s  = 70;
-        buttons[i] = new IconButton(bx, by, s, i);
-        i++;
-      }
-    }
-  }
-
-  // 四个功能按钮：两行，摆在中间偏上
-  let row1Y = 290;
-  let row2Y = 330;
+  // 功能按钮区域
+  const buttonsPanelTop = sbY + sbSize + 60;
+  let row1Y = buttonsPanelTop;
+  let row2Y = buttonsPanelTop + 40;
   let bw = 90;
   let bh = 34;
   let offset = 70;
@@ -208,48 +219,70 @@ function setup() {
   gridButton  = new CapButton(cw / 2 - offset, row2Y, bw, bh, "Grid");
   saveButton  = new CapButton(cw / 2 + offset, row2Y, bw, bh, "Save");
 
-  // 为每个 SVG 计算一次“有颜色区域”边界
+  // 图形按钮均匀排布在左侧下半部分（5 行 × 2 列）
+  const iconRows = 5;
+  const iconCols = 2;
+  const iconsTop = buttonsPanelTop + 80;
+  const bottomMargin = 40;
+  const areaH = height - iconsTop - bottomMargin;
+  const rowStep = areaH / iconRows;
+  const colX1 = cw * 0.33;
+  const colX2 = cw * 0.73;
+
+  let idx = 0;
+  for (let r = 0; r < iconRows; r++) {
+    let by = iconsTop + rowStep * (r + 0.5);
+    for (let c = 0; c < iconCols; c++) {
+      if (idx >= icons.length) break;
+      let bx = c === 0 ? colX1 : colX2;
+      let s = 70;
+      buttons[idx] = new IconButton(bx, by, s, idx);
+      idx++;
+    }
+  }
+
+  // 计算每个 SVG 的有颜色区域
   for (let j = 0; j < svgs.length; j++) {
     computeSvgBounds(j);
   }
 }
 
-// ----- draw -----
+// ===== draw =====
 function draw() {
   background(240);
 
+  // 画布
   image(canvasG, cw, ch);
-
   if (isDragging) {
     drawPreview();
   }
-
   if (showGrid) {
     drawGrid();
   }
+
   drawUIBackground();
-  drawColorPanel(); // 新颜色选择 UI
+  drawColorPanel();
 
-  for (let i = 0; i < buttons.length; i++) {
-    buttons[i].display();
-  }
-
-  // 显示 4 个功能按钮
+  // 功能按钮
   undoButton.display();
   clearButton.display();
   gridButton.display();
   saveButton.display();
+
+  // 图形按钮
+  for (let i = 0; i < buttons.length; i++) {
+    if (buttons[i]) buttons[i].display();
+  }
 }
 
-// ----- UI 背景（左侧栏深色）-----
+// ===== 左侧背景（深色） =====
 function drawUIBackground() {
   noStroke();
-  // 整个左侧操作栏：#1F1E24
-  fill(0x1F, 0x1E, 0x24);
+  fill(0x1F, 0x1E, 0x24); // #1F1E24
   rect(0, 0, cw, height);
 }
 
-// ----- 网格 -----
+// ===== 网格 =====
 function drawGrid() {
   stroke(220);
   strokeWeight(1);
@@ -261,26 +294,53 @@ function drawGrid() {
   }
 }
 
-// ----- 颜色面板：上方专业色轮 + 下方 5 个记忆颜色 -----
+// ===== 颜色面板：顶部文字 + 色板 + 5 个记忆颜色 =====
 function drawColorPanel() {
   // 标题
   fill(255);
   noStroke();
   textAlign(CENTER, CENTER);
   textSize(14);
-  text("Color", colorWheelCX, colorWheelCY - colorWheelR - 18);
+  text("Color", cw / 2, 18);
 
-  // 色轮图像
-  imageMode(CENTER);
-  image(colorWheelG, colorWheelCX, colorWheelCY, colorWheelSize, colorWheelSize);
+  // 如果 hue 变过，更新 SB 方块
+  if (sbDirty) {
+    buildSBGraphic();
+    sbDirty = false;
+  }
+
+  // 绘制 SB 方块
+  imageMode(CORNER);
+  image(sbGraphic, sbX, sbY, sbSize, sbSize);
+
+  // 当前选择点（小白圈）
+  const selX = sbX + map(pickerSat, 0, 100, 0, sbSize);
+  const selY = sbY + map(100 - pickerBri, 0, 100, 0, sbSize);
+  stroke(255);
+  strokeWeight(2);
+  noFill();
+  circle(selX, selY, 10);
+
+  // 绘制 Hue 色条
+  image(hueGraphic, hueX, hueY, hueW, hueH);
+
+  // 在 Hue 条上画一个小指示三角
+  const hueYPos = hueY + map(pickerHue, 0, 360, 0, hueH);
+  noStroke();
+  fill(255);
+  triangle(
+    hueX + hueW + 2, hueYPos,
+    hueX + hueW + 10, hueYPos - 6,
+    hueX + hueW + 10, hueYPos + 6
+  );
 
   // 最近使用颜色（5 个小方块）
   let sw = 30, sh = 30;
   let gap = 8;
   let n = recentColors.length;
   let totalW = n * sw + (n - 1) * gap;
-  let startX = colorWheelCX - totalW / 2;
-  let y = colorWheelCY + colorWheelR + 18;
+  let startX = cw / 2 - totalW / 2;
+  let y = sbY + sbSize + 16;
 
   rectMode(CORNER);
   for (let i = 0; i < n; i++) {
@@ -290,7 +350,6 @@ function drawColorPanel() {
     fill(recentColors[i]);
     rect(px, y, sw, sh, 6);
 
-    // 高亮当前颜色
     if (colorsEqual(recentColors[i], currentColor)) {
       noFill();
       stroke(255);
@@ -300,65 +359,67 @@ function drawColorPanel() {
   }
 }
 
-// 点击颜色面板：取色轮 + 记忆颜色
-function handleColorPanelClick() {
-  // 点击取色轮
-  let dx = mouseX - colorWheelCX;
-  let dy = mouseY - colorWheelCY;
-  let distSq = dx * dx + dy * dy;
-  if (distSq <= colorWheelR * colorWheelR) {
-    const dist = Math.sqrt(distSq);
-    let angle = Math.atan2(dy, dx); // -PI..PI
-    let deg = degrees(angle);
-    if (deg < 0) deg += 360;
+// ===== 处理颜色面板点击 / 拖动 =====
+function handleColorPanelMouse() {
+  // 点击 SB 方块
+  if (
+    mouseX >= sbX && mouseX <= sbX + sbSize &&
+    mouseY >= sbY && mouseY <= sbY + sbSize
+  ) {
+    let s = map(mouseX, sbX, sbX + sbSize, 0, 100);
+    let b = map(mouseY, sbY, sbY + sbSize, 100, 0); // 上亮下暗
 
-    // 半径决定明度：中心最亮，边缘暗
-    let t = dist / colorWheelR;
-    let b = 100 - t * 70; // 100 -> ~30
-    let s = 100;
+    pickerSat = constrain(s, 0, 100);
+    pickerBri = constrain(b, 0, 100);
 
-    push();
-    colorMode(HSB, 360, 100, 100);
-    let c = color(deg, s, b);
-    pop();
-
-    currentColor = c;
-    addRecentColor(c);
-    return;
+    currentColor = hsbToColor(pickerHue, pickerSat, pickerBri);
+    addRecentColor(currentColor);
+    return true;
   }
 
-  // 点击 5 个记忆颜色
+  // 点击 Hue 色条
+  if (
+    mouseX >= hueX && mouseX <= hueX + hueW &&
+    mouseY >= hueY && mouseY <= hueY + hueH
+  ) {
+    let h = map(mouseY, hueY, hueY + hueH, 0, 360);
+    pickerHue = constrain(h, 0, 360);
+
+    sbDirty = true;
+    currentColor = hsbToColor(pickerHue, pickerSat, pickerBri);
+    addRecentColor(currentColor);
+    return true;
+  }
+
+  // 点击记忆颜色
   let sw = 30, sh = 30;
   let gap = 8;
   let n = recentColors.length;
   let totalW = n * sw + (n - 1) * gap;
-  let startX = colorWheelCX - totalW / 2;
-  let y = colorWheelCY + colorWheelR + 18;
+  let startX = cw / 2 - totalW / 2;
+  let y = sbY + sbSize + 16;
 
   for (let i = 0; i < n; i++) {
     let px = startX + i * (sw + gap);
-    if (mouseX >= px && mouseX <= px + sw && mouseY >= y && mouseY <= y + sh) {
+    if (
+      mouseX >= px && mouseX <= px + sw &&
+      mouseY >= y && mouseY <= y + sh
+    ) {
       currentColor = color(recentColors[i]);
-      addRecentColor(currentColor); // 选中后挪到最前
-      break;
+      addRecentColor(currentColor);
+      return true;
     }
   }
+  return false;
 }
 
-// 把一个颜色加入最近使用列表
 function addRecentColor(c) {
   let nc = color(c);
-  // 去掉相同的
   recentColors = recentColors.filter(rc => !colorsEqual(rc, nc));
-  // 插到最前面
   recentColors.unshift(nc);
-  // 限制最多 5 个
-  if (recentColors.length > 5) {
-    recentColors.length = 5;
-  }
+  if (recentColors.length > 5) recentColors.length = 5;
 }
 
-// 比较两个 p5 颜色是否一样
 function colorsEqual(c1, c2) {
   return (
     red(c1) === red(c2) &&
@@ -367,7 +428,7 @@ function colorsEqual(c1, c2) {
   );
 }
 
-// ----- 更新画布 -----
+// ===== 更新画布 =====
 function updateCanvas() {
   canvasG.push();
   canvasG.background(240);
@@ -377,9 +438,7 @@ function updateCanvas() {
   canvasG.pop();
 }
 
-// ----- 添加图形 -----
-// dragStart / dragEnd 都是“网格坐标”
-// 第一个点 = 左上角锚点，不会被 min() 改变
+// ===== 添加图形（左上角锚点固定在网格点） =====
 function addNewShape() {
   let x = dragStart.x;
   let y = dragStart.y;
@@ -390,8 +449,7 @@ function addNewShape() {
   undoStack = [];
 }
 
-// ----- 预览 -----
-// 用 dragStart 作为左上角，只往右 / 下生长
+// 预览
 function drawPreview() {
   let gx0 = dragStart.x;
   let gy0 = dragStart.y;
@@ -426,11 +484,10 @@ function drawPreview() {
       drawSvgPreview(currentShape, x, y, w, h);
       break;
   }
-
   pop();
 }
 
-// ----- SVG 预览：裁掉透明边 + 轻微外扩 -----
+// SVG 预览
 function drawSvgPreview(type, x, y, w, h) {
   let idx = type - 4;
   const img = svgs[idx];
@@ -454,43 +511,44 @@ function drawSvgPreview(type, x, y, w, h) {
   image(img, x, y, w, h, sx, sy, sw, sh);
 }
 
-// ----- 鼠标交互 -----
+// ===== 鼠标交互 =====
 function mousePressed() {
+  // 画布区域：开始画图
   if (mouseX > cw && mouseY > ch) {
-    // 在画布区域：开始拖拽绘制
     isDragging = true;
     let gx = round((mouseX - cw) / cellSize);
     let gy = round((mouseY - ch) / cellSize);
     dragStart = createVector(gx, gy);
     dragEnd = dragStart.copy();
-  } else {
-    // 在左侧工具栏：按钮 / 颜色
-    // 优先判断功能按钮，避免同时触发颜色面板
-    if (undoButton.hover()) {
-      undo();
-      return;
-    }
-    if (clearButton.hover()) {
-      clearShapes();
-      return;
-    }
-    if (gridButton.hover()) {
-      showGrid = !showGrid;
-      return;
-    }
-    if (saveButton.hover()) {
-      // 直接保存整个画布（包含网格和图形）
-      saveCanvas("paper-grid-drawing", "png");
-      return;
-    }
+    return;
+  }
 
-    // 图形按钮
-    for (let i = 0; i < buttons.length; i++) {
-      buttons[i].click();
-    }
+  // 左侧栏区域：优先功能按钮
+  if (undoButton.hover()) {
+    undo();
+    return;
+  }
+  if (clearButton.hover()) {
+    clearShapes();
+    return;
+  }
+  if (gridButton.hover()) {
+    showGrid = !showGrid;
+    return;
+  }
+  if (saveButton.hover()) {
+    saveCanvas("paper-grid-drawing", "png");
+    return;
+  }
 
-    // 颜色面板
-    handleColorPanelClick();
+  // 颜色面板
+  if (handleColorPanelMouse()) {
+    return;
+  }
+
+  // 图形按钮
+  for (let i = 0; i < buttons.length; i++) {
+    if (buttons[i]) buttons[i].click();
   }
 }
 
@@ -498,10 +556,14 @@ function mouseDragged() {
   if (isDragging) {
     let gx = round((mouseX - cw) / cellSize);
     let gy = round((mouseY - ch) / cellSize);
-    // 锚点不动，只能往右 / 下拉
     gx = max(gx, dragStart.x);
     gy = max(gy, dragStart.y);
     dragEnd = createVector(gx, gy);
+  } else {
+    // 在颜色面板上拖动时，也让它响应
+    if (mouseX < cw) {
+      handleColorPanelMouse();
+    }
   }
 }
 
@@ -513,7 +575,7 @@ function mouseReleased() {
   }
 }
 
-// ----- 撤销 / 重做 / 清空 -----
+// ===== 撤销 / 重做 / 清空 =====
 function undo() {
   if (shapes.length > 0) {
     undoStack.push(shapes.pop());
@@ -534,7 +596,7 @@ function clearShapes() {
   updateCanvas();
 }
 
-// ----- 键盘快捷键 -----
+// ===== 键盘快捷键 =====
 function keyPressed() {
   if (key === "z" || key === "Z") {
     undo();
@@ -543,7 +605,7 @@ function keyPressed() {
   }
 }
 
-// ----- Shape 类（用网格坐标存储） -----
+// ===== 图形类 =====
 class Shape {
   constructor(x, y, w, h, type, c) {
     this.x = x;
@@ -586,7 +648,7 @@ class Shape {
   }
 }
 
-// ----- 平行四边形 -----
+// 平行四边形
 function drawParallelogramPreview(x, y, w, h) {
   beginShape();
   vertex(x + w / 4, y);
@@ -605,7 +667,7 @@ function drawParallelogramPG(pg, x, y, w, h) {
   pg.endShape(CLOSE);
 }
 
-// ----- SVG 真正绘制到画布：同样裁掉透明边 -----
+// SVG 真正绘制到画布
 function pgDrawSvg(pg, type, x, y, w, h) {
   let idx = type - 4;
   const img = svgs[idx];
@@ -628,7 +690,7 @@ function pgDrawSvg(pg, type, x, y, w, h) {
   pg.image(img, x, y, w, h, sx, sy, sw, sh);
 }
 
-// ----- 左侧图标按钮 -----
+// 图形按钮：深灰底、白色图标
 class IconButton {
   constructor(x, y, s, index) {
     this.x = x;
@@ -645,17 +707,15 @@ class IconButton {
     imageMode(CENTER);
     noStroke();
 
-    // 图标底色：#2A292C，hover 时稍微亮一点
     if (this.hover() || this.state) {
       fill(70, 69, 72);
     } else {
-      fill(0x2A, 0x29, 0x2C);
+      fill(0x2A, 0x29, 0x2C); // #2A292C
     }
     translate(this.x, this.y);
     rect(0, 0, this.s, this.s, this.s * 0.35);
 
     if (this.img) {
-      // 图标颜色用白色
       tint(255);
       let factor = this.index < 4 ? 0.75 : 0.9;
       image(this.img, 0, 0, this.s * factor, this.s * factor);
@@ -668,7 +728,7 @@ class IconButton {
   click() {
     if (this.hover()) {
       for (let b of buttons) {
-        b.state = false;
+        if (b) b.state = false;
       }
       this.state = true;
       currentShape = this.index;
@@ -683,7 +743,7 @@ class IconButton {
   }
 }
 
-// ----- CapButton（功能按钮：Undo / Clear / Grid / Save）-----
+// 功能按钮：#969696 底，白字
 class CapButton {
   constructor(x, y, w, h, str) {
     this.x = x;
@@ -691,24 +751,20 @@ class CapButton {
     this.w = w;
     this.h = h;
     this.str = str;
-    this.state = false;
   }
 
   display() {
     push();
     rectMode(CENTER);
 
-    // 按钮底色：#969696，hover 时更亮一点
-    if (this.hover() || this.state) {
+    if (this.hover()) {
       fill(180);
     } else {
       fill(0x96, 0x96, 0x96);
     }
-
     translate(this.x, this.y);
     rect(0, 0, this.w, this.h, 40);
 
-    // 文字白色
     fill(255);
     textAlign(CENTER, CENTER);
     textSize(this.h * 0.5);
