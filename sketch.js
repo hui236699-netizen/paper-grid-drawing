@@ -14,15 +14,18 @@ let webWidth = 1600;
 let webHeight = 1080;
 let ch = 0;
 
-// 左侧操作栏宽度：从 200 改为 260
+// 左侧操作栏宽度：260 像素
 let cw = 260;
 
 let icons = new Array(12);
 let buttons = new Array(12);
 let svgs = new Array(8);
 
-let gridSizeSlider;
-let undoButton, clearButton;
+// 4 个功能按钮：Undo / Clear / Grid / Save
+let undoButton, clearButton, gridButton, saveButton;
+
+// 网格是否显示
+let showGrid = true;
 
 // 颜色相关：默认的 5 个记忆颜色
 const defaultRecentHex = [
@@ -145,9 +148,17 @@ function setup() {
     }
   }
 
-  gridSizeSlider = new Slider(cw / 2, 260, 140, 40, "GridSize");
-  undoButton = new CapButton(cw / 2 - 55, 340, 85, 32, "Undo");
-  clearButton = new CapButton(cw / 2 + 55, 340, 85, 32, "Clear");
+  // 四个功能按钮：两行
+  let row1Y = 340;
+  let row2Y = 380;
+  let bw = 80;
+  let bh = 32;
+  let offset = 60;
+
+  undoButton  = new CapButton(cw / 2 - offset, row1Y, bw, bh, "Undo");
+  clearButton = new CapButton(cw / 2 + offset, row1Y, bw, bh, "Clear");
+  gridButton  = new CapButton(cw / 2 - offset, row2Y, bw, bh, "Grid");
+  saveButton  = new CapButton(cw / 2 + offset, row2Y, bw, bh, "Save");
 
   // 为每个 SVG 计算一次“有颜色区域”边界
   for (let j = 0; j < svgs.length; j++) {
@@ -165,7 +176,9 @@ function draw() {
     drawPreview();
   }
 
-  drawGrid();
+  if (showGrid) {
+    drawGrid();
+  }
   drawUIBackground();
   drawColorPanel(); // 新颜色选择 UI
 
@@ -173,12 +186,11 @@ function draw() {
     buttons[i].display();
   }
 
-  updateGridSize(int(map(gridSizeSlider.val, 0, 1, minSize, maxSize)));
-
+  // 显示 4 个功能按钮
   undoButton.display();
   clearButton.display();
-
-  gridSizeSlider.run();
+  gridButton.display();
+  saveButton.display();
 }
 
 // ----- UI 背景（左侧栏是浅灰）-----
@@ -415,13 +427,32 @@ function mousePressed() {
     dragStart = createVector(gx, gy);
     dragEnd = dragStart.copy();
   } else {
-    // 在左侧工具栏：按钮 / 颜色 / 滑块
+    // 在左侧工具栏：按钮 / 颜色
+    // 优先判断功能按钮，避免同时触发颜色面板
+    if (undoButton.hover()) {
+      undo();
+      return;
+    }
+    if (clearButton.hover()) {
+      clearShapes();
+      return;
+    }
+    if (gridButton.hover()) {
+      showGrid = !showGrid;
+      return;
+    }
+    if (saveButton.hover()) {
+      // 保存右侧画布为 PNG 图片
+      saveCanvas(canvasG, "paper-grid-drawing", "png");
+      return;
+    }
+
+    // 图形按钮
     for (let i = 0; i < buttons.length; i++) {
       buttons[i].click();
     }
-    gridSizeSlider.click();
-    if (undoButton.hover()) undo();
-    if (clearButton.hover()) clearShapes();
+
+    // 颜色面板
     handleColorPanelClick();
   }
 }
@@ -443,7 +474,6 @@ function mouseReleased() {
     addNewShape();
     updateCanvas();
   }
-  gridSizeSlider.state = false;
 }
 
 // ----- 撤销 / 重做 / 清空 -----
@@ -474,16 +504,6 @@ function keyPressed() {
   } else if (key === "y" || key === "Y") {
     redo();
   }
-}
-
-// ----- 网格对齐辅助（备用） -----
-function snapToGrid(x, y) {
-  return createVector(round(x / cellSize), round(y / cellSize));
-}
-
-function updateGridSize(newSize) {
-  cellSize = newSize;
-  updateCanvas();
 }
 
 // ----- Shape 类（用网格坐标存储） -----
@@ -667,66 +687,6 @@ class CapButton {
     text(this.str, 0, 0);
 
     pop();
-  }
-
-  hover() {
-    return (
-      abs(mouseX - this.x) < this.w / 2 &&
-      abs(mouseY - this.y) < this.h / 2
-    );
-  }
-}
-
-// ----- Slider -----
-class Slider {
-  constructor(x, y, w, h, str) {
-    this.x = x;
-    this.y = y;
-    this.w = w;
-    this.h = h;
-    this.str = str;
-    this.val = 0.5;
-    this.state = false;
-  }
-
-  run() {
-    this.drag();
-    this.display();
-  }
-
-  display() {
-    push();
-    translate(this.x, this.y);
-    rectMode(CENTER);
-
-    fill(200);
-    rect(0, 0, this.w, this.h, this.h);
-
-    let vw = map(this.val, 0, 1, 0, this.w);
-    fill(120);
-    rect(-this.w / 2, -this.h / 2, vw, this.h, this.h);
-
-    fill(0);
-    textAlign(CENTER, CENTER);
-    textSize(this.h * 0.4);
-    text(this.str, 0, 0);
-
-    pop();
-  }
-
-  click() {
-    if (this.hover()) {
-      this.state = true;
-    } else {
-      this.state = false;
-    }
-  }
-
-  drag() {
-    if (this.state) {
-      let v = map(mouseX, this.x - this.w / 2, this.x + this.w / 2, 0, 1);
-      this.val = constrain(v, 0, 1);
-    }
   }
 
   hover() {
