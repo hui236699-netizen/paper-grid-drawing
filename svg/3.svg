@@ -1,17 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg id="_图层_1" data-name="图层 1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 595.28 841.89">
+<svg id="_图层_1" data-name="图层 1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000">
   <defs>
     <style>
       .cls-1 {
         fill: #fff;
-        stroke-width: 0px;
       }
     </style>
   </defs>
-  <path class="cls-1" d="m297.64,393.78s-93.46,154.75,0,154.75"/>
-  <path class="cls-1" d="m297.64,393.78s93.46,154.75,0,154.75"/>
-  <path class="cls-1" d="m297.64,393.78s180.74,3.56,134.02-77.37"/>
-  <path class="cls-1" d="m297.64,393.78s87.29-158.31,134.02-77.37"/>
-  <path class="cls-1" d="m297.64,393.78s-87.29-158.31-134.02-77.37"/>
-  <path class="cls-1" d="m297.64,393.78s-180.74,3.56-134.02-77.37"/>
+  <path class="cls-1" d="M1000,497.47C1000,1035.19,0,999.51,0,999.51V3.14s1000-43.38,1000,494.33Z"/>
 </svg>
