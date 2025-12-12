@@ -1,23 +1,384 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <title>Grid Shape Drawer</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Font Playground</title>
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background: #eeeeee;
+    :root{
+      --bg:#0b0c10;
+      --panel:#111218;
+      --card:#12131a;
+      --stroke:rgba(255,255,255,.10);
+      --text:rgba(255,255,255,.92);
+      --muted:rgba(255,255,255,.64);
+      --accent:#7c5cff;
+      --shadow: 0 20px 60px rgba(0,0,0,.45);
+      --radius:28px;
+    }
+    *{ box-sizing:border-box; }
+    html,body{ height:100%; }
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+      color:var(--text);
+      background: radial-gradient(1200px 800px at 20% 10%, rgba(124,92,255,.25), transparent 60%),
+                  radial-gradient(900px 600px at 80% 20%, rgba(0,255,200,.12), transparent 60%),
+                  linear-gradient(180deg, #07080b, #0b0c10);
+      overflow-x:hidden;
+    }
+    a{ color:inherit; text-decoration:none; }
+    .wrap{ width:min(1200px, calc(100% - 48px)); margin:0 auto; }
+
+    header{
+      position:fixed; top:0; left:0; right:0; z-index:50;
+      backdrop-filter: blur(14px);
+      background: rgba(10,11,16,.55);
+      border-bottom: 1px solid rgba(255,255,255,.06);
+    }
+    .nav{
+      height:64px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:16px;
+    }
+    .brand{ display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:.2px; }
+    .dot{
+      width:10px;height:10px;border-radius:999px;
+      background: var(--accent);
+      box-shadow: 0 0 0 6px rgba(124,92,255,.15);
+    }
+    .nav-actions{ display:flex; gap:10px; align-items:center; }
+    .btn{
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.06);
+      color:var(--text);
+      padding:10px 14px;
+      border-radius:999px;
+      font-weight:600;
+      cursor:pointer;
+      transition:.2s ease;
+      display:inline-flex;
+      align-items:center;
+      gap:10px;
+      user-select:none;
+    }
+    .btn:hover{ transform: translateY(-1px); background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.22); }
+    .btn.primary{ background: rgba(124,92,255,.22); border-color: rgba(124,92,255,.45); }
+
+    main{ padding-top:64px; }
+    section{ scroll-margin-top: 86px; }
+
+    .hero{
+      min-height: calc(100vh - 64px);
+      display:grid;
+      align-items:center;
+      padding: 56px 0 44px;
+    }
+    .hero-grid{
+      display:grid;
+      grid-template-columns: 1.15fr .85fr;
+      gap:28px;
+      align-items:center;
+    }
+    @media (max-width: 980px){ .hero-grid{ grid-template-columns: 1fr; } }
+
+    .kicker{
+      color: var(--muted);
+      font-weight:600;
+      letter-spacing:.18em;
+      text-transform:uppercase;
+      font-size:12px;
+      margin-bottom:16px;
+    }
+    h1{ margin:0 0 14px; font-size: clamp(34px, 5vw, 60px); line-height:1.05; letter-spacing:-.02em; }
+    .sub{ margin:0 0 24px; color: var(--muted); font-size: 16px; line-height:1.7; max-width: 54ch; }
+    .hero-cta{ display:flex; gap:12px; flex-wrap:wrap; margin-top:6px; }
+
+    .preview{
+      border:1px solid rgba(255,255,255,.10);
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+      position:relative;
+      aspect-ratio: 16/12;
+      min-height: 320px;
+    }
+    .preview::before{
+      content:"";
+      position:absolute; inset:-2px;
+      background: radial-gradient(800px 500px at 30% 20%, rgba(124,92,255,.30), transparent 60%),
+                  radial-gradient(700px 450px at 70% 30%, rgba(0,255,200,.18), transparent 60%);
+      opacity:.55;
+      pointer-events:none;
+    }
+    .preview-inner{
+      position:absolute; inset:0;
+      padding:22px;
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+      z-index:1;
+    }
+    .preview-title{
+      display:flex; justify-content:space-between; align-items:center;
+      color: rgba(255,255,255,.88);
+      font-weight:700;
+    }
+    .preview-box{
+      flex:1;
+      border-radius: 22px;
+      border:1px solid rgba(255,255,255,.10);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.02)),
+        repeating-linear-gradient(90deg, rgba(255,255,255,.07) 0px, rgba(255,255,255,.07) 1px, transparent 1px, transparent 24px),
+        repeating-linear-gradient(0deg, rgba(255,255,255,.07) 0px, rgba(255,255,255,.07) 1px, transparent 1px, transparent 24px);
+      opacity:.95;
+    }
+
+    .scroll-indicator{
+      display:flex; justify-content:center;
+      margin-top: 26px;
+      color: rgba(255,255,255,.55);
+      font-weight:600; font-size:13px;
+      gap:10px; align-items:center;
+      user-select:none;
+    }
+    .chev{
+      width:28px;height:28px;border-radius:999px;
+      border:1px solid rgba(255,255,255,.14);
+      display:grid; place-items:center;
+      background: rgba(255,255,255,.05);
+      animation: bob 1.8s ease-in-out infinite;
+    }
+    @keyframes bob{ 0%,100%{ transform: translateY(0); } 50%{ transform: translateY(4px); } }
+
+    .choose{ padding: 46px 0 78px; }
+    .choose-head{ display:flex; justify-content:space-between; align-items:flex-end; gap:16px; margin-bottom:18px; }
+    .choose h2{ margin:0; font-size: 22px; letter-spacing:-.01em; }
+    .choose p{ margin:0; color: var(--muted); line-height:1.6; max-width: 60ch; font-size: 14px; }
+
+    .cards{
+      display:grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap:18px;
+      margin-top:18px;
+    }
+    @media (max-width: 980px){ .cards{ grid-template-columns: 1fr; } }
+
+    .card{
+      border-radius: 34px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.04);
+      overflow:hidden;
+      box-shadow: var(--shadow);
+      transition: .22s ease;
+      display:flex;
+      flex-direction:column;
+      min-height: 520px;
+    }
+    .card:hover{
+      transform: translateY(-4px);
+      border-color: rgba(255,255,255,.18);
+      background: rgba(255,255,255,.055);
+    }
+
+    .card-top{
+      padding: 26px 26px 14px;
+      display:flex; justify-content:space-between; align-items:flex-start; gap:10px;
+    }
+    .card h3{ margin:0; font-size: 18px; letter-spacing:-.01em; }
+    .badge{
+      font-size: 12px;
+      color: rgba(255,255,255,.72);
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.06);
+      white-space:nowrap;
+    }
+
+    .thumb{
+      margin: 0 18px;
+      border-radius: 26px;
+      border:1px solid rgba(255,255,255,.10);
+      background: linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.02));
+      overflow:hidden;
+      flex: 1;
+      position:relative;
+    }
+    .thumb.pattern-1{
+      background:
+        radial-gradient(500px 320px at 70% 25%, rgba(124,92,255,.35), transparent 60%),
+        linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02)),
+        repeating-linear-gradient(90deg, rgba(255,255,255,.08) 0 1px, transparent 1px 22px),
+        repeating-linear-gradient(0deg, rgba(255,255,255,.08) 0 1px, transparent 1px 22px);
+    }
+    .thumb.pattern-2{
+      background:
+        radial-gradient(520px 340px at 40% 20%, rgba(0,255,200,.18), transparent 60%),
+        linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02)),
+        repeating-linear-gradient(30deg, rgba(255,255,255,.10) 0 2px, transparent 2px 24px);
+    }
+    .thumb.pattern-3{
+      background:
+        radial-gradient(520px 340px at 60% 30%, rgba(255,100,200,.16), transparent 60%),
+        linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02));
+    }
+    .ring{
+      position:absolute;
+      width:min(78%, 360px);
+      aspect-ratio:1;
+      border-radius:999px;
+      border: 10px solid rgba(255,255,255,.75);
+      top: 16%;
+      left: 50%;
+      transform: translateX(-50%);
+      opacity: .9;
+      mix-blend-mode: screen;
+    }
+    .ring::after{
+      content:"";
+      position:absolute;
+      inset:-18px;
+      border-radius:999px;
+      border: 2px solid rgba(255,255,255,.55);
+      opacity:.9;
+    }
+
+    .card-bottom{
+      padding: 16px 26px 22px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height:1.55;
+      border-top: 1px solid rgba(255,255,255,.06);
+    }
+
+    footer{
+      padding: 26px 0 34px;
+      color: rgba(255,255,255,.45);
+      font-size: 12px;
+      border-top: 1px solid rgba(255,255,255,.06);
+      background: rgba(0,0,0,.12);
     }
   </style>
-  <!-- p5.js CDN，一定要在 sketch.js 前面 -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
 </head>
+
 <body>
-  <main></main>
-  <!-- 你的绘图逻辑 -->
-  <script src="sketch.js"></script>
+<header>
+  <div class="wrap nav">
+    <div class="brand">
+      <span class="dot"></span>
+      <span>Font Playground</span>
+    </div>
+    <div class="nav-actions">
+      <a class="btn" href="#choose">Explore</a>
+      <a class="btn primary" href="draw.html">Open Builder</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <div class="kicker">Experimental typography toolkit</div>
+        <h1>Build modular glyphs<br/>with grid-based drawing</h1>
+        <p class="sub">
+          下滑选择一种方法开始创作。左侧入口已经可用（Grid Builder）。
+          另外两个入口先做成占位页，后面我们再逐步实现内容。
+        </p>
+        <div class="hero-cta">
+          <a class="btn primary" href="#choose">Choose a Method</a>
+          <a class="btn" href="draw.html">Go to Grid Builder</a>
+        </div>
+
+        <div class="scroll-indicator">
+          <span class="chev">⌄</span>
+          <span>Scroll down</span>
+        </div>
+      </div>
+
+      <div class="preview" aria-hidden="true">
+        <div class="preview-inner">
+          <div class="preview-title">
+            <span>Preview</span>
+            <span style="color:rgba(255,255,255,.55);font-weight:600;font-size:12px;">Grid-based tools</span>
+          </div>
+          <div class="preview-box"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="choose" class="choose">
+    <div class="wrap">
+      <div class="choose-head">
+        <div>
+          <h2>Choose a Method</h2>
+          <p>点任意卡片进入对应页面：左边是你已经完成的绘图页。</p>
+        </div>
+      </div>
+
+      <div class="cards">
+        <a class="card" href="draw.html">
+          <div class="card-top">
+            <h3>Font building blocks</h3>
+            <span class="badge">Available</span>
+          </div>
+          <div class="thumb pattern-1"></div>
+          <div class="card-bottom">
+            基于网格的模块绘制与组合（已完成）。支持四向绘制、Shift 锁比例、Alt 中心扩张、网格强吸附、选中移动与删除。
+          </div>
+        </a>
+
+        <a class="card" href="path.html">
+          <div class="card-top">
+            <h3>Font Path Method</h3>
+            <span class="badge">Coming soon</span>
+          </div>
+          <div class="thumb pattern-2"></div>
+          <div class="card-bottom">
+            先进入占位页。后续我们会把它做成“路径构建字形”的编辑器：钢笔、节点、曲线等。
+          </div>
+        </a>
+
+        <a class="card" href="texture.html">
+          <div class="card-top">
+            <h3>Font Texture Method</h3>
+            <span class="badge">Coming soon</span>
+          </div>
+          <div class="thumb pattern-3">
+            <div class="ring"></div>
+          </div>
+          <div class="card-bottom">
+            先进入占位页。后续我们会实现纹理/图案生成方法：噪声、笔刷、图层叠加等。
+          </div>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      © <span id="y"></span> Font Playground
+    </div>
+  </footer>
+</main>
+
+<script>
+  document.getElementById("y").textContent = new Date().getFullYear();
+  document.querySelectorAll('a[href^="#"]').forEach(a=>{
+    a.addEventListener("click", (e)=>{
+      const id = a.getAttribute("href");
+      const el = document.querySelector(id);
+      if(!el) return;
+      e.preventDefault();
+      el.scrollIntoView({behavior:"smooth", block:"start"});
+    });
+  });
+</script>
 </body>
 </html>
