@@ -1,13 +1,9 @@
 // =================== 全局设置 ===================
 
-// 固定画布大小
-const CANVAS_W = 1440;
-const CANVAS_H = 900;
-
-// 左侧操作栏宽度
+// 左侧栏宽度（将动态计算）
 let cw = 240;
 
-// 网格：稍微大一点
+// 网格尺寸（将动态计算）
 let cellSize = 36;
 
 let dragStart, dragEnd;
@@ -29,37 +25,14 @@ let hue = 220;
 let sat = 100;
 let bri = 80;
 
-// ========== 左侧布局（统一按像素） ==========
-
-// 顶部调色区域整体高度（重写）
-const COLOR_PANEL_H = 190;
-
-// 左边：颜色方块区域（S / B）
-const COLOR_MAIN = {
-  x: 0,
-  y: 0,
-  w: cw - 30,    // 210
-  h: COLOR_PANEL_H
-};
-
-// 右边：色相条（H）
-const COLOR_HUE = {
-  x: cw - 30,    // 210
-  y: 0,
-  w: 30,
-  h: COLOR_PANEL_H
-};
+// 这些布局对象将动态生成
+let COLOR_PANEL_H = 190;
+let COLOR_MAIN, COLOR_HUE;
+let RECENT_RECTS = [];
+let FUNC_RECTS = {};
+let SHAPE_RECTS = [];
 
 let sbGraphic, hueGraphic;
-
-// 最近颜色 5 个小格（整体上移 5px：原来 220 -> 215）
-const RECENT_RECTS = [
-  { x: 16,  y: COLOR_PANEL_H + 25, w: 28, h: 28 }, // 215
-  { x: 62,  y: COLOR_PANEL_H + 25, w: 28, h: 28 },
-  { x: 108, y: COLOR_PANEL_H + 25, w: 28, h: 28 },
-  { x: 154, y: COLOR_PANEL_H + 25, w: 28, h: 28 },
-  { x: 200, y: COLOR_PANEL_H + 25, w: 28, h: 28 }
-];
 
 const defaultRecentHex = [
   "#482BCC",
@@ -70,40 +43,99 @@ const defaultRecentHex = [
 ];
 let recentColors = [];
 
-// 四个功能按钮（只上移约 5px：在上一版基础上再往下移 5）
-const FUNC_RECTS = {
-  undo:  { x: 20,  y: COLOR_PANEL_H + 68,  w: 90, h: 32 }, // 原 258 → 263 左右
-  clear: { x: 130, y: COLOR_PANEL_H + 68,  w: 90, h: 32 },
-  grid:  { x: 20,  y: COLOR_PANEL_H + 112, w: 90, h: 32 },
-  save:  { x: 130, y: COLOR_PANEL_H + 112, w: 90, h: 32 }
-};
-
 let undoButton, clearButton, gridButton, saveButton;
 
-// 10 个图形按钮（整体只上移 5px：startY 380 → 375）
-const SHAPE_RECTS = [];
-(function buildShapeRects() {
-  const size = 76;
-  const col1x = 36;
-  const col2x = 128;
-  let startY = 375; // 比最原始只上移约 5px
-  const gap = 86;   // 行间距
+// =================== 工具函数 ===================
+function clamp(v, lo, hi) {
+  return max(lo, min(hi, v));
+}
 
-  for (let row = 0; row < 5; row++) {
-    let y = startY + row * gap;
+// 根据当前窗口尺寸，重算所有布局
+function computeLayout() {
+  // 1) 左侧栏宽度：跟随窗口宽度变化
+  cw = clamp(width * 0.18, 200, 320);
+
+  // 2) 颜色面板高度：跟随窗口高度变化
+  COLOR_PANEL_H = clamp(height * 0.22, 160, 230);
+
+  // 3) 网格 cellSize：根据右侧空间 & 高度综合决定（防止太密/太稀）
+  const rightW = max(1, width - cw);
+  const targetCols = 26; // 你希望右侧大概显示多少列网格（可调）
+  const byWidth = rightW / targetCols;
+  const byHeight = height / 22;
+  cellSize = clamp(min(byWidth, byHeight), 24, 52);
+
+  // 4) 颜色区布局（依赖 cw）
+  COLOR_MAIN = {
+    x: 0,
+    y: 0,
+    w: cw - 30,
+    h: COLOR_PANEL_H
+  };
+  COLOR_HUE = {
+    x: cw - 30,
+    y: 0,
+    w: 30,
+    h: COLOR_PANEL_H
+  };
+
+  // 5) 最近颜色 5 个：横向自动均分在 cw 内
+  RECENT_RECTS = [];
+  const recentCount = 5;
+  const padX = 16;
+  const gap = 10;
+  const rW = clamp((cw - padX * 2 - gap * (recentCount - 1)) / recentCount, 22, 34);
+  const rH = rW;
+  const recentY = COLOR_PANEL_H + clamp(height * 0.03, 18, 30);
+  for (let i = 0; i < recentCount; i++) {
+    const x = padX + i * (rW + gap);
+    RECENT_RECTS.push({ x, y: recentY, w: rW, h: rH });
+  }
+
+  // 6) 功能按钮：两列布局，宽度跟随 cw
+  const btnGapX = 12;
+  const btnW = (cw - padX * 2 - btnGapX) / 2;
+  const btnH = clamp(height * 0.035, 30, 38);
+  const funcY1 = recentY + rH + clamp(height * 0.02, 16, 26);
+  const funcY2 = funcY1 + btnH + clamp(height * 0.012, 10, 16);
+
+  FUNC_RECTS = {
+    undo:  { x: padX,              y: funcY1, w: btnW, h: btnH },
+    clear: { x: padX + btnW + btnGapX, y: funcY1, w: btnW, h: btnH },
+    grid:  { x: padX,              y: funcY2, w: btnW, h: btnH },
+    save:  { x: padX + btnW + btnGapX, y: funcY2, w: btnW, h: btnH }
+  };
+
+  // 7) 形状按钮：2列 * 5行，尽量填满剩余空间（自适应）
+  SHAPE_RECTS = [];
+  const topY = funcY2 + btnH + clamp(height * 0.02, 14, 24);
+  const bottomPad = clamp(height * 0.02, 14, 26);
+  const availableH = max(1, height - topY - bottomPad);
+
+  const cols = 2;
+  const rows = 5;
+  const gridGapX = clamp(cw * 0.08, 10, 16);
+  const gridGapY = clamp(height * 0.015, 10, 18);
+
+  const cellW = (cw - padX * 2 - gridGapX) / cols;
+  const cellH = (availableH - gridGapY * (rows - 1)) / rows;
+  const size = clamp(min(cellW, cellH), 56, 86);
+
+  const col1x = padX + (cellW - size) / 2;
+  const col2x = padX + cellW + gridGapX + (cellW - size) / 2;
+
+  for (let row = 0; row < rows; row++) {
+    const y = topY + row * (size + gridGapY);
     SHAPE_RECTS.push({ x: col1x, y, w: size, h: size });
     SHAPE_RECTS.push({ x: col2x, y, w: size, h: size });
   }
-})();
+}
 
 // =================== 预加载资源 ===================
 function preload() {
-  // 左侧按钮图标：assets/0.png ~ assets/9.png
   for (let i = 0; i < icons.length; i++) {
     icons[i] = loadImage("assets/" + i + ".png");
   }
-
-  // SVG 图形：svg/1.svg ~ svg/8.svg
   for (let i = 0; i < svgs.length; i++) {
     svgs[i] = loadImage("svg/" + (i + 1) + ".svg?v=10");
   }
@@ -164,8 +196,51 @@ function computeSvgBounds(index) {
   pg.remove();
 }
 
-// =================== 布局 ===================
+// =================== 颜色面板构建 ===================
+function buildHueGraphic() {
+  hueGraphic = createGraphics(COLOR_HUE.w, COLOR_HUE.h);
+  hueGraphic.colorMode(HSB, 360, 100, 100);
+  hueGraphic.noStroke();
+  hueGraphic.loadPixels();
+  for (let y = 0; y < COLOR_HUE.h; y++) {
+    let h = map(y, 0, COLOR_HUE.h - 1, 0, 360);
+    let c = hueGraphic.color(h, 100, 100);
+    for (let x = 0; x < COLOR_HUE.w; x++) {
+      let idx = (y * COLOR_HUE.w + x) * 4;
+      hueGraphic.pixels[idx]     = red(c);
+      hueGraphic.pixels[idx + 1] = green(c);
+      hueGraphic.pixels[idx + 2] = blue(c);
+      hueGraphic.pixels[idx + 3] = 255;
+    }
+  }
+  hueGraphic.updatePixels();
+}
+
+function buildSBGraphic() {
+  sbGraphic = createGraphics(COLOR_MAIN.w, COLOR_MAIN.h);
+  sbGraphic.colorMode(HSB, 360, 100, 100);
+  sbGraphic.noStroke();
+  sbGraphic.loadPixels();
+  for (let y = 0; y < COLOR_MAIN.h; y++) {
+    for (let x = 0; x < COLOR_MAIN.w; x++) {
+      let sVal = map(x, 0, COLOR_MAIN.w - 1, 0, 100);
+      let bVal = map(y, 0, COLOR_MAIN.h - 1, 100, 0);
+      let c = sbGraphic.color(hue, sVal, bVal);
+      let idx = (y * COLOR_MAIN.w + x) * 4;
+      sbGraphic.pixels[idx]     = red(c);
+      sbGraphic.pixels[idx + 1] = green(c);
+      sbGraphic.pixels[idx + 2] = blue(c);
+      sbGraphic.pixels[idx + 3] = 255;
+    }
+  }
+  sbGraphic.updatePixels();
+}
+
+// =================== UI 组件布局 ===================
 function layoutUI() {
+  computeLayout();
+
+  // 重建色板图形（因为大小可能变了）
   buildHueGraphic();
   buildSBGraphic();
 
@@ -191,17 +266,19 @@ function rectToCapButton(rect, label) {
 
 // =================== setup ===================
 function setup() {
-  createCanvas(CANVAS_W, CANVAS_H);
+  createCanvas(windowWidth, windowHeight);
   currentColor = color("#482BCC");
   recentColors = defaultRecentHex.map(h => color(h));
+
   layoutUI();
 
   for (let i = 0; i < svgs.length; i++) computeSvgBounds(i);
 }
 
-// 不做自适应，画布固定
+// 真·响应式：窗口变化就重算布局
 function windowResized() {
-  // 故意留空
+  resizeCanvas(windowWidth, windowHeight);
+  layoutUI();
 }
 
 // =================== draw ===================
@@ -216,22 +293,19 @@ function draw() {
   if (isDragging) drawPreview();
   pop();
 
-  // 左侧背景 #1F1E24
+  // 左侧背景
   noStroke();
   fill("#1F1E24");
   rect(0, 0, cw, height);
 
-  // 颜色面板 & 最近颜色
   drawColorPanel();
   drawRecentColors();
 
-  // 四个功能按钮
   undoButton.display();
   clearButton.display();
   gridButton.display();
   saveButton.display();
 
-  // 10 个图形按钮
   for (let b of buttons) b.display();
 }
 
@@ -240,12 +314,10 @@ function drawGrid() {
   const w = width - cw;
   const h = height;
 
-  // 先铺一块统一的网格背景，保证右侧区域完全填满
   noStroke();
-  fill(245);          // 比整体背景稍微亮一点点
+  fill(245);
   rect(0, 0, w, h);
 
-  // 再画网格线
   stroke(220);
   strokeWeight(1);
   for (let x = 0; x <= w; x += cellSize) {
@@ -293,56 +365,12 @@ function addNewShape() {
   undoStack = [];
 }
 
-// =================== 颜色面板（重写部分） ===================
-
-// 构建色相条
-function buildHueGraphic() {
-  hueGraphic = createGraphics(COLOR_HUE.w, COLOR_HUE.h);
-  hueGraphic.colorMode(HSB, 360, 100, 100);
-  hueGraphic.noStroke();
-  hueGraphic.loadPixels();
-  for (let y = 0; y < COLOR_HUE.h; y++) {
-    let h = map(y, 0, COLOR_HUE.h - 1, 0, 360);
-    let c = hueGraphic.color(h, 100, 100);
-    for (let x = 0; x < COLOR_HUE.w; x++) {
-      let idx = (y * COLOR_HUE.w + x) * 4;
-      hueGraphic.pixels[idx]     = red(c);
-      hueGraphic.pixels[idx + 1] = green(c);
-      hueGraphic.pixels[idx + 2] = blue(c);
-      hueGraphic.pixels[idx + 3] = 255;
-    }
-  }
-  hueGraphic.updatePixels();
-}
-
-// 构建 S/B 方块
-function buildSBGraphic() {
-  sbGraphic = createGraphics(COLOR_MAIN.w, COLOR_MAIN.h);
-  sbGraphic.colorMode(HSB, 360, 100, 100);
-  sbGraphic.noStroke();
-  sbGraphic.loadPixels();
-  for (let y = 0; y < COLOR_MAIN.h; y++) {
-    for (let x = 0; x < COLOR_MAIN.w; x++) {
-      let sVal = map(x, 0, COLOR_MAIN.w - 1, 0, 100);
-      let bVal = map(y, 0, COLOR_MAIN.h - 1, 100, 0);
-      let c = sbGraphic.color(hue, sVal, bVal);
-      let idx = (y * COLOR_MAIN.w + x) * 4;
-      sbGraphic.pixels[idx]     = red(c);
-      sbGraphic.pixels[idx + 1] = green(c);
-      sbGraphic.pixels[idx + 2] = blue(c);
-      sbGraphic.pixels[idx + 3] = 255;
-    }
-  }
-  sbGraphic.updatePixels();
-}
-
-// 绘制调色区域
+// =================== 颜色面板绘制 ===================
 function drawColorPanel() {
   imageMode(CORNER);
-  image(sbGraphic, COLOR_MAIN.x, COLOR_MAIN.y);   // 左边大色块
-  image(hueGraphic, COLOR_HUE.x, COLOR_HUE.y);    // 右边色条
+  image(sbGraphic, COLOR_MAIN.x, COLOR_MAIN.y);
+  image(hueGraphic, COLOR_HUE.x, COLOR_HUE.y);
 
-  // 在色相条上画当前 hue 的小标记
   let huePosY = map(hue, 0, 360, 0, COLOR_HUE.h);
   stroke(255);
   strokeWeight(2);
@@ -352,7 +380,6 @@ function drawColorPanel() {
   line(hx + COLOR_HUE.w, hy, hx + COLOR_HUE.w + 4, hy);
 }
 
-// 绘制 5 个最近颜色
 function drawRecentColors() {
   for (let i = 0; i < RECENT_RECTS.length; i++) {
     const r = RECENT_RECTS[i];
@@ -370,9 +397,8 @@ function drawRecentColors() {
   }
 }
 
-// 处理点击调色区域
+// =================== 颜色交互 ===================
 function handleColorClick() {
-  // 大色块：sat + bri（左边）
   if (mouseX >= COLOR_MAIN.x && mouseX <= COLOR_MAIN.x + COLOR_MAIN.w &&
       mouseY >= COLOR_MAIN.y && mouseY <= COLOR_MAIN.y + COLOR_MAIN.h) {
     let sx = constrain(mouseX, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w);
@@ -383,7 +409,6 @@ function handleColorClick() {
     return true;
   }
 
-  // 色相条：hue（右边）
   if (mouseX >= COLOR_HUE.x && mouseX <= COLOR_HUE.x + COLOR_HUE.w &&
       mouseY >= COLOR_HUE.y && mouseY <= COLOR_HUE.y + COLOR_HUE.h) {
     let hy = constrain(mouseY, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h);
@@ -393,7 +418,6 @@ function handleColorClick() {
     return true;
   }
 
-  // 最近颜色 5 个小块
   for (let i = 0; i < RECENT_RECTS.length; i++) {
     const r = RECENT_RECTS[i];
     if (mouseX >= r.x && mouseX <= r.x + r.w &&
@@ -408,7 +432,6 @@ function handleColorClick() {
   return false;
 }
 
-// 更新当前颜色
 function updateCurrentColor() {
   push();
   colorMode(HSB, 360, 100, 100);
@@ -442,16 +465,13 @@ function mousePressed() {
     return;
   }
 
-  // 左侧：功能按钮
   if (undoButton.hover()) { undo(); return; }
   if (clearButton.hover()) { clearShapes(); return; }
   if (gridButton.hover()) { showGrid = !showGrid; return; }
   if (saveButton.hover()) { saveCanvas("paper-grid-drawing", "png"); return; }
 
-  // 颜色面板
   if (handleColorClick()) return;
 
-  // 图形按钮
   for (let b of buttons) b.click();
 }
 
@@ -474,17 +494,11 @@ function mouseReleased() {
 
 // =================== 撤销 / 清空 ===================
 function undo() {
-  if (shapes.length > 0) {
-    undoStack.push(shapes.pop());
-  }
+  if (shapes.length > 0) undoStack.push(shapes.pop());
 }
-
 function redo() {
-  if (undoStack.length > 0) {
-    shapes.push(undoStack.pop());
-  }
+  if (undoStack.length > 0) shapes.push(undoStack.pop());
 }
-
 function clearShapes() {
   shapes = [];
   undoStack = [];
@@ -500,7 +514,6 @@ class Shape {
     this.type = type;
     this.c = color(c);
   }
-
   display() {
     push();
     fill(this.c);
@@ -512,23 +525,12 @@ class Shape {
     let ph = this.h * cellSize;
 
     switch (this.type) {
-      case 0:
-        rect(px, py, pw, ph);
-        break;
-      case 1:
-        ellipse(px + pw / 2, py + ph / 2, pw, ph);
-        break;
-      case 2:
-        triangle(px + pw / 2, py, px, py + ph, px + pw, py + ph);
-        break;
-      case 3:
-        drawParallelogram(px, py, pw, ph);
-        break;
-      default:
-        drawSvgShape(this.type, px, py, pw, ph, this.c);
-        break;
+      case 0: rect(px, py, pw, ph); break;
+      case 1: ellipse(px + pw/2, py + ph/2, pw, ph); break;
+      case 2: triangle(px + pw/2, py, px, py + ph, px + pw, py + ph); break;
+      case 3: drawParallelogram(px, py, pw, ph); break;
+      default: drawSvgShape(this.type, px, py, pw, ph, this.c); break;
     }
-
     pop();
   }
 }
@@ -542,7 +544,6 @@ function drawParallelogram(x, y, w, h) {
   vertex(x, y + h);
   endShape(CLOSE);
 }
-
 function drawParallelogramPreview(x, y, w, h) {
   beginShape();
   vertex(x + w / 4, y);
@@ -596,13 +597,12 @@ class IconButton {
     imageMode(CENTER);
     noStroke();
 
-    // 底色 #3A393D，悬停/选中稍亮
     if (this.hover() || this.state) fill(80, 79, 83);
     else fill("#3A393D");
     rect(0, 0, this.s, this.s, this.s * 0.35);
 
     if (this.img) {
-      tint(255); // 图标为白色
+      tint(255);
       let factor = this.index < 4 ? 0.75 : 0.9;
       image(this.img, 0, 0, this.s * factor, this.s * factor);
       noTint();
@@ -667,6 +667,6 @@ class CapButton {
 
 // =================== 键盘快捷键 ===================
 function keyPressed() {
-  if (key === 'z' || key === 'Z') undo();
-  if (key === 'y' || key === 'Y') redo();
+  if (key === "z" || key === "Z") undo();
+  if (key === "y" || key === "Y") redo();
 }
