@@ -7,8 +7,8 @@ const CANVAS_H = 900;
 // 左侧操作栏宽度
 let cw = 240;
 
-// 网格
-let cellSize = 30;
+// 网格（比原来的 30 稍微大一点）
+let cellSize = 36;
 
 let dragStart, dragEnd;
 let isDragging = false;
@@ -29,21 +29,21 @@ let hue = 220;
 let sat = 100;
 let bri = 80;
 
-// ===== 左侧布局（全部重新布局，按像素写死） =====
+// ===== 左侧布局（按像素写死） =====
 
-// 颜色区域（占据整个顶部，没有诡异留白）
-const COLOR_MAIN = { x: 0, y: 0, w: 210, h: 210 };   // 左边大色块
+// 颜色区域（占据整个顶部，没有留缝）
+const COLOR_MAIN = { x: 0,   y: 0, w: 210, h: 210 }; // 左边大色块
 const COLOR_HUE  = { x: 210, y: 0, w: 30,  h: 210 }; // 右边色条
 
 let sbGraphic, hueGraphic;
 
-// 最近颜色 5 个小格，紧贴在颜色区域下方
+// 最近颜色 5 个小格（整体上移 10px：y=220 -> 210）
 const RECENT_RECTS = [
-  { x: 16,  y: 220, w: 28, h: 28 },
-  { x: 62,  y: 220, w: 28, h: 28 },
-  { x: 108, y: 220, w: 28, h: 28 },
-  { x: 154, y: 220, w: 28, h: 28 },
-  { x: 200, y: 220, w: 28, h: 28 }
+  { x: 16,  y: 210, w: 28, h: 28 },
+  { x: 62,  y: 210, w: 28, h: 28 },
+  { x: 108, y: 210, w: 28, h: 28 },
+  { x: 154, y: 210, w: 28, h: 28 },
+  { x: 200, y: 210, w: 28, h: 28 }
 ];
 
 const defaultRecentHex = [
@@ -55,24 +55,23 @@ const defaultRecentHex = [
 ];
 let recentColors = [];
 
-// 四个功能按钮区域（两排）
+// 四个功能按钮（整体上移 10px）
 const FUNC_RECTS = {
-  undo:  { x: 20,  y: 268, w: 90, h: 32 },
-  clear: { x: 130, y: 268, w: 90, h: 32 },
-  grid:  { x: 20,  y: 312, w: 90, h: 32 },
-  save:  { x: 130, y: 312, w: 90, h: 32 }
+  undo:  { x: 20,  y: 258, w: 90, h: 32 },
+  clear: { x: 130, y: 258, w: 90, h: 32 },
+  grid:  { x: 20,  y: 302, w: 90, h: 32 },
+  save:  { x: 130, y: 302, w: 90, h: 32 }
 };
 
 let undoButton, clearButton, gridButton, saveButton;
 
-// 10 个图形按钮，从整体略微下移，让上面不那么挤
-// 每个 76×76，间距均匀
+// 10 个图形按钮，从整体上移 10px：startY 380 -> 370
 const SHAPE_RECTS = [];
 (function buildShapeRects() {
   const size = 76;
   const col1x = 36;
   const col2x = 128;
-  let startY = 380; // 整块往下挪了一点
+  let startY = 370; // 整块往上挪 10px
   const gap = 86;   // 行间距
 
   for (let row = 0; row < 5; row++) {
@@ -194,7 +193,7 @@ function windowResized() {
 function draw() {
   background(240);
 
-  // 右侧画布
+  // 右侧画布区域（平移 cw）
   push();
   translate(cw, 0);
   if (showGrid) drawGrid();
@@ -202,7 +201,7 @@ function draw() {
   if (isDragging) drawPreview();
   pop();
 
-  // 左侧背景
+  // 左侧背景 #1F1E24
   noStroke();
   fill("#1F1E24");
   rect(0, 0, cw, height);
@@ -223,12 +222,23 @@ function draw() {
 
 // =================== 网格 & 图形 ===================
 function drawGrid() {
-  stroke(220);
-  strokeWeight(1);
   const w = width - cw;
   const h = height;
-  for (let x = 0; x <= w; x += cellSize) line(x, 0, x, h);
-  for (let y = 0; y <= h; y += cellSize) line(0, y, w, y);
+
+  // 先铺一块统一的网格背景，保证右侧区域完全填满
+  noStroke();
+  fill(245);          // 比整体背景稍微亮一点点
+  rect(0, 0, w, h);
+
+  // 再画网格线
+  stroke(220);
+  strokeWeight(1);
+  for (let x = 0; x <= w; x += cellSize) {
+    line(x, 0, x, h);
+  }
+  for (let y = 0; y <= h; y += cellSize) {
+    line(0, y, w, y);
+  }
 }
 
 function drawShapes() {
@@ -563,12 +573,13 @@ class IconButton {
     imageMode(CENTER);
     noStroke();
 
+    // 底色 #3A393D，悬停/选中稍亮
     if (this.hover() || this.state) fill(80, 79, 83);
     else fill("#3A393D");
     rect(0, 0, this.s, this.s, this.s * 0.35);
 
     if (this.img) {
-      tint(255);
+      tint(255); // 图标为白色
       let factor = this.index < 4 ? 0.75 : 0.9;
       image(this.img, 0, 0, this.s * factor, this.s * factor);
       noTint();
