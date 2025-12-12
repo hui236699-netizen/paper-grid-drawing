@@ -21,10 +21,13 @@ let hue = 220;   // 色相 0..360
 let sat = 100;   // 饱和度 0..100
 let bri = 80;    // 明度 0..100
 
-// 颜色面板布局参数（这次用“宽度 + 高度”而不是正方形）
-let sbX, sbY, sbW, sbH;        // 大颜色矩形
-let hueX, hueY, hueW, hueH;    // 右侧色条
+// 颜色面板布局参数（完全重写）
+let sbX, sbY, sbW, sbH;        // 大颜色矩形 S/B
+let hueX, hueY, hueW, hueH;    // 右侧色条（Hue）
 let sbGraphic, hueGraphic;
+
+// 让颜色区域更大一点：高度固定 180 像素
+const COLOR_AREA_HEIGHT = 180;
 
 // 最近使用颜色（5 个）
 const defaultRecentHex = [
@@ -48,7 +51,7 @@ function preload() {
 
   // SVG 图形：svg/1.svg ~ svg/8.svg
   for (let i = 0; i < svgs.length; i++) {
-    svgs[i] = loadImage("svg/" + (i + 1) + ".svg?v=7");
+    svgs[i] = loadImage("svg/" + (i + 1) + ".svg?v=8");
   }
 }
 
@@ -107,26 +110,26 @@ function computeSvgBounds(index) {
   pg.remove();
 }
 
-// =================== 布局：固定位置，按草图来 ===================
+// =================== 布局：固定位置 ===================
 function layoutUI() {
-  // ------ 顶部颜色区域 ------
-  // 宽度：占满左侧除色条以外的宽度；高度：固定 110 像素（不会太高）
-  hueW = 24;
-  sbW = cw - hueW;
-  sbH = 110;
+  // ------ 顶部颜色区域（重新写）------
+  // 整块从 (0,0) 开始，左右都贴边，高度 = COLOR_AREA_HEIGHT
+  hueW = 24;                         // 右侧色条宽
+  sbW = cw - hueW;                   // 左侧颜色矩形宽
+  sbH = COLOR_AREA_HEIGHT;
 
   sbX = 0;
   sbY = 0;
-  hueX = sbW;      // 贴在右侧
+  hueX = sbW;                        // 色条紧挨着矩形右侧
   hueY = 0;
-  hueH = sbH;
+  hueH = COLOR_AREA_HEIGHT;
 
   buildHueGraphic();
   buildSBGraphic();
 
   // ------ 最近颜色一行（5 个小方块） ------
   const recentSize = 26;
-  const recentY = sbY + sbH + 12;   // 紧接在颜色区域下面
+  const recentY = sbY + sbH + 12;    // 紧接颜色区域底部
 
   // ------ 四个功能按钮（2 行×2 列） ------
   const bw = 90;
@@ -141,10 +144,10 @@ function layoutUI() {
   saveButton  = new CapButton(cw / 2 + offset, row2Y, bw, bh, "Save");
 
   // ------ 图形按钮区域（10 个：5 行×2 列） ------
-  // 整体再往下移一点：firstIconY 增大
+  // 在上一个布局基础上「再往下挪一点点」
   const iconSize = 64;
   const iconGapY = 76;
-  const firstIconY = row2Y + 80;   // 之前是 row2Y + 56，这里下移 24 像素
+  const firstIconY = row2Y + 90;     // 原来是 row2Y + 80，再向下 10 像素
 
   const xLeft = cw * 0.33;
   const xRight = cw * 0.67;
@@ -170,7 +173,7 @@ function setup() {
   for (let i = 0; i < svgs.length; i++) computeSvgBounds(i);
 }
 
-// 只调整画布大小，不重新布局（删除自适应排布效果）
+// 只调整画布大小，不重新布局（不再自适应重排）
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
   // 不再调用 layoutUI()，左侧布局保持固定
@@ -256,7 +259,7 @@ function addNewShape() {
   undoStack = [];
 }
 
-// =================== 颜色面板（重新制作，高度 110） ===================
+// =================== 颜色面板（完全重写） ===================
 function buildHueGraphic() {
   hueGraphic = createGraphics(hueW, hueH);
   hueGraphic.colorMode(HSB, 360, 100, 100);
@@ -296,11 +299,11 @@ function buildSBGraphic() {
   sbGraphic.updatePixels();
 }
 
-// 顶部颜色区域：大色块 + 竖条，紧贴边缘
+// 顶部颜色区域：大矩形 + 竖条，紧贴边缘
 function drawColorPanel() {
   imageMode(CORNER);
-  image(sbGraphic, sbX, sbY);           // 大矩形（sbW x sbH）
-  image(hueGraphic, hueX, hueY);        // 竖条（hueW x hueH）
+  image(sbGraphic, sbX, sbY);           // 左边颜色矩形
+  image(hueGraphic, hueX, hueY);        // 右侧色条
 
   // 在色条上画当前 hue 的小指示箭头
   let huePosY = map(hue, 0, 360, 0, hueH);
