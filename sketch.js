@@ -17,9 +17,9 @@ let svgs = new Array(8);              // 8 个 SVG 形状
 let svgBounds = new Array(8).fill(null); // 每个 SVG 的非透明区域范围
 
 // 颜色选择：HSV 控制
-let hue = 220;   // 0..360
-let sat = 100;   // 0..100
-let bri = 80;    // 0..100
+let hue = 220;   // 色相 0..360
+let sat = 100;   // 饱和度 0..100
+let bri = 80;    // 明度 0..100
 
 // 颜色面板布局参数
 let sbX, sbY, sbSize;           // 大色块（Sat/Bri 方块）
@@ -48,7 +48,7 @@ function preload() {
 
   // SVG 图形：svg/1.svg ~ svg/8.svg
   for (let i = 0; i < svgs.length; i++) {
-    svgs[i] = loadImage("svg/" + (i + 1) + ".svg?v=5");
+    svgs[i] = loadImage("svg/" + (i + 1) + ".svg?v=6");
   }
 }
 
@@ -107,10 +107,11 @@ function computeSvgBounds(index) {
   pg.remove();
 }
 
-// =================== 布局：完全按侧边栏结构来 ===================
+// =================== 布局：固定位置，按草图来 ===================
 function layoutUI() {
-  // ------ 顶部颜色区域：紧贴左、上、右 ------
-  hueW = 20;                          // 竖条宽一点更清楚
+  // ------ 顶部颜色区域 ------
+  // 颜色方块占左侧，竖条占右侧：整体紧贴左/上/右，不留缝隙
+  hueW = 24;                          // 竖条略宽一点
   sbSize = cw - hueW;                 // 大方块宽 = 总宽 - 竖条宽
   sbX = 0;
   sbY = 0;
@@ -122,17 +123,16 @@ function layoutUI() {
   buildSBGraphic();
 
   // ------ 最近颜色一行（5 个小方块） ------
+  // 高度不参与自适应，全部用固定数值
   const recentSize = 26;
-  const recentGap = 8;
-  const recentY = sbY + sbSize + 12;  // 紧接在颜色块下面
-  const recentBlockBottom = recentY + recentSize;
+  const recentY = sbY + sbSize + 12;       // 在颜色块下方留一点缝
 
-  // ------ 四个功能按钮，2 行×2 列 ------
+  // ------ 四个功能按钮（2 行×2 列） ------
   const bw = 90;
   const bh = 34;
-  const offset = 70;                  // 左右偏移量
-  const row1Y = recentBlockBottom + 24;
-  const row2Y = row1Y + 42;
+  const offset = 70;
+  const row1Y = recentY + recentSize + 18; // 第一行按钮中心 Y
+  const row2Y = row1Y + 44;                // 第二行按钮中心 Y
 
   undoButton  = new CapButton(cw / 2 - offset, row1Y, bw, bh, "Undo");
   clearButton = new CapButton(cw / 2 + offset, row1Y, bw, bh, "Clear");
@@ -140,19 +140,11 @@ function layoutUI() {
   saveButton  = new CapButton(cw / 2 + offset, row2Y, bw, bh, "Save");
 
   // ------ 图形按钮区域（10 个：5 行×2 列） ------
-  const topUsed = row2Y + bh / 2;     // 第二排按钮的底
-  const iconsTopStart = topUsed + 30; // 图标区域开始
-  const iconsBottomMargin = 24;
-  const iconsBottom = height - iconsBottomMargin;
+  // 完全固定间距，按照草图往下排
+  const iconSize = 64;
+  const iconGapY = 76;
+  const firstIconY = row2Y + 56;          // 第一行图标中心 Y
 
-  const availableH = max(iconsBottom - iconsTopStart, 120); // 可用高度
-
-  const rows = 5;
-  let iconSize = min(72, availableH / (rows + 1)); // 图标最大 72，窗口矮时会缩小
-  let gapRow = (availableH - rows * iconSize) / (rows + 1);
-  if (gapRow < 6) gapRow = 6;
-
-  // 左右两列 X 位置
   const xLeft = cw * 0.33;
   const xRight = cw * 0.67;
 
@@ -160,7 +152,7 @@ function layoutUI() {
   for (let i = 0; i < icons.length; i++) {
     let col = i % 2;
     let row = floor(i / 2);
-    let y = iconsTopStart + gapRow * (row + 1) + iconSize * row + iconSize / 2;
+    let y = firstIconY + row * iconGapY;
     let x = (col === 0) ? xLeft : xRight;
     buttons[i] = new IconButton(x, y, iconSize, i);
   }
@@ -177,9 +169,10 @@ function setup() {
   for (let i = 0; i < svgs.length; i++) computeSvgBounds(i);
 }
 
+// 只调整画布大小，不重新布局（删除自适应排布效果）
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
-  layoutUI();
+  // 不再调用 layoutUI()，左侧布局保持固定
 }
 
 // =================== draw ===================
@@ -262,7 +255,7 @@ function addNewShape() {
   undoStack = [];
 }
 
-// =================== 颜色面板 ===================
+// =================== 颜色面板（重新制作） ===================
 function buildHueGraphic() {
   hueGraphic = createGraphics(hueW, hueH);
   hueGraphic.colorMode(HSB, 360, 100, 100);
@@ -478,7 +471,7 @@ class Shape {
 
   display() {
     push();
-    // 注意：draw() 里已经 translate(cw, 0)，这里就不用再平移
+    // draw() 里已经 translate(cw,0)，这里直接按网格坐标画就行
     fill(this.c);
     noStroke();
 
