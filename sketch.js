@@ -1,11 +1,11 @@
-// =================== 全局设置（响应式 + AI式拖拽 + 网格强吸附 + 选中移动） ===================
+// =================== 全局设置（响应式 + AI式拖拽 + 网格强吸附 + 选中移动 + 重写颜色模块） ===================
 
 let cw = 240;
 let cellSize = 36;
 
 let dragStart, dragEnd;
-let isDragging = false;   // 正在画新图形
-let isMoving = false;     // 正在移动选中图形
+let isDragging = false;
+let isMoving = false;
 
 let currentShape = 0;
 let currentColor;
@@ -30,8 +30,11 @@ let hue = 220;
 let sat = 100;
 let bri = 80;
 
+// 颜色拖动
+let isColorDragging = false;
+let colorDragMode = null; // "sb" | "hue"
+
 // 动态布局
-let COLOR_PANEL_H = 190;
 let COLOR_MAIN, COLOR_HUE;
 let RECENT_RECTS = [];
 let FUNC_RECTS = {};
@@ -52,7 +55,7 @@ function sign1(v) {
   return v >= 0 ? 1 : -1;
 }
 
-// 鼠标 -> 网格坐标（强吸附：floor，永远不会落在半格）
+// 鼠标 -> 网格坐标（强吸附：floor）
 function mouseToGrid() {
   const gx = floor((mouseX - cw) / cellSize);
   const gy = floor(mouseY / cellSize);
@@ -60,11 +63,9 @@ function mouseToGrid() {
 }
 
 /**
- * AI矩形工具核心（角点到角点），允许负宽高：
- * x = sx, y = sy, w = ex - sx, h = ey - sy
- *
- * Shift：锁比例（保留方向符号）
- * Alt：从中心扩张（AI 的 Option 行为）
+ * AI矩形工具核心（角点到角点），允许负宽高
+ * Shift：锁比例
+ * Alt：中心扩张
  */
 function getAIBoxGrid(start, end, useCenter, lockAspect) {
   let sx = start.x, sy = start.y;
@@ -73,7 +74,6 @@ function getAIBoxGrid(start, end, useCenter, lockAspect) {
   let w = ex - sx;
   let h = ey - sy;
 
-  // Alt/Option：中心扩张（start 是中心）
   if (useCenter) {
     let halfW = abs(w);
     let halfH = abs(h);
@@ -92,7 +92,6 @@ function getAIBoxGrid(start, end, useCenter, lockAspect) {
     };
   }
 
-  // Shift：锁比例（角点模式）
   if (lockAspect) {
     const size = max(abs(w), abs(h));
     w = sign1(w) * size;
@@ -102,7 +101,6 @@ function getAIBoxGrid(start, end, useCenter, lockAspect) {
   return { x: sx, y: sy, w, h };
 }
 
-// 网格盒子 -> 像素盒子
 function gridBoxToPixel(box) {
   return {
     x: box.x * cellSize,
@@ -112,8 +110,7 @@ function gridBoxToPixel(box) {
   };
 }
 
-// 将 AI box（可能负宽高）转换为 Shape 的“统一正向存储”
-// 并强制整数网格（避免任何中间值）
+// 统一 Shape 存储为正 w/h（并保证整数格）
 function normalizeBoxToShape(box) {
   let x = box.x;
   let y = box.y;
@@ -123,20 +120,17 @@ function normalizeBoxToShape(box) {
   if (w < 0) { x = x + w; w = -w; }
   if (h < 0) { y = y + h; h = -h; }
 
-  // 强制整数格
   x = round(x);
   y = round(y);
   w = round(w);
   h = round(h);
 
-  // 至少 1 格
   w = max(1, w);
   h = max(1, h);
 
   return { x, y, w, h };
 }
 
-// 命中最上层图形（从后往前）
 function hitTestShape(gx, gy) {
   for (let i = shapes.length - 1; i >= 0; i--) {
     const s = shapes[i];
@@ -144,16 +138,15 @@ function hitTestShape(gx, gy) {
     const y0 = s.y;
     const x1 = s.x + s.w;
     const y1 = s.y + s.h;
+
     if (gx >= x0 && gx < x1 && gy >= y0 && gy < y1) return i;
   }
   return -1;
 }
 
-// =================== 响应式布局 ===================
+// =================== 响应式布局（重写颜色区布局：方形SB + 竖条Hue） ===================
 function computeLayout() {
   cw = clamp(width * 0.18, 200, 320);
-
-  COLOR_PANEL_H = clamp(height * 0.22, 160, 230);
 
   const rightW = max(1, width - cw);
   const targetCols = 26;
@@ -161,53 +154,64 @@ function computeLayout() {
   const byHeight = height / 22;
   cellSize = clamp(min(byWidth, byHeight), 24, 52);
 
-  COLOR_MAIN = { x: 0, y: 0, w: cw - 30, h: COLOR_PANEL_H };
-  COLOR_HUE = { x: cw - 30, y: 0, w: 30, h: COLOR_PANEL_H };
+  // 颜色区（更像标准色板）
+  const pad = 16;
+  const gap = 10;
+  const hueW = clamp(cw * 0.09, 18, 28);
+
+  const maxSB = clamp(height * 0.28, 170, 260);
+  const sbW = cw - pad * 2 - hueW - gap;
+  const sbSize = clamp(min(sbW, maxSB), 150, maxSB);
+
+  const topY = pad;
+
+  COLOR_MAIN = { x: pad, y: topY, w: sbSize, h: sbSize };
+  COLOR_HUE = { x: pad + sbSize + gap, y: topY, w: hueW, h: sbSize };
 
   // Recent colors
   RECENT_RECTS = [];
   const recentCount = 5;
-  const padX = 16;
-  const gap = 10;
-  const rW = clamp((cw - padX * 2 - gap * (recentCount - 1)) / recentCount, 22, 34);
-  const recentY = COLOR_PANEL_H + clamp(height * 0.03, 18, 30);
+  const recentGap = 10;
+  const rW = clamp((cw - pad * 2 - recentGap * (recentCount - 1)) / recentCount, 22, 34);
+  const recentY = topY + sbSize + 18;
+
   for (let i = 0; i < recentCount; i++) {
-    RECENT_RECTS.push({ x: padX + i * (rW + gap), y: recentY, w: rW, h: rW });
+    RECENT_RECTS.push({ x: pad + i * (rW + recentGap), y: recentY, w: rW, h: rW });
   }
 
   // Func buttons
   const btnGapX = 12;
-  const btnW = (cw - padX * 2 - btnGapX) / 2;
+  const btnW = (cw - pad * 2 - btnGapX) / 2;
   const btnH = clamp(height * 0.035, 30, 38);
-  const funcY1 = recentY + rW + clamp(height * 0.02, 16, 26);
-  const funcY2 = funcY1 + btnH + clamp(height * 0.012, 10, 16);
+  const funcY1 = recentY + rW + 18;
+  const funcY2 = funcY1 + btnH + 12;
 
   FUNC_RECTS = {
-    undo:  { x: padX, y: funcY1, w: btnW, h: btnH },
-    clear: { x: padX + btnW + btnGapX, y: funcY1, w: btnW, h: btnH },
-    grid:  { x: padX, y: funcY2, w: btnW, h: btnH },
-    save:  { x: padX + btnW + btnGapX, y: funcY2, w: btnW, h: btnH }
+    undo:  { x: pad, y: funcY1, w: btnW, h: btnH },
+    clear: { x: pad + btnW + btnGapX, y: funcY1, w: btnW, h: btnH },
+    grid:  { x: pad, y: funcY2, w: btnW, h: btnH },
+    save:  { x: pad + btnW + btnGapX, y: funcY2, w: btnW, h: btnH }
   };
 
   // Shape buttons 2x5
   SHAPE_RECTS = [];
-  const topY = funcY2 + btnH + clamp(height * 0.02, 14, 24);
-  const bottomPad = clamp(height * 0.02, 14, 26);
-  const availableH = max(1, height - topY - bottomPad);
+  const shapesTopY = funcY2 + btnH + 18;
+  const bottomPad = 18;
+  const availableH = max(1, height - shapesTopY - bottomPad);
 
   const cols = 2, rows = 5;
   const gridGapX = clamp(cw * 0.08, 10, 16);
   const gridGapY = clamp(height * 0.015, 10, 18);
 
-  const cellW = (cw - padX * 2 - gridGapX) / cols;
-  const cellH = (availableH - gridGapY * (rows - 1)) / rows;
-  const size = clamp(min(cellW, cellH), 56, 86);
+  const cellW2 = (cw - pad * 2 - gridGapX) / cols;
+  const cellH2 = (availableH - gridGapY * (rows - 1)) / rows;
+  const size = clamp(min(cellW2, cellH2), 56, 86);
 
-  const col1x = padX + (cellW - size) / 2;
-  const col2x = padX + cellW + gridGapX + (cellW - size) / 2;
+  const col1x = pad + (cellW2 - size) / 2;
+  const col2x = pad + cellW2 + gridGapX + (cellW2 - size) / 2;
 
   for (let row = 0; row < rows; row++) {
-    const y = topY + row * (size + gridGapY);
+    const y = shapesTopY + row * (size + gridGapY);
     SHAPE_RECTS.push({ x: col1x, y, w: size, h: size });
     SHAPE_RECTS.push({ x: col2x, y, w: size, h: size });
   }
@@ -224,7 +228,9 @@ function computeSvgBounds(index) {
   const img = svgs[index];
   if (!img) return;
 
-  const sampleW = 256, sampleH = 256;
+  const sampleW = 256;
+  const sampleH = 256;
+
   const pg = createGraphics(sampleW, sampleH);
   pg.pixelDensity(1);
   pg.clear();
@@ -257,7 +263,8 @@ function computeSvgBounds(index) {
     let h = (maxY - minY + 1) / sampleH;
 
     const margin = 0.03;
-    let x1 = x0 + w, y1 = y0 + h;
+    let x1 = x0 + w;
+    let y1 = y0 + h;
     x0 = max(0, x0 - margin);
     y0 = max(0, y0 - margin);
     x1 = min(1, x1 + margin);
@@ -271,19 +278,20 @@ function computeSvgBounds(index) {
   pg.remove();
 }
 
-// =================== 颜色贴图 ===================
-function buildHueGraphic() {
+// =================== 颜色贴图（关键修复：createGraphics 强制 pixelDensity(1)） ===================
+function rebuildHueGraphic() {
   hueGraphic = createGraphics(COLOR_HUE.w, COLOR_HUE.h);
+  hueGraphic.pixelDensity(1);
   hueGraphic.colorMode(HSB, 360, 100, 100);
   hueGraphic.noStroke();
   hueGraphic.loadPixels();
 
   for (let y = 0; y < COLOR_HUE.h; y++) {
-    let hh = map(y, 0, COLOR_HUE.h - 1, 0, 360);
-    let c = hueGraphic.color(hh, 100, 100);
+    const hh = map(y, 0, COLOR_HUE.h - 1, 0, 360);
+    const c = hueGraphic.color(hh, 100, 100);
     for (let x = 0; x < COLOR_HUE.w; x++) {
-      let idx = (y * COLOR_HUE.w + x) * 4;
-      hueGraphic.pixels[idx]     = red(c);
+      const idx = (y * COLOR_HUE.w + x) * 4;
+      hueGraphic.pixels[idx] = red(c);
       hueGraphic.pixels[idx + 1] = green(c);
       hueGraphic.pixels[idx + 2] = blue(c);
       hueGraphic.pixels[idx + 3] = 255;
@@ -292,19 +300,20 @@ function buildHueGraphic() {
   hueGraphic.updatePixels();
 }
 
-function buildSBGraphic() {
+function rebuildSBGraphic() {
   sbGraphic = createGraphics(COLOR_MAIN.w, COLOR_MAIN.h);
+  sbGraphic.pixelDensity(1);
   sbGraphic.colorMode(HSB, 360, 100, 100);
   sbGraphic.noStroke();
   sbGraphic.loadPixels();
 
   for (let y = 0; y < COLOR_MAIN.h; y++) {
     for (let x = 0; x < COLOR_MAIN.w; x++) {
-      let sVal = map(x, 0, COLOR_MAIN.w - 1, 0, 100);
-      let bVal = map(y, 0, COLOR_MAIN.h - 1, 100, 0);
-      let c = sbGraphic.color(hue, sVal, bVal);
-      let idx = (y * COLOR_MAIN.w + x) * 4;
-      sbGraphic.pixels[idx]     = red(c);
+      const sVal = map(x, 0, COLOR_MAIN.w - 1, 0, 100);
+      const bVal = map(y, 0, COLOR_MAIN.h - 1, 100, 0);
+      const c = sbGraphic.color(hue, sVal, bVal);
+      const idx = (y * COLOR_MAIN.w + x) * 4;
+      sbGraphic.pixels[idx] = red(c);
       sbGraphic.pixels[idx + 1] = green(c);
       sbGraphic.pixels[idx + 2] = blue(c);
       sbGraphic.pixels[idx + 3] = 255;
@@ -316,13 +325,14 @@ function buildSBGraphic() {
 // =================== UI layout ===================
 function layoutUI() {
   computeLayout();
-  buildHueGraphic();
-  buildSBGraphic();
 
-  undoButton  = rectToCapButton(FUNC_RECTS.undo,  "Undo");
+  rebuildHueGraphic();
+  rebuildSBGraphic();
+
+  undoButton = rectToCapButton(FUNC_RECTS.undo, "Undo");
   clearButton = rectToCapButton(FUNC_RECTS.clear, "Clear");
-  gridButton  = rectToCapButton(FUNC_RECTS.grid,  "Grid");
-  saveButton  = rectToCapButton(FUNC_RECTS.save,  "Save");
+  gridButton = rectToCapButton(FUNC_RECTS.grid, "Grid");
+  saveButton = rectToCapButton(FUNC_RECTS.save, "Save");
 
   for (let i = 0; i < SHAPE_RECTS.length; i++) {
     const r = SHAPE_RECTS[i];
@@ -343,12 +353,12 @@ function rectToCapButton(rect, label) {
 function setup() {
   createCanvas(windowWidth, windowHeight);
 
-  // 高清：更干净的边缘
   pixelDensity(window.devicePixelRatio || 1);
   smooth();
 
   currentColor = color("#482BCC");
   recentColors = defaultRecentHex.map(h => color(h));
+
   layoutUI();
 
   for (let i = 0; i < svgs.length; i++) computeSvgBounds(i);
@@ -374,18 +384,16 @@ function draw() {
   if (showGrid) drawGrid();
   drawShapes();
 
-  // 你要求：选中不要黑框，所以这里不画选中框
-
   if (isDragging) drawPreview();
 
   pop();
 
-  // 左侧 UI
+  // 左侧 UI 背景
   noStroke();
   fill("#1F1E24");
   rect(0, 0, cw, height);
 
-  drawColorPanel();
+  drawColorPanelNew();
   drawRecentColors();
 
   undoButton.display();
@@ -415,7 +423,7 @@ function drawShapes() {
   for (let s of shapes) s.display();
 }
 
-// =================== 预览（AI式拖拽 + 网格强吸附） ===================
+// =================== 预览（AI式拖拽） ===================
 function drawPreview() {
   const useCenter = keyIsDown(ALT);
   const lockAspect = keyIsDown(SHIFT);
@@ -444,7 +452,6 @@ function drawPreview() {
       drawParaFromBox(px.x, px.y, px.w, px.h);
       break;
     default: {
-      // SVG：负宽高不直接画，归一化后画（仍保证落网格）
       const norm = normalizeBoxToShape(box);
       drawSvgShape(currentShape, norm.x * cellSize, norm.y * cellSize, norm.w * cellSize, norm.h * cellSize, previewFill);
       break;
@@ -465,61 +472,111 @@ function addNewShape() {
   undoStack = [];
 }
 
-// =================== 颜色面板 ===================
-function drawColorPanel() {
+// =================== 新颜色面板（重写） ===================
+function drawColorPanelNew() {
+  const r = 14;
+
+  // 背板
+  noStroke();
+  fill(38);
+  rect(COLOR_MAIN.x - 8, COLOR_MAIN.y - 8, (COLOR_MAIN.w + COLOR_HUE.w + 10) + 16, COLOR_MAIN.h + 16, 16);
+
+  // SB 方块（带边框）
+  stroke(70);
+  strokeWeight(1);
+  fill(20);
+  rect(COLOR_MAIN.x, COLOR_MAIN.y, COLOR_MAIN.w, COLOR_MAIN.h, r);
+
   imageMode(CORNER);
   image(sbGraphic, COLOR_MAIN.x, COLOR_MAIN.y);
+
+  // Hue 条（带边框）
+  stroke(70);
+  strokeWeight(1);
+  fill(20);
+  rect(COLOR_HUE.x, COLOR_HUE.y, COLOR_HUE.w, COLOR_HUE.h, r);
+
   image(hueGraphic, COLOR_HUE.x, COLOR_HUE.y);
 
-  let huePosY = map(hue, 0, 360, 0, COLOR_HUE.h);
+  // SB 取色手柄
+  const hx = COLOR_MAIN.x + (sat / 100) * COLOR_MAIN.w;
+  const hy = COLOR_MAIN.y + (1 - bri / 100) * COLOR_MAIN.h;
+
   stroke(255);
   strokeWeight(2);
-  let hx = COLOR_HUE.x;
-  let hy = COLOR_HUE.y + huePosY;
-  line(hx - 4, hy, hx, hy);
-  line(hx + COLOR_HUE.w, hy, hx + COLOR_HUE.w + 4, hy);
+  fill(0, 0);
+  circle(hx, hy, 14);
+  stroke(0, 140);
+  strokeWeight(2);
+  circle(hx, hy, 10);
+
+  // Hue 指示器（小横线）
+  const hueY = COLOR_HUE.y + (hue / 360) * COLOR_HUE.h;
+  stroke(255);
+  strokeWeight(3);
+  line(COLOR_HUE.x - 3, hueY, COLOR_HUE.x + COLOR_HUE.w + 3, hueY);
 }
 
+// =================== 最近颜色 ===================
 function drawRecentColors() {
   for (let i = 0; i < RECENT_RECTS.length; i++) {
     const r = RECENT_RECTS[i];
     stroke(40);
     strokeWeight(1);
     fill(recentColors[i] || color(0));
-    rect(r.x, r.y, r.w, r.h, 6);
+    rect(r.x, r.y, r.w, r.h, 8);
 
     if (recentColors[i] && colorsEqual(recentColors[i], currentColor)) {
       noFill();
       stroke(255);
       strokeWeight(2);
-      rect(r.x - 3, r.y - 3, r.w + 6, r.h + 6, 8);
+      rect(r.x - 3, r.y - 3, r.w + 6, r.h + 6, 10);
     }
   }
 }
 
-function handleColorClick() {
-  // S/B
+// 支持按住拖动取色
+function updateColorByMouse() {
+  if (colorDragMode === "sb") {
+    const sx = clamp(mouseX, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w - 1);
+    const sy = clamp(mouseY, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h - 1);
+    sat = map(sx, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w - 1, 0, 100);
+    bri = map(sy, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h - 1, 100, 0);
+    updateCurrentColor(false);
+    return true;
+  }
+
+  if (colorDragMode === "hue") {
+    const hy = clamp(mouseY, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h - 1);
+    hue = map(hy, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h - 1, 0, 360);
+    rebuildSBGraphic();
+    updateCurrentColor(false);
+    return true;
+  }
+
+  return false;
+}
+
+function handleColorPress() {
+  // SB 方块
   if (mouseX >= COLOR_MAIN.x && mouseX <= COLOR_MAIN.x + COLOR_MAIN.w &&
       mouseY >= COLOR_MAIN.y && mouseY <= COLOR_MAIN.y + COLOR_MAIN.h) {
-    let sx = constrain(mouseX, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w);
-    let sy = constrain(mouseY, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h);
-    sat = map(sx, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w, 0, 100);
-    bri = map(sy, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h, 100, 0);
-    updateCurrentColor();
+    isColorDragging = true;
+    colorDragMode = "sb";
+    updateColorByMouse();
     return true;
   }
 
-  // Hue
+  // Hue 条
   if (mouseX >= COLOR_HUE.x && mouseX <= COLOR_HUE.x + COLOR_HUE.w &&
       mouseY >= COLOR_HUE.y && mouseY <= COLOR_HUE.y + COLOR_HUE.h) {
-    let hy = constrain(mouseY, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h);
-    hue = map(hy, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h, 0, 360);
-    buildSBGraphic();
-    updateCurrentColor();
+    isColorDragging = true;
+    colorDragMode = "hue";
+    updateColorByMouse();
     return true;
   }
 
-  // Recent
+  // 最近颜色
   for (let i = 0; i < RECENT_RECTS.length; i++) {
     const r = RECENT_RECTS[i];
     if (mouseX >= r.x && mouseX <= r.x + r.w &&
@@ -531,19 +588,20 @@ function handleColorClick() {
       return true;
     }
   }
+
   return false;
 }
 
-function updateCurrentColor() {
+function updateCurrentColor(addRecent = true) {
   push();
   colorMode(HSB, 360, 100, 100);
   currentColor = color(hue, sat, bri);
   pop();
-  addRecentColor(currentColor);
+  if (addRecent) addRecentColor(currentColor);
 }
 
 function addRecentColor(c) {
-  let nc = color(c);
+  const nc = color(c);
   recentColors = recentColors.filter(rc => !colorsEqual(rc, nc));
   recentColors.unshift(nc);
   if (recentColors.length > 5) recentColors.length = 5;
@@ -555,8 +613,21 @@ function colorsEqual(c1, c2) {
          blue(c1) === blue(c2);
 }
 
-// =================== 鼠标交互（选中移动 / 网格强吸附） ===================
+// =================== 鼠标交互 ===================
 function mousePressed() {
+  // 先处理左侧颜色（支持拖动）
+  if (mouseX <= cw) {
+    if (undoButton.hover()) { undo(); return; }
+    if (clearButton.hover()) { clearShapes(); return; }
+    if (gridButton.hover()) { showGrid = !showGrid; return; }
+    if (saveButton.hover()) { saveCanvas("paper-grid-drawing", "png"); return; }
+
+    if (handleColorPress()) return;
+
+    for (let b of buttons) b.click();
+    return;
+  }
+
   // 右侧画布区
   if (mouseX > cw && mouseY >= 0 && mouseY <= height) {
     const { gx, gy } = mouseToGrid();
@@ -575,22 +646,17 @@ function mousePressed() {
     isDragging = true;
     dragStart = createVector(gx, gy);
     dragEnd = dragStart.copy();
-    return;
   }
-
-  // 左侧按钮
-  if (undoButton.hover()) { undo(); return; }
-  if (clearButton.hover()) { clearShapes(); return; }
-  if (gridButton.hover()) { showGrid = !showGrid; return; }
-  if (saveButton.hover()) { saveCanvas("paper-grid-drawing", "png"); return; }
-
-  if (handleColorClick()) return;
-
-  for (let b of buttons) b.click();
 }
 
 function mouseDragged() {
-  // 移动：严格按格子（不会出现网格中间）
+  // 颜色拖动
+  if (isColorDragging) {
+    updateColorByMouse();
+    return;
+  }
+
+  // 移动：严格按格子
   if (isMoving && selectedIndex >= 0 && selectedIndex < shapes.length) {
     const { gx, gy } = mouseToGrid();
     const dx = gx - moveStartGrid.x;
@@ -599,7 +665,6 @@ function mouseDragged() {
     let nx = max(0, moveOrigXY.x + dx);
     let ny = max(0, moveOrigXY.y + dy);
 
-    // 强制整数
     nx = round(nx);
     ny = round(ny);
 
@@ -608,7 +673,7 @@ function mouseDragged() {
     return;
   }
 
-  // 绘制：四向拖拽（AI 逻辑）
+  // 绘制
   if (isDragging) {
     const { gx, gy } = mouseToGrid();
     dragEnd = createVector(gx, gy);
@@ -616,6 +681,13 @@ function mouseDragged() {
 }
 
 function mouseReleased() {
+  if (isColorDragging) {
+    isColorDragging = false;
+    colorDragMode = null;
+    addRecentColor(currentColor);
+    return;
+  }
+
   if (isMoving) {
     isMoving = false;
     moveStartGrid = null;
@@ -636,18 +708,16 @@ function undo() {
     if (selectedIndex >= shapes.length) selectedIndex = -1;
   }
 }
-
 function redo() {
   if (undoStack.length > 0) shapes.push(undoStack.pop());
 }
-
 function clearShapes() {
   shapes = [];
   undoStack = [];
   selectedIndex = -1;
 }
 
-// =================== Shape 类（内部统一正 w/h） ===================
+// =================== Shape 类 ===================
 class Shape {
   constructor(x, y, w, h, type, c) {
     this.x = round(x);
@@ -690,7 +760,7 @@ class Shape {
   }
 }
 
-// =================== 形状绘制辅助（支持预览负宽高） ===================
+// =================== 形状辅助 ===================
 function drawTriFromBox(x, y, w, h) {
   const x0 = x, y0 = y;
   const x1 = x + w, y1 = y + h;
@@ -718,7 +788,6 @@ function drawParaFromBox(x, y, w, h) {
   endShape(CLOSE);
 }
 
-// 平行四边形（正向）
 function drawParallelogram(x, y, w, h) {
   beginShape();
   vertex(x + w / 4, y);
@@ -728,9 +797,8 @@ function drawParallelogram(x, y, w, h) {
   endShape(CLOSE);
 }
 
-// SVG 形状（保留高清平滑，但不改 SVG 文件）
 function drawSvgShape(type, x, y, w, h, col) {
-  let idx = type - 4;
+  const idx = type - 4;
   if (idx < 0 || idx >= svgs.length) return;
   const img = svgs[idx];
   if (!img) return;
@@ -758,7 +826,7 @@ function drawSvgShape(type, x, y, w, h, col) {
   pop();
 }
 
-// =================== 左侧图标按钮 ===================
+// =================== 左侧按钮 ===================
 class IconButton {
   constructor(x, y, s, index) {
     this.x = x;
@@ -807,7 +875,6 @@ class IconButton {
   }
 }
 
-// =================== 功能按钮 ===================
 class CapButton {
   constructor(x, y, w, h, str) {
     this.x = x;
@@ -846,14 +913,12 @@ class CapButton {
 
 // =================== 键盘 ===================
 function keyPressed() {
-  // 删除选中
   if ((keyCode === BACKSPACE || keyCode === DELETE) && selectedIndex >= 0) {
     shapes.splice(selectedIndex, 1);
     selectedIndex = -1;
     return false;
   }
 
-  // Undo/Redo
   if (key === "z" || key === "Z") undo();
   if (key === "y" || key === "Y") redo();
 }
