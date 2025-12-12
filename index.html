@@ -1,384 +1,328 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Font Playground</title>
+
   <style>
     :root{
-      --bg:#0b0c10;
-      --panel:#111218;
-      --card:#12131a;
-      --stroke:rgba(255,255,255,.10);
-      --text:rgba(255,255,255,.92);
-      --muted:rgba(255,255,255,.64);
-      --accent:#7c5cff;
-      --shadow: 0 20px 60px rgba(0,0,0,.45);
-      --radius:28px;
+      --bg:#ffffff;
+      --ink:#111111;
+      --muted:#666666;
+      --card:#ffffff;
+      --border:#111111;
+      --radius:44px;
     }
+
     *{ box-sizing:border-box; }
     html,body{ height:100%; }
     body{
       margin:0;
-      font-family: ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
-      color:var(--text);
-      background: radial-gradient(1200px 800px at 20% 10%, rgba(124,92,255,.25), transparent 60%),
-                  radial-gradient(900px 600px at 80% 20%, rgba(0,255,200,.12), transparent 60%),
-                  linear-gradient(180deg, #07080b, #0b0c10);
+      font-family: ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, "PingFang SC";
+      background: var(--bg);
+      color: var(--ink);
       overflow-x:hidden;
     }
     a{ color:inherit; text-decoration:none; }
-    .wrap{ width:min(1200px, calc(100% - 48px)); margin:0 auto; }
 
+    /* Top bar */
     header{
-      position:fixed; top:0; left:0; right:0; z-index:50;
-      backdrop-filter: blur(14px);
-      background: rgba(10,11,16,.55);
-      border-bottom: 1px solid rgba(255,255,255,.06);
+      position:sticky;
+      top:0;
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(0,0,0,.08);
+      z-index:10;
     }
     .nav{
+      width:min(1200px, calc(100% - 48px));
+      margin:0 auto;
       height:64px;
       display:flex;
       align-items:center;
       justify-content:space-between;
-      gap:16px;
+      gap:12px;
     }
-    .brand{ display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:.2px; }
-    .dot{
-      width:10px;height:10px;border-radius:999px;
-      background: var(--accent);
-      box-shadow: 0 0 0 6px rgba(124,92,255,.15);
-    }
-    .nav-actions{ display:flex; gap:10px; align-items:center; }
-    .btn{
-      border:1px solid rgba(255,255,255,.14);
-      background: rgba(255,255,255,.06);
-      color:var(--text);
-      padding:10px 14px;
-      border-radius:999px;
-      font-weight:600;
-      cursor:pointer;
-      transition:.2s ease;
-      display:inline-flex;
+    .brand{
+      display:flex;
       align-items:center;
       gap:10px;
+      font-weight:800;
+      letter-spacing:.2px;
+    }
+    .dot{
+      width:10px;height:10px;border-radius:999px;
+      background:#111;
+    }
+    .nav-actions{
+      display:flex;
+      gap:10px;
+      align-items:center;
+    }
+    .btn{
+      padding:10px 14px;
+      border:1px solid rgba(0,0,0,.18);
+      border-radius:999px;
+      font-weight:700;
+      transition:.15s ease;
       user-select:none;
     }
-    .btn:hover{ transform: translateY(-1px); background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.22); }
-    .btn.primary{ background: rgba(124,92,255,.22); border-color: rgba(124,92,255,.45); }
+    .btn:hover{ transform: translateY(-1px); }
+    .btn.primary{
+      background:#111;
+      color:#fff;
+      border-color:#111;
+    }
 
-    main{ padding-top:64px; }
-    section{ scroll-margin-top: 86px; }
+    .wrap{
+      width:min(1200px, calc(100% - 48px));
+      margin:0 auto;
+    }
 
+    /* Hero */
     .hero{
-      min-height: calc(100vh - 64px);
-      display:grid;
-      align-items:center;
-      padding: 56px 0 44px;
+      padding: 72px 0 34px;
     }
-    .hero-grid{
-      display:grid;
-      grid-template-columns: 1.15fr .85fr;
-      gap:28px;
-      align-items:center;
-    }
-    @media (max-width: 980px){ .hero-grid{ grid-template-columns: 1fr; } }
-
     .kicker{
-      color: var(--muted);
-      font-weight:600;
-      letter-spacing:.18em;
-      text-transform:uppercase;
       font-size:12px;
-      margin-bottom:16px;
+      letter-spacing:.22em;
+      color:#777;
+      text-transform:uppercase;
+      font-weight:800;
+      margin-bottom:14px;
     }
-    h1{ margin:0 0 14px; font-size: clamp(34px, 5vw, 60px); line-height:1.05; letter-spacing:-.02em; }
-    .sub{ margin:0 0 24px; color: var(--muted); font-size: 16px; line-height:1.7; max-width: 54ch; }
-    .hero-cta{ display:flex; gap:12px; flex-wrap:wrap; margin-top:6px; }
-
-    .preview{
-      border:1px solid rgba(255,255,255,.10);
-      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      overflow:hidden;
-      position:relative;
-      aspect-ratio: 16/12;
-      min-height: 320px;
+    h1{
+      margin:0 0 12px;
+      font-size: clamp(40px, 4.6vw, 72px);
+      line-height:1.02;
+      letter-spacing:-.03em;
     }
-    .preview::before{
-      content:"";
-      position:absolute; inset:-2px;
-      background: radial-gradient(800px 500px at 30% 20%, rgba(124,92,255,.30), transparent 60%),
-                  radial-gradient(700px 450px at 70% 30%, rgba(0,255,200,.18), transparent 60%);
-      opacity:.55;
-      pointer-events:none;
+    .hero p{
+      margin:0;
+      max-width: 72ch;
+      color: var(--muted);
+      font-size: 16px;
+      line-height:1.75;
     }
-    .preview-inner{
-      position:absolute; inset:0;
-      padding:22px;
+    .hero-cta{
+      margin-top:22px;
       display:flex;
-      flex-direction:column;
-      gap:14px;
-      z-index:1;
+      gap:12px;
+      flex-wrap:wrap;
+      align-items:center;
     }
-    .preview-title{
-      display:flex; justify-content:space-between; align-items:center;
-      color: rgba(255,255,255,.88);
-      font-weight:700;
-    }
-    .preview-box{
-      flex:1;
-      border-radius: 22px;
-      border:1px solid rgba(255,255,255,.10);
-      background:
-        linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.02)),
-        repeating-linear-gradient(90deg, rgba(255,255,255,.07) 0px, rgba(255,255,255,.07) 1px, transparent 1px, transparent 24px),
-        repeating-linear-gradient(0deg, rgba(255,255,255,.07) 0px, rgba(255,255,255,.07) 1px, transparent 1px, transparent 24px);
-      opacity:.95;
-    }
-
-    .scroll-indicator{
-      display:flex; justify-content:center;
-      margin-top: 26px;
-      color: rgba(255,255,255,.55);
-      font-weight:600; font-size:13px;
-      gap:10px; align-items:center;
+    .scroll-hint{
+      margin-top: 28px;
+      display:inline-flex;
+      gap:10px;
+      align-items:center;
+      color:#333;
+      font-weight:800;
       user-select:none;
     }
     .chev{
-      width:28px;height:28px;border-radius:999px;
-      border:1px solid rgba(255,255,255,.14);
-      display:grid; place-items:center;
-      background: rgba(255,255,255,.05);
-      animation: bob 1.8s ease-in-out infinite;
+      width:30px;height:30px;border-radius:999px;
+      border:1px solid rgba(0,0,0,.22);
+      display:grid;place-items:center;
+      animation:bob 1.6s ease-in-out infinite;
     }
     @keyframes bob{ 0%,100%{ transform: translateY(0); } 50%{ transform: translateY(4px); } }
 
-    .choose{ padding: 46px 0 78px; }
-    .choose-head{ display:flex; justify-content:space-between; align-items:flex-end; gap:16px; margin-bottom:18px; }
-    .choose h2{ margin:0; font-size: 22px; letter-spacing:-.01em; }
-    .choose p{ margin:0; color: var(--muted); line-height:1.6; max-width: 60ch; font-size: 14px; }
+    /* Section */
+    .section{
+      padding: 26px 0 84px;
+    }
+    .section h2{
+      margin:0 0 6px;
+      font-size: 28px;
+      letter-spacing:-.01em;
+    }
+    .section .sub{
+      margin:0 0 22px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height:1.6;
+    }
 
+    /* Cards */
     .cards{
       display:grid;
       grid-template-columns: repeat(3, 1fr);
-      gap:18px;
-      margin-top:18px;
+      gap:26px;
     }
-    @media (max-width: 980px){ .cards{ grid-template-columns: 1fr; } }
+    @media (max-width: 980px){
+      .cards{ grid-template-columns: 1fr; }
+    }
 
     .card{
-      border-radius: 34px;
-      border: 1px solid rgba(255,255,255,.10);
-      background: rgba(255,255,255,.04);
+      background: var(--card);
+      border: 1.6px solid var(--border);
+      border-radius: var(--radius);
       overflow:hidden;
-      box-shadow: var(--shadow);
-      transition: .22s ease;
       display:flex;
       flex-direction:column;
-      min-height: 520px;
+      min-height: 660px;
+      transition: transform .15s ease;
     }
-    .card:hover{
-      transform: translateY(-4px);
-      border-color: rgba(255,255,255,.18);
-      background: rgba(255,255,255,.055);
-    }
+    .card:hover{ transform: translateY(-3px); }
 
-    .card-top{
-      padding: 26px 26px 14px;
-      display:flex; justify-content:space-between; align-items:flex-start; gap:10px;
+    .card-head{
+      padding: 22px 22px 10px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      font-weight:900;
+      font-size: 18px;
     }
-    .card h3{ margin:0; font-size: 18px; letter-spacing:-.01em; }
     .badge{
-      font-size: 12px;
-      color: rgba(255,255,255,.72);
-      padding: 6px 10px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,.14);
-      background: rgba(255,255,255,.06);
+      font-size:12px;
+      font-weight:800;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(0,0,0,.18);
+      color:#111;
+      background: rgba(0,0,0,.03);
       white-space:nowrap;
     }
 
     .thumb{
-      margin: 0 18px;
-      border-radius: 26px;
-      border:1px solid rgba(255,255,255,.10);
-      background: linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.02));
+      margin: 0 18px 0;
+      border-radius: 34px;
+      border: 1px solid rgba(0,0,0,.12);
       overflow:hidden;
+      background:#fff;
       flex: 1;
-      position:relative;
+      display:flex;
+      align-items:center;
+      justify-content:center;
     }
-    .thumb.pattern-1{
-      background:
-        radial-gradient(500px 320px at 70% 25%, rgba(124,92,255,.35), transparent 60%),
-        linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02)),
-        repeating-linear-gradient(90deg, rgba(255,255,255,.08) 0 1px, transparent 1px 22px),
-        repeating-linear-gradient(0deg, rgba(255,255,255,.08) 0 1px, transparent 1px 22px);
-    }
-    .thumb.pattern-2{
-      background:
-        radial-gradient(520px 340px at 40% 20%, rgba(0,255,200,.18), transparent 60%),
-        linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02)),
-        repeating-linear-gradient(30deg, rgba(255,255,255,.10) 0 2px, transparent 2px 24px);
-    }
-    .thumb.pattern-3{
-      background:
-        radial-gradient(520px 340px at 60% 30%, rgba(255,100,200,.16), transparent 60%),
-        linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02));
-    }
-    .ring{
-      position:absolute;
-      width:min(78%, 360px);
-      aspect-ratio:1;
-      border-radius:999px;
-      border: 10px solid rgba(255,255,255,.75);
-      top: 16%;
-      left: 50%;
-      transform: translateX(-50%);
-      opacity: .9;
-      mix-blend-mode: screen;
-    }
-    .ring::after{
-      content:"";
-      position:absolute;
-      inset:-18px;
-      border-radius:999px;
-      border: 2px solid rgba(255,255,255,.55);
-      opacity:.9;
+    .thumb img{
+      width:100%;
+      height:100%;
+      object-fit: contain;   /* 完整显示图片，不裁切 */
+      display:block;
+      background:#fff;
     }
 
-    .card-bottom{
-      padding: 16px 26px 22px;
+    .card-foot{
+      padding: 14px 22px 22px;
       color: var(--muted);
-      font-size: 13px;
-      line-height:1.55;
-      border-top: 1px solid rgba(255,255,255,.06);
+      font-size: 12.5px;
+      line-height:1.6;
     }
 
     footer{
-      padding: 26px 0 34px;
-      color: rgba(255,255,255,.45);
+      border-top: 1px solid rgba(0,0,0,.08);
+      padding: 18px 0 26px;
+      color: #888;
       font-size: 12px;
-      border-top: 1px solid rgba(255,255,255,.06);
-      background: rgba(0,0,0,.12);
     }
   </style>
 </head>
 
 <body>
-<header>
-  <div class="wrap nav">
-    <div class="brand">
-      <span class="dot"></span>
-      <span>Font Playground</span>
-    </div>
-    <div class="nav-actions">
-      <a class="btn" href="#choose">Explore</a>
-      <a class="btn primary" href="draw.html">Open Builder</a>
-    </div>
-  </div>
-</header>
+  <header>
+    <div class="nav">
+      <div class="brand">
+        <span class="dot"></span>
+        <span>Font Playground</span>
+      </div>
 
-<main>
-  <section class="hero">
-    <div class="wrap hero-grid">
-      <div>
-        <div class="kicker">Experimental typography toolkit</div>
-        <h1>Build modular glyphs<br/>with grid-based drawing</h1>
-        <p class="sub">
-          下滑选择一种方法开始创作。左侧入口已经可用（Grid Builder）。
-          另外两个入口先做成占位页，后面我们再逐步实现内容。
+      <div class="nav-actions">
+        <a class="btn" href="#choose">Explore</a>
+        <a class="btn primary" href="draw.html">Open Builder</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="wrap">
+        <div class="kicker">EXPERIMENTAL TYPOGRAPHY TOOLKIT</div>
+        <h1>Build modular glyphs<br/>with generative methods</h1>
+        <p>
+          Scroll down to choose a method. The first one opens your grid builder page.
+          The other two pages are placeholders for now (we’ll build them next).
         </p>
+
         <div class="hero-cta">
           <a class="btn primary" href="#choose">Choose a Method</a>
           <a class="btn" href="draw.html">Go to Grid Builder</a>
         </div>
 
-        <div class="scroll-indicator">
-          <span class="chev">⌄</span>
-          <span>Scroll down</span>
+        <div class="scroll-hint">
+          <div class="chev">⌄</div>
+          <div>Scroll down</div>
         </div>
       </div>
+    </section>
 
-      <div class="preview" aria-hidden="true">
-        <div class="preview-inner">
-          <div class="preview-title">
-            <span>Preview</span>
-            <span style="color:rgba(255,255,255,.55);font-weight:600;font-size:12px;">Grid-based tools</span>
-          </div>
-          <div class="preview-box"></div>
+    <section id="choose" class="section">
+      <div class="wrap">
+        <h2>Choose a Method</h2>
+        <p class="sub">Click a card to enter. Left card is your finished grid drawing page.</p>
+
+        <div class="cards">
+          <a class="card" href="draw.html">
+            <div class="card-head">
+              <span>Font building blocks</span>
+              <span class="badge">Available</span>
+            </div>
+            <div class="thumb">
+              <img src="assets/home/blocks.png" alt="Font building blocks">
+            </div>
+            <div class="card-foot">
+              Experiment with building modular glyphs using mathematical grids and geometric patterns.
+            </div>
+          </a>
+
+          <a class="card" href="path.html">
+            <div class="card-head">
+              <span>Font Path Method</span>
+              <span class="badge">Coming soon</span>
+            </div>
+            <div class="thumb">
+              <img src="assets/home/path.png" alt="Font Path Method">
+            </div>
+            <div class="card-foot">
+              Placeholder page for now. Next we’ll build a path-based editor (nodes / curves).
+            </div>
+          </a>
+
+          <a class="card" href="texture.html">
+            <div class="card-head">
+              <span>Font Texture Method</span>
+              <span class="badge">Coming soon</span>
+            </div>
+            <div class="thumb">
+              <img src="assets/home/texture.png" alt="Font Texture Method">
+            </div>
+            <div class="card-foot">
+              Placeholder page for now. Later we’ll add texture / brush / pattern based glyph generation.
+            </div>
+          </a>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <section id="choose" class="choose">
-    <div class="wrap">
-      <div class="choose-head">
-        <div>
-          <h2>Choose a Method</h2>
-          <p>点任意卡片进入对应页面：左边是你已经完成的绘图页。</p>
-        </div>
-      </div>
+    <footer>
+      <div class="wrap">© <span id="y"></span> Font Playground</div>
+    </footer>
+  </main>
 
-      <div class="cards">
-        <a class="card" href="draw.html">
-          <div class="card-top">
-            <h3>Font building blocks</h3>
-            <span class="badge">Available</span>
-          </div>
-          <div class="thumb pattern-1"></div>
-          <div class="card-bottom">
-            基于网格的模块绘制与组合（已完成）。支持四向绘制、Shift 锁比例、Alt 中心扩张、网格强吸附、选中移动与删除。
-          </div>
-        </a>
-
-        <a class="card" href="path.html">
-          <div class="card-top">
-            <h3>Font Path Method</h3>
-            <span class="badge">Coming soon</span>
-          </div>
-          <div class="thumb pattern-2"></div>
-          <div class="card-bottom">
-            先进入占位页。后续我们会把它做成“路径构建字形”的编辑器：钢笔、节点、曲线等。
-          </div>
-        </a>
-
-        <a class="card" href="texture.html">
-          <div class="card-top">
-            <h3>Font Texture Method</h3>
-            <span class="badge">Coming soon</span>
-          </div>
-          <div class="thumb pattern-3">
-            <div class="ring"></div>
-          </div>
-          <div class="card-bottom">
-            先进入占位页。后续我们会实现纹理/图案生成方法：噪声、笔刷、图层叠加等。
-          </div>
-        </a>
-      </div>
-    </div>
-  </section>
-
-  <footer>
-    <div class="wrap">
-      © <span id="y"></span> Font Playground
-    </div>
-  </footer>
-</main>
-
-<script>
-  document.getElementById("y").textContent = new Date().getFullYear();
-  document.querySelectorAll('a[href^="#"]').forEach(a=>{
-    a.addEventListener("click", (e)=>{
-      const id = a.getAttribute("href");
-      const el = document.querySelector(id);
-      if(!el) return;
-      e.preventDefault();
-      el.scrollIntoView({behavior:"smooth", block:"start"});
+  <script>
+    document.getElementById("y").textContent = new Date().getFullYear();
+    document.querySelectorAll('a[href^="#"]').forEach(a=>{
+      a.addEventListener("click", (e)=>{
+        const id = a.getAttribute("href");
+        const el = document.querySelector(id);
+        if(!el) return;
+        e.preventDefault();
+        el.scrollIntoView({behavior:"smooth", block:"start"});
+      });
     });
-  });
-</script>
+  </script>
 </body>
 </html>
