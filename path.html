@@ -4,359 +4,88 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Font Path Method</title>
-
   <style>
-    html, body { height: 100%; margin: 0; background: #0f1013; overflow: hidden; }
-    canvas { display: block; margin: 0 auto; }
-
-    /* 左侧面板里的 DOM 控件样式（p5 createInput/createSelect/createButton） */
-    .ui {
-      font-family: system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-      font-size: 12px;
-      color: #e9e9ee;
+    html, body { height: 100%; margin: 0; background:#0f1013; overflow:hidden; }
+    canvas { display:block; margin:0 auto; }
+    .ui{
+      font-family: system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+      font-size:12px; color:#e9e9ee;
     }
-    .ui label { display: block; margin: 10px 0 6px; opacity: .85; }
-    .ui input, .ui select {
-      width: 196px;
-      height: 34px;
-      border-radius: 10px;
-      border: 1px solid rgba(255,255,255,.10);
-      background: rgba(255,255,255,.06);
-      color: #fff;
-      padding: 0 10px;
-      outline: none;
+    .ui label{ display:block; margin:10px 0 6px; opacity:.85; }
+    .ui input,.ui select{
+      width:196px; height:34px; border-radius:10px;
+      border:1px solid rgba(255,255,255,.10);
+      background:rgba(255,255,255,.06);
+      color:#fff; padding:0 10px; outline:none;
     }
-    .ui button {
-      height: 34px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,.10);
-      background: rgba(255,255,255,.10);
-      color: #fff;
-      padding: 0 14px;
-      cursor: pointer;
+    .ui button{
+      height:34px; border-radius:999px;
+      border:1px solid rgba(255,255,255,.10);
+      background:rgba(255,255,255,.10);
+      color:#fff; padding:0 14px; cursor:pointer;
     }
-    .ui button:hover { background: rgba(255,255,255,.16); }
-    .row { display:flex; gap:8px; align-items:center; }
-    .row button { flex: 1; }
-    .hint { margin-top: 8px; opacity: .65; line-height: 1.4; }
+    .ui button:hover{ background:rgba(255,255,255,.16); }
+    .row{ display:flex; gap:8px; align-items:center; }
+    .row button{ flex:1; }
+    .hint{ margin-top:8px; opacity:.65; line-height:1.4; }
   </style>
-
   <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
 </head>
 
 <body>
 <script>
-  // ===================== 重要：字体路径 =====================
-  // 你需要把字体上传到仓库：assets/fonts/font.ttf
-  // 然后把这里改成真实文件名：
+  // ===================== 只改这里：字体路径 =====================
+  // 例：你上传的是 assets/fonts/ABCFavorit.ttf
+  // 就写：const FONT_PATH = "assets/fonts/ABCFavorit.ttf";
   const FONT_PATH = "assets/fonts/font.ttf";
 
-  // ===================== 画布/布局 =====================
-  const CANVAS_W = 1440;
-  const CANVAS_H = 900;
+  const CANVAS_W = 1440, CANVAS_H = 900;
+  let cw = 240;
 
-  let cw = 240; // 左侧面板宽度
+  // 字体加载状态（关键：不再用 preload，避免卡死）
   let fontObj = null;
-  let fontLoaded = false;
+  let fontState = "loading"; // loading | ok | fail
+  let fontErrorMsg = "";
 
-  // ===================== 生成器参数（对应你 Processing 的逻辑） =====================
+  // 参数
   let maxAmp = 50;
   let t = 0;
-
   let strokeW = 2;
   let amplitude = 10;
   let frequency = 1;
   let phase = 0;
-
   let isAnimating = true;
   let animationSpeed = 0.02;
 
-  const functionNames = ["Sin", "Square", "Triangle", "Sawtooth"];
+  const functionNames = ["Sin","Square","Triangle","Sawtooth"];
   let currentFunction = 0;
 
-  // 文字参数
   let typedText = "A";
-  let fontSize = 520;          // 字号
-  let sampleFactor = 0.12;     // 点密度（越大越细腻但更慢）
-  let simplifyThreshold = 0;   // 简化阈值（一般 0）
+  let fontSize = 520;
+  let sampleFactor = 0.12;
+  let simplifyThreshold = 0;
 
-  // Seed
   let seed = 12345;
 
-  // ===================== 颜色（HSV 面板） =====================
-  let hueVal = 220;
-  let satVal = 100;
-  let briVal = 80;
+  // HSV 颜色面板
+  let hueVal = 220, satVal = 100, briVal = 80;
   let currentColor;
 
   const COLOR_PANEL_H = 170;
   const COLOR_BG = { x: 10, y: 10, w: cw - 20, h: COLOR_PANEL_H };
   const HUE_BAR = { x: 10 + (cw - 20) - 20, y: 10, w: 20, h: COLOR_PANEL_H };
   const SB_PANEL = { x: 10, y: 10, w: (cw - 20) - 26, h: COLOR_PANEL_H };
-
   let sbGraphic, hueGraphic;
 
-  // ===================== UI（DOM 控件） =====================
+  // UI
   let uiWrap, inputText, selectPreset, inputSeed, btnRandom, btnApplySeed, btnSave, btnToggle, btnReset;
   let selectFunc;
 
-  // ===================== 点缓存（避免每帧重算 textToPoints） =====================
+  // 点缓存
   let rawPoints = [];
   let glyphCenter = { x: 0, y: 0 };
   let lastCacheKey = "";
 
-  function preload() {
-    fontObj = loadFont(
-      FONT_PATH,
-      () => { fontLoaded = true; },
-      () => { fontLoaded = false; }
-    );
-  }
-
-  function setup() {
-    createCanvas(CANVAS_W, CANVAS_H);
-    pixelDensity(1);
-
-    currentColor = color("#482BCC");
-    buildHueGraphic();
-    buildSBGraphic();
-    updateCurrentColorFromHSV(false);
-
-    buildDOMUI();
-    applyPreset("Clean Wave");
-
-    rebuildPointsCache(true);
-  }
-
-  function draw() {
-    background(240);
-
-    // 网格（右侧区域）
-    drawGrid();
-
-    // 画字（如果字体没加载成功就提示）
-    if (!fontLoaded || !fontObj) {
-      drawLeftPanel();
-      drawColorPanel();
-      drawNoFontHint();
-      return;
-    }
-
-    // 更新参数（从 DOM 控件读取）
-    typedText = inputText.value() || "";
-    seed = parseInt(inputSeed.value() || "0", 10) || 0;
-
-    // 当文字/字号/采样变化 -> 重算点
-    rebuildPointsCache(false);
-
-    // 动画推进
-    if (isAnimating) t += animationSpeed;
-
-    // 绘制扰动后的字形（点序列用“断裂阈值”拆段，避免轮廓互相连线）
-    drawDistortedGlyph();
-
-    // 左侧面板
-    drawLeftPanel();
-    drawColorPanel();
-
-    // 右下角函数预览
-    drawFunctionDisplay();
-  }
-
-  // ===================== 左侧面板背景 =====================
-  function drawLeftPanel() {
-    noStroke();
-    fill(31, 30, 36);
-    rect(0, 0, cw, height);
-
-    // 顶部标题
-    fill(255);
-    textSize(14);
-    textAlign(LEFT, TOP);
-    text("Font Path Method (Generator)", 14, COLOR_BG.y + COLOR_BG.h + 12);
-  }
-
-  function drawNoFontHint() {
-    push();
-    fill(31, 30, 36);
-    rect(0, 0, cw, height);
-
-    fill(255);
-    textAlign(LEFT, TOP);
-    textSize(14);
-    text("字体未加载成功", 14, 220);
-
-    textSize(12);
-    fill(230);
-    text(
-      "你需要把字体文件上传到：\nassets/fonts/\n\n然后修改 path.html 中：\nconst FONT_PATH = \"assets/fonts/xxx.ttf\";\n\n刷新页面即可。",
-      14, 250
-    );
-    pop();
-  }
-
-  // ===================== 网格 =====================
-  function drawGrid() {
-    const step = 25;
-    stroke(220);
-    strokeWeight(1);
-
-    for (let x = cw; x <= width; x += step) line(x, 0, x, height);
-    for (let y = 0; y <= height; y += step) line(cw, y, width, y);
-  }
-
-  // ===================== 文字 -> 点缓存 =====================
-  function rebuildPointsCache(force) {
-    const key = [
-      typedText,
-      fontSize.toFixed(2),
-      sampleFactor.toFixed(3),
-      simplifyThreshold.toFixed(3),
-      // 频率/相位不会影响点本身，但你可以选择不放
-    ].join("|");
-
-    if (!force && key === lastCacheKey) return;
-    lastCacheKey = key;
-
-    if (!typedText) {
-      rawPoints = [];
-      return;
-    }
-
-    // 计算 bounds 用来居中
-    const bounds = fontObj.textBounds(typedText, 0, 0, fontSize);
-    const gx = cw + (width - cw) / 2 - bounds.w / 2 - bounds.x;
-    const gy = height / 2 + bounds.h / 2 - bounds.y;
-
-    rawPoints = fontObj.textToPoints(typedText, gx, gy, fontSize, {
-      sampleFactor,
-      simplifyThreshold
-    });
-
-    // 计算中心点（用于“以中心为方向”的扰动）
-    let sx = 0, sy = 0;
-    for (const p of rawPoints) { sx += p.x; sy += p.y; }
-    if (rawPoints.length > 0) {
-      glyphCenter.x = sx / rawPoints.length;
-      glyphCenter.y = sy / rawPoints.length;
-    } else {
-      glyphCenter.x = cw + (width - cw) / 2;
-      glyphCenter.y = height / 2;
-    }
-  }
-
-  // ===================== 扰动绘制（核心） =====================
-  function drawDistortedGlyph() {
-    if (rawPoints.length === 0) return;
-
-    stroke(currentColor);
-    strokeWeight(strokeW);
-    noFill();
-
-    // 断裂阈值：用于切分多个轮廓（避免连接错误）
-    const breakDist = max(8, fontSize * 0.05);
-
-    let started = false;
-    let prev = null;
-
-    // 你想要的函数扰动：对每个点做位移
-    // 方向：点相对 glyphCenter 的“径向方向”
-    // 强度：applyFunction(...) * amplitude
-    for (let i = 0; i < rawPoints.length; i++) {
-      const p = rawPoints[i];
-
-      if (prev && dist(prev.x, prev.y, p.x, p.y) > breakDist) {
-        if (started) endShape();
-        started = false;
-        prev = null;
-      }
-
-      const vdx = p.x - glyphCenter.x;
-      const vdy = p.y - glyphCenter.y;
-      const vlen = max(1e-6, sqrt(vdx*vdx + vdy*vdy));
-      const nx = vdx / vlen;
-      const ny = vdy / vlen;
-
-      // 这里的“输入变量”用点的位置 + 时间（你也可以改成更艺术的）
-      const input = frequency * (p.x * 0.01 + p.y * 0.01) + phase + t;
-      const off = applyFunction(input) * amplitude;
-
-      const dx = nx * off;
-      const dy = ny * off;
-
-      if (!started) {
-        beginShape();
-        started = true;
-      }
-
-      // curveVertex 对 Sin / Triangle 更顺滑
-      if (currentFunction === 0 || currentFunction === 2) {
-        curveVertex(p.x + dx, p.y + dy);
-      } else {
-        vertex(p.x + dx, p.y + dy);
-      }
-
-      prev = p;
-    }
-    if (started) endShape();
-  }
-
-  function applyFunction(tt) {
-    switch (currentFunction) {
-      case 0: return sin(tt);
-      case 1: return (tt % TWO_PI < PI) ? 1 : -1;
-      case 2: return asin(sin(tt)) * 2 / PI;
-      case 3: return (tt % TWO_PI) / PI - 1;
-      default: return sin(tt);
-    }
-  }
-
-  // ===================== 右下角函数预览 =====================
-  function drawFunctionDisplay() {
-    const displayWidth = 250;
-    const displayHeight = 250;
-    const margin = 50;
-
-    push();
-    stroke(0);
-    strokeWeight(3);
-    translate(width - displayWidth / 2 - margin, height - displayHeight / 2 - margin);
-
-    line(-displayWidth / 2, 0, displayWidth / 2, 0);
-    line(0, -displayHeight / 2, 0, displayHeight / 2);
-
-    fill(0);
-    noStroke();
-    triangle(-5, -displayHeight / 2, 5, -displayHeight / 2, 0, -displayHeight / 2 - 15);
-    triangle(displayWidth / 2 + 15, 0, displayWidth / 2, -5, displayWidth / 2, 5);
-
-    fill(0);
-    textSize(15);
-    textAlign(LEFT, TOP);
-    text("y", 10, -displayHeight / 2 + 8);
-    textAlign(LEFT, CENTER);
-    text("x", displayWidth / 2 - 10, 18);
-
-    textAlign(CENTER, BOTTOM);
-    textSize(18);
-    text(functionNames[currentFunction] + " Function", 0, -displayHeight / 2 - 18);
-    pop();
-
-    const picCol = color(140);
-    stroke(picCol);
-    noFill();
-    strokeWeight(3);
-
-    beginShape();
-    for (let x = 0; x < displayWidth; x += 2) {
-      const amp = map(amplitude, 0, maxAmp, 0, displayHeight / 2);
-      const y = applyFunction(frequency * x * 0.02 + phase + t) * amp;
-      vertex(width - displayWidth - margin + x, height - displayHeight / 2 - margin - y);
-    }
-    endShape();
-  }
-
-  // ===================== Presets + Randomize(Seed) =====================
   const PRESETS = {
     "Clean Wave":   { func:0, strokeW:2.5, amp:18, freq:1.1, phase:0.0, speed:0.02,  size:520, sf:0.12 },
     "Electric":     { func:1, strokeW:2.0, amp:14, freq:3.2, phase:0.0, speed:0.035, size:520, sf:0.11 },
@@ -365,263 +94,410 @@
     "Shiver":       { func:3, strokeW:2.2, amp:26, freq:2.3, phase:1.0, speed:0.04,  size:520, sf:0.12 }
   };
 
-  function applyPreset(name) {
-    const p = PRESETS[name];
-    if (!p) return;
+  function setup() {
+    createCanvas(CANVAS_W, CANVAS_H);
+    pixelDensity(1);
 
+    buildHueGraphic();
+    buildSBGraphic();
+    updateCurrentColorFromHSV(true);
+
+    buildDOMUI();
+    applyPreset("Clean Wave");
+
+    // ✅ 关键：异步加载字体，不阻塞页面
+    tryLoadFont();
+  }
+
+  function tryLoadFont(){
+    fontState = "loading";
+    fontErrorMsg = "";
+    fontObj = loadFont(
+      FONT_PATH,
+      () => { fontState = "ok"; rebuildPointsCache(true); },
+      (err) => {
+        fontState = "fail";
+        fontErrorMsg = String(err || "");
+      }
+    );
+  }
+
+  function draw() {
+    background(240);
+    drawGrid();
+    drawLeftPanel();
+    drawColorPanel();
+    drawFunctionDisplay();
+
+    // UI 同步
+    typedText = inputText.value() || "";
+    seed = parseInt(inputSeed.value() || "0", 10) || 0;
+
+    if (fontState === "loading") {
+      drawFontStatus("Loading font…");
+      return;
+    }
+    if (fontState === "fail" || !fontObj) {
+      drawFontStatus(
+        "Font load FAILED\n\n请检查：\n1) 字体 URL 是否能打开\n2) 字体是否为可变字体(Variable)\n\nFONT_PATH:\n" + FONT_PATH
+      );
+      return;
+    }
+
+    // 正常绘制
+    if (isAnimating) t += animationSpeed;
+    rebuildPointsCache(false);
+    drawDistortedGlyph();
+  }
+
+  function drawFontStatus(msg){
+    push();
+    // 提示区域（右侧）
+    fill(0, 0, 0, 60);
+    noStroke();
+    rect(cw+40, 60, width - cw - 80, 220, 18);
+
+    fill(255);
+    textAlign(LEFT, TOP);
+    textSize(16);
+    text(msg, cw+70, 90);
+
+    textSize(12);
+    fill(230);
+    text("如果你能在浏览器直接打开：\nhttps://paper-grid-drawing.vercel.app/" + FONT_PATH + "\n但仍失败，基本就是 Variable Font 兼容问题。\n建议换成普通 TTF/OTF（非 Variable）。",
+         cw+70, 170);
+    pop();
+  }
+
+  // ======= 左面板 =======
+  function drawLeftPanel(){
+    noStroke();
+    fill(31,30,36);
+    rect(0,0,cw,height);
+
+    fill(255);
+    textSize(14);
+    textAlign(LEFT,TOP);
+    text("Font Path Method (Generator)", 14, COLOR_BG.y + COLOR_BG.h + 12);
+  }
+
+  // ======= 网格 =======
+  function drawGrid(){
+    const step = 25;
+    stroke(220); strokeWeight(1);
+    for(let x=cw;x<=width;x+=step) line(x,0,x,height);
+    for(let y=0;y<=height;y+=step) line(cw,y,width,y);
+  }
+
+  // ======= 文字转点缓存 =======
+  function rebuildPointsCache(force){
+    const key = [typedText, fontSize.toFixed(2), sampleFactor.toFixed(3), simplifyThreshold.toFixed(3)].join("|");
+    if(!force && key === lastCacheKey) return;
+    lastCacheKey = key;
+
+    if(!typedText){ rawPoints=[]; return; }
+
+    const bounds = fontObj.textBounds(typedText, 0, 0, fontSize);
+    const gx = cw + (width - cw)/2 - bounds.w/2 - bounds.x;
+    const gy = height/2 + bounds.h/2 - bounds.y;
+
+    rawPoints = fontObj.textToPoints(typedText, gx, gy, fontSize, {
+      sampleFactor, simplifyThreshold
+    });
+
+    let sx=0, sy=0;
+    for(const p of rawPoints){ sx+=p.x; sy+=p.y; }
+    if(rawPoints.length){
+      glyphCenter.x = sx/rawPoints.length;
+      glyphCenter.y = sy/rawPoints.length;
+    }else{
+      glyphCenter.x = cw + (width - cw)/2;
+      glyphCenter.y = height/2;
+    }
+  }
+
+  // ======= 扰动绘制 =======
+  function drawDistortedGlyph(){
+    if(!rawPoints.length) return;
+
+    stroke(currentColor);
+    strokeWeight(strokeW);
+    noFill();
+
+    const breakDist = max(8, fontSize * 0.05);
+    let started=false;
+    let prev=null;
+
+    for(let i=0;i<rawPoints.length;i++){
+      const p = rawPoints[i];
+
+      if(prev && dist(prev.x,prev.y,p.x,p.y) > breakDist){
+        if(started) endShape();
+        started=false;
+        prev=null;
+      }
+
+      const vdx = p.x - glyphCenter.x;
+      const vdy = p.y - glyphCenter.y;
+      const vlen = max(1e-6, sqrt(vdx*vdx + vdy*vdy));
+      const nx = vdx / vlen;
+      const ny = vdy / vlen;
+
+      const input = frequency * (p.x*0.01 + p.y*0.01) + phase + t;
+      const off = applyFunction(input) * amplitude;
+
+      const dx = nx * off;
+      const dy = ny * off;
+
+      if(!started){ beginShape(); started=true; }
+
+      if(currentFunction===0 || currentFunction===2) curveVertex(p.x+dx, p.y+dy);
+      else vertex(p.x+dx, p.y+dy);
+
+      prev=p;
+    }
+    if(started) endShape();
+  }
+
+  function applyFunction(tt){
+    switch(currentFunction){
+      case 0: return sin(tt);
+      case 1: return (tt % TWO_PI < PI) ? 1 : -1;
+      case 2: return asin(sin(tt)) * 2 / PI;
+      case 3: return (tt % TWO_PI) / PI - 1;
+      default:return sin(tt);
+    }
+  }
+
+  // ======= 右下角函数预览 =======
+  function drawFunctionDisplay(){
+    const displayWidth=250, displayHeight=250, margin=50;
+
+    push();
+    stroke(0); strokeWeight(3);
+    translate(width-displayWidth/2-margin, height-displayHeight/2-margin);
+    line(-displayWidth/2,0,displayWidth/2,0);
+    line(0,-displayHeight/2,0,displayHeight/2);
+
+    fill(0); noStroke();
+    triangle(-5,-displayHeight/2, 5,-displayHeight/2, 0,-displayHeight/2-15);
+    triangle(displayWidth/2+15,0, displayWidth/2,-5, displayWidth/2,5);
+
+    fill(0); textSize(15);
+    textAlign(LEFT,TOP); text("y",10,-displayHeight/2+8);
+    textAlign(LEFT,CENTER); text("x",displayWidth/2-10,18);
+
+    textAlign(CENTER,BOTTOM);
+    textSize(18);
+    text(functionNames[currentFunction] + " Function", 0, -displayHeight/2-18);
+    pop();
+
+    stroke(color(140));
+    noFill();
+    strokeWeight(3);
+    beginShape();
+    for(let x=0;x<displayWidth;x+=2){
+      const amp = map(amplitude,0,maxAmp,0,displayHeight/2);
+      const y = applyFunction(frequency*x*0.02 + phase + t) * amp;
+      vertex(width-displayWidth-margin+x, height-displayHeight/2-margin-y);
+    }
+    endShape();
+  }
+
+  // ======= Preset / Randomize =======
+  function applyPreset(name){
+    const p = PRESETS[name];
+    if(!p) return;
     currentFunction = p.func;
     strokeW = p.strokeW;
     amplitude = p.amp;
     frequency = p.freq;
     phase = p.phase;
     animationSpeed = p.speed;
-
     fontSize = p.size;
     sampleFactor = p.sf;
-
-    // 同步 UI 显示
     selectFunc.value(functionNames[currentFunction]);
     rebuildPointsCache(true);
   }
 
-  function randomizeFromSeed() {
-    // 可复现：同一个 seed 会得到同一组参数
+  function randomizeFromSeed(){
     randomSeed(seed);
-
-    currentFunction = floor(random(0, 4));
-    strokeW = random(1.2, 10.0);
-    amplitude = random(0, maxAmp);
-    frequency = random(0.3, 4.8);
-    phase = random(0, TWO_PI);
-    animationSpeed = random(0.0, 0.06);
-
-    fontSize = random(360, 640);
-    sampleFactor = random(0.08, 0.16);
-
+    currentFunction = floor(random(0,4));
+    strokeW = random(1.2,10.0);
+    amplitude = random(0,maxAmp);
+    frequency = random(0.3,4.8);
+    phase = random(0,TWO_PI);
+    animationSpeed = random(0.0,0.06);
+    fontSize = random(360,640);
+    sampleFactor = random(0.08,0.16);
     selectFunc.value(functionNames[currentFunction]);
     rebuildPointsCache(true);
   }
 
-  // ===================== DOM UI 构建 =====================
-  function buildDOMUI() {
-    uiWrap = createDiv();
-    uiWrap.addClass("ui");
-    uiWrap.position(12, 230);
-    uiWrap.style("width", (cw - 24) + "px");
+  // ======= DOM UI =======
+  function buildDOMUI(){
+    uiWrap = createDiv(); uiWrap.addClass("ui");
+    uiWrap.position(12,230);
+    uiWrap.style("width",(cw-24)+"px");
 
-    // Text input
-    uiWrap.child(createLabel("Text (输入字符/字符串)"));
-    inputText = createInput("A");
-    inputText.parent(uiWrap);
+    uiWrap.child(createElement("label","Text (输入字符/字符串)"));
+    inputText = createInput("A"); inputText.parent(uiWrap);
 
-    // Function
-    uiWrap.child(createLabel("Function"));
+    uiWrap.child(createElement("label","Function"));
     selectFunc = createSelect();
-    for (const n of functionNames) selectFunc.option(n);
+    functionNames.forEach(n=>selectFunc.option(n));
     selectFunc.parent(uiWrap);
-    selectFunc.changed(() => {
-      const v = selectFunc.value();
-      currentFunction = functionNames.indexOf(v);
-    });
+    selectFunc.changed(()=> currentFunction = functionNames.indexOf(selectFunc.value()));
 
-    // Presets
-    uiWrap.child(createLabel("Presets"));
+    uiWrap.child(createElement("label","Presets"));
     selectPreset = createSelect();
-    Object.keys(PRESETS).forEach(k => selectPreset.option(k));
+    Object.keys(PRESETS).forEach(k=>selectPreset.option(k));
     selectPreset.parent(uiWrap);
-    selectPreset.changed(() => applyPreset(selectPreset.value()));
+    selectPreset.changed(()=> applyPreset(selectPreset.value()));
 
-    // Seed + randomize
-    uiWrap.child(createLabel("Seed (可复现)"));
-    inputSeed = createInput("12345");
-    inputSeed.parent(uiWrap);
+    uiWrap.child(createElement("label","Seed (可复现)"));
+    inputSeed = createInput("12345"); inputSeed.parent(uiWrap);
 
-    const row1 = createDiv();
-    row1.addClass("row");
-    row1.parent(uiWrap);
+    const row1 = createDiv(); row1.addClass("row"); row1.parent(uiWrap);
+    btnApplySeed = createButton("Apply"); btnApplySeed.parent(row1);
+    btnApplySeed.mousePressed(()=>{ seed=parseInt(inputSeed.value()||"0",10)||0; randomizeFromSeed(); });
 
-    btnApplySeed = createButton("Apply");
-    btnApplySeed.parent(row1);
-    btnApplySeed.mousePressed(() => {
-      seed = parseInt(inputSeed.value() || "0", 10) || 0;
-      randomizeFromSeed();
-    });
-
-    btnRandom = createButton("Randomize");
-    btnRandom.parent(row1);
-    btnRandom.mousePressed(() => {
-      // 给一个新 seed，确保每次都不同，但仍可复现
-      seed = floor(random(1, 99999999));
+    btnRandom = createButton("Randomize"); btnRandom.parent(row1);
+    btnRandom.mousePressed(()=>{
+      seed = floor(random(1,99999999));
       inputSeed.value(String(seed));
       randomizeFromSeed();
     });
 
-    // 操作按钮
-    uiWrap.child(createLabel("Actions"));
-    const row2 = createDiv();
-    row2.addClass("row");
-    row2.parent(uiWrap);
+    uiWrap.child(createElement("label","Actions"));
+    const row2=createDiv(); row2.addClass("row"); row2.parent(uiWrap);
 
-    btnSave = createButton("Save PNG");
-    btnSave.parent(row2);
-    btnSave.mousePressed(() => saveCanvas("FontPath", "png"));
+    btnSave=createButton("Save PNG"); btnSave.parent(row2);
+    btnSave.mousePressed(()=> saveCanvas("FontPath","png"));
 
-    btnToggle = createButton("Animate");
-    btnToggle.parent(row2);
-    btnToggle.mousePressed(() => { isAnimating = !isAnimating; });
+    btnToggle=createButton("Animate"); btnToggle.parent(row2);
+    btnToggle.mousePressed(()=> isAnimating=!isAnimating);
 
-    const row3 = createDiv();
-    row3.addClass("row");
-    row3.parent(uiWrap);
+    const row3=createDiv(); row3.addClass("row"); row3.parent(uiWrap);
+    btnReset=createButton("Reset"); btnReset.parent(row3);
+    btnReset.mousePressed(()=> resetToDefaults());
 
-    btnReset = createButton("Reset");
-    btnReset.parent(row3);
-    btnReset.mousePressed(() => resetToDefaults());
-
-    const hint = createDiv(
+    const hint=createDiv(
       `<div class="hint">
-        Tips：<br/>
-        - 先确保字体上传到 <b>assets/fonts/</b><br/>
-        - 线条锯齿可调大 strokeW 或提高 sampleFactor<br/>
-        - 想更细腻：sampleFactor ↑（但会更慢）
+        如果一直显示 Loading：<br/>
+        1) 打开 <b>https://paper-grid-drawing.vercel.app/${FONT_PATH}</b> 看是否 404<br/>
+        2) 若能打开仍失败，多半是 <b>Variable Font</b>，换普通 TTF/OTF
       </div>`
     );
     hint.parent(uiWrap);
   }
 
-  function createLabel(text) {
-    const l = createElement("label", text);
-    return l;
-  }
-
-  function resetToDefaults() {
-    // 回到一个稳定好看的 preset
+  function resetToDefaults(){
     inputText.value("A");
     inputSeed.value("12345");
-    seed = 12345;
-
-    hueVal = 220; satVal = 100; briVal = 80;
+    seed=12345;
+    hueVal=220; satVal=100; briVal=80;
     updateCurrentColorFromHSV(true);
-
     selectPreset.value("Clean Wave");
     applyPreset("Clean Wave");
-
-    isAnimating = true;
-    t = 0;
-
+    isAnimating=true;
+    t=0;
     rebuildPointsCache(true);
+    // 重新尝试加载字体（如果你刚改了 FONT_PATH）
+    tryLoadFont();
   }
 
-  // ===================== 颜色面板 =====================
-  function buildHueGraphic() {
-    hueGraphic = createGraphics(HUE_BAR.w, HUE_BAR.h);
-    hueGraphic.colorMode(HSB, 360, 100, 100);
+  // ======= 颜色面板 =======
+  function buildHueGraphic(){
+    hueGraphic = createGraphics(HUE_BAR.w,HUE_BAR.h);
+    hueGraphic.colorMode(HSB,360,100,100);
     hueGraphic.noStroke();
     hueGraphic.loadPixels();
-    for (let y = 0; y < HUE_BAR.h; y++) {
-      const h = map(y, 0, HUE_BAR.h - 1, 0, 360);
-      const c = hueGraphic.color(h, 100, 100);
-      for (let x = 0; x < HUE_BAR.w; x++) {
-        const idx = (y * HUE_BAR.w + x) * 4;
-        hueGraphic.pixels[idx] = red(c);
-        hueGraphic.pixels[idx + 1] = green(c);
-        hueGraphic.pixels[idx + 2] = blue(c);
-        hueGraphic.pixels[idx + 3] = 255;
+    for(let y=0;y<HUE_BAR.h;y++){
+      const h = map(y,0,HUE_BAR.h-1,0,360);
+      const c = hueGraphic.color(h,100,100);
+      for(let x=0;x<HUE_BAR.w;x++){
+        const idx=(y*HUE_BAR.w+x)*4;
+        hueGraphic.pixels[idx]=red(c);
+        hueGraphic.pixels[idx+1]=green(c);
+        hueGraphic.pixels[idx+2]=blue(c);
+        hueGraphic.pixels[idx+3]=255;
       }
     }
     hueGraphic.updatePixels();
   }
 
-  function buildSBGraphic() {
-    sbGraphic = createGraphics(SB_PANEL.w, SB_PANEL.h);
-    sbGraphic.colorMode(HSB, 360, 100, 100);
+  function buildSBGraphic(){
+    sbGraphic = createGraphics(SB_PANEL.w,SB_PANEL.h);
+    sbGraphic.colorMode(HSB,360,100,100);
     sbGraphic.noStroke();
     sbGraphic.loadPixels();
-    for (let y = 0; y < SB_PANEL.h; y++) {
-      for (let x = 0; x < SB_PANEL.w; x++) {
-        const s = map(x, 0, SB_PANEL.w - 1, 0, 100);
-        const b = map(y, 0, SB_PANEL.h - 1, 100, 0);
-        const c = sbGraphic.color(hueVal, s, b);
-        const idx = (y * SB_PANEL.w + x) * 4;
-        sbGraphic.pixels[idx] = red(c);
-        sbGraphic.pixels[idx + 1] = green(c);
-        sbGraphic.pixels[idx + 2] = blue(c);
-        sbGraphic.pixels[idx + 3] = 255;
+    for(let y=0;y<SB_PANEL.h;y++){
+      for(let x=0;x<SB_PANEL.w;x++){
+        const s=map(x,0,SB_PANEL.w-1,0,100);
+        const b=map(y,0,SB_PANEL.h-1,100,0);
+        const c=sbGraphic.color(hueVal,s,b);
+        const idx=(y*SB_PANEL.w+x)*4;
+        sbGraphic.pixels[idx]=red(c);
+        sbGraphic.pixels[idx+1]=green(c);
+        sbGraphic.pixels[idx+2]=blue(c);
+        sbGraphic.pixels[idx+3]=255;
       }
     }
     sbGraphic.updatePixels();
   }
 
-  function updateCurrentColorFromHSV(rebuildSB) {
-    push();
-    colorMode(HSB, 360, 100, 100);
-    currentColor = color(hueVal, satVal, briVal);
+  function updateCurrentColorFromHSV(rebuildSB){
+    push(); colorMode(HSB,360,100,100);
+    currentColor = color(hueVal,satVal,briVal);
     pop();
-    if (rebuildSB) buildSBGraphic();
+    if(rebuildSB) buildSBGraphic();
   }
 
-  function drawColorPanel() {
+  function drawColorPanel(){
     noStroke();
     fill(40);
-    rect(COLOR_BG.x - 2, COLOR_BG.y - 2, COLOR_BG.w + 4, COLOR_BG.h + 4, 14);
+    rect(COLOR_BG.x-2,COLOR_BG.y-2,COLOR_BG.w+4,COLOR_BG.h+4,14);
 
     imageMode(CORNER);
     image(sbGraphic, SB_PANEL.x, SB_PANEL.y);
     image(hueGraphic, HUE_BAR.x, HUE_BAR.y);
 
-    // SB 游标
-    const sx = map(satVal, 0, 100, SB_PANEL.x, SB_PANEL.x + SB_PANEL.w);
-    const sy = map(briVal, 100, 0, SB_PANEL.y, SB_PANEL.y + SB_PANEL.h);
-    stroke(255);
-    strokeWeight(2);
-    noFill();
-    circle(sx, sy, 12);
+    const sx = map(satVal,0,100,SB_PANEL.x,SB_PANEL.x+SB_PANEL.w);
+    const sy = map(briVal,100,0,SB_PANEL.y,SB_PANEL.y+SB_PANEL.h);
+    stroke(255); strokeWeight(2); noFill();
+    circle(sx,sy,12);
 
-    // Hue 游标
-    const hy = map(hueVal, 0, 360, HUE_BAR.y, HUE_BAR.y + HUE_BAR.h);
-    stroke(255);
-    strokeWeight(2);
-    line(HUE_BAR.x - 4, hy, HUE_BAR.x, hy);
-    line(HUE_BAR.x + HUE_BAR.w, hy, HUE_BAR.x + HUE_BAR.w + 4, hy);
+    const hy = map(hueVal,0,360,HUE_BAR.y,HUE_BAR.y+HUE_BAR.h);
+    line(HUE_BAR.x-4,hy,HUE_BAR.x,hy);
+    line(HUE_BAR.x+HUE_BAR.w,hy,HUE_BAR.x+HUE_BAR.w+4,hy);
 
-    // 当前色块
     noStroke();
     fill(currentColor);
     rect(10, COLOR_BG.y + COLOR_BG.h + 12, cw - 20, 26, 10);
   }
 
-  function handleColorClick() {
-    // SB
-    if (mouseX >= SB_PANEL.x && mouseX <= SB_PANEL.x + SB_PANEL.w &&
-        mouseY >= SB_PANEL.y && mouseY <= SB_PANEL.y + SB_PANEL.h) {
-
-      const sx = constrain(mouseX, SB_PANEL.x, SB_PANEL.x + SB_PANEL.w);
-      const sy = constrain(mouseY, SB_PANEL.y, SB_PANEL.y + SB_PANEL.h);
-
-      satVal = map(sx, SB_PANEL.x, SB_PANEL.x + SB_PANEL.w, 0, 100);
-      briVal = map(sy, SB_PANEL.y, SB_PANEL.y + SB_PANEL.h, 100, 0);
-
+  function handleColorClick(){
+    if(mouseX>=SB_PANEL.x && mouseX<=SB_PANEL.x+SB_PANEL.w &&
+       mouseY>=SB_PANEL.y && mouseY<=SB_PANEL.y+SB_PANEL.h){
+      const sx=constrain(mouseX,SB_PANEL.x,SB_PANEL.x+SB_PANEL.w);
+      const sy=constrain(mouseY,SB_PANEL.y,SB_PANEL.y+SB_PANEL.h);
+      satVal = map(sx,SB_PANEL.x,SB_PANEL.x+SB_PANEL.w,0,100);
+      briVal = map(sy,SB_PANEL.y,SB_PANEL.y+SB_PANEL.h,100,0);
       updateCurrentColorFromHSV(false);
       return true;
     }
-
-    // Hue
-    if (mouseX >= HUE_BAR.x && mouseX <= HUE_BAR.x + HUE_BAR.w &&
-        mouseY >= HUE_BAR.y && mouseY <= HUE_BAR.y + HUE_BAR.h) {
-
-      const hy = constrain(mouseY, HUE_BAR.y, HUE_BAR.y + HUE_BAR.h);
-      hueVal = map(hy, HUE_BAR.y, HUE_BAR.y + HUE_BAR.h, 0, 360);
-
+    if(mouseX>=HUE_BAR.x && mouseX<=HUE_BAR.x+HUE_BAR.w &&
+       mouseY>=HUE_BAR.y && mouseY<=HUE_BAR.y+HUE_BAR.h){
+      const hy=constrain(mouseY,HUE_BAR.y,HUE_BAR.y+HUE_BAR.h);
+      hueVal = map(hy,HUE_BAR.y,HUE_BAR.y+HUE_BAR.h,0,360);
       updateCurrentColorFromHSV(true);
       return true;
     }
     return false;
   }
 
-  function mousePressed() {
-    // 点击颜色面板
-    handleColorClick();
-  }
+  function mousePressed(){ handleColorClick(); }
 </script>
 </body>
 </html>
