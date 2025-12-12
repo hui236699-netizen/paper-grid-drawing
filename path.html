@@ -3,278 +3,634 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Font Path Method</title>
-
+  <title>Font Path Method - Processing Port</title>
   <style>
-    html, body { margin:0; padding:0; background:#0b0b0e; overflow:hidden; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; }
-    #hud{
-      position:fixed; left:18px; top:18px; width:280px; z-index:10;
-      color:#eaeaf2; font-size:14px; line-height:1.2;
-      background:rgba(20,20,26,.55);
-      border:1px solid rgba(255,255,255,.08);
-      border-radius:16px;
-      padding:14px 14px 12px;
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
-      box-shadow: 0 16px 60px rgba(0,0,0,.35);
-    }
-    #hud h3{ margin:0 0 10px; font-size:15px; font-weight:700; opacity:.95; }
-    #hud label{ display:block; margin:10px 0 6px; opacity:.9; }
-    #hud input, #hud select{
-      width:100%; box-sizing:border-box;
-      background:rgba(255,255,255,.06);
-      border:1px solid rgba(255,255,255,.10);
-      color:#fff; border-radius:10px;
-      padding:10px 10px;
-      outline:none;
-    }
-    #hud input:focus, #hud select:focus{ border-color: rgba(157,124,255,.55); }
-    .row{ display:flex; gap:10px; margin-top:10px; }
-    .btn{
-      flex:1; cursor:pointer;
-      border-radius:999px;
-      padding:10px 12px;
-      border:1px solid rgba(255,255,255,.10);
-      background:rgba(255,255,255,.08);
-      color:#fff; font-weight:600;
-      transition: transform .12s ease, background .12s ease;
-      user-select:none;
-    }
-    .btn:hover{ transform: translateY(-1px); background:rgba(255,255,255,.12); }
-    .btn.primary{ background: rgba(157,124,255,.22); border-color: rgba(157,124,255,.45); }
-    .btn.primary:hover{ background: rgba(157,124,255,.28); }
-    #msg{ margin-top:10px; font-size:12px; opacity:.85; white-space:pre-line; }
-    #canvasWrap{ position:fixed; inset:0; }
+    html, body { margin:0; padding:0; background:#0f1013; overflow:hidden; }
+    canvas { display:block; margin:0 auto; }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
 </head>
-
 <body>
-  <div id="canvasWrap"></div>
+<script>
+/* ===========================
+   Processing Port (p5.js)
+   =========================== */
 
-  <div id="hud">
-    <h3>Font Path Method</h3>
+// ---- 固定画布 ----
+const CANVAS_W = 1440;
+const CANVAS_H = 900;
 
-    <label>Text（输入字母/字符串）</label>
-    <input id="textInput" value="A" maxlength="20"/>
+// ---- 左侧面板 ----
+let cw = 200;
+let ch = 0;
 
-    <label>Function</label>
-    <select id="fnSelect">
-      <option value="sin">Sin</option>
-      <option value="square">Square</option>
-      <option value="tri">Triangle</option>
-      <option value="saw">Sawtooth</option>
-    </select>
+// ---- 参数（对应 Processing 全局变量） ----
+let maxAmp = 50;
+let t = 0;
+let scaleVal = 1.0;
+let strokeW = 2;
+let amplitude = 10;
+let frequency = 1;
+let phase = 0;
+let isAnimating = true;
+let animationSpeed = 0.02;
 
-    <label>Seed（可复现）</label>
-    <input id="seedInput" value="12345" />
+let currentFunction = 0;
+const functionNames = ["Sin", "Square", "Triangle", "Sawtooth"];
 
-    <div class="row">
-      <button class="btn" id="applyBtn">Apply</button>
-      <button class="btn" id="randBtn">Randomize</button>
-    </div>
+let currentColor; // p5.Color
 
-    <div class="row">
-      <button class="btn" id="saveBtn">Save PNG</button>
-      <button class="btn primary" id="animBtn">Animate</button>
-    </div>
+// ---- 字体（可失败 fallback） ----
+const FONT_PATH = "assets/fonts/ABCFavoritHebrewBoldVariable-Trial.ttf";
+let uiFont = null;
+let fontLoaded = false;
 
-    <div class="row">
-      <button class="btn" id="resetBtn">Reset</button>
-    </div>
+// ---- UI：Sliders & Buttons ----
+const sliderName = ["Scale", "Stroke Weight", "Amplitude", "Frequency", "Phase", "Animation Speed"];
+let sliders = [];
+let capButtons = [];
 
-    <div id="msg">Loading…</div>
-  </div>
+// ---- Color Wheel（替代 controlP5 ColorWheel）----
+let wheelSize = 180;           // <= cw
+let wheelX = 10;
+let wheelY = 10;
+let wheelR = 0;
 
-  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+let wheelPG = null;
+let brightPG = null;
 
-  <script>
-    const FONT_PATH = "assets/fonts/ABCFavoritHebrewBoldVariable-Trial.ttf";
+let hueVal = 220;      // 0..360
+let satVal = 100;      // 0..100
+let briVal = 100;      // 0..100
 
-    const CANVAS_W = 1440;
-    const CANVAS_H = 900;
+// 亮度条
+let brightX, brightY, brightW, brightH;
 
-    let fontReady = false;
-    let fontObj = null;
+// 显示当前色块
+let colorSwatchY;
 
-    let t = 0;
-    let isAnimating = true;
-    let animationSpeed = 0.02;
+// 交互状态
+let draggingWheel = false;
+let draggingBright = false;
 
-    let scaleVal = 1.6;
-    let strokeW = 2.2;
-    let amplitude = 12;
-    let frequency = 1.2;
-    let phase = 0;
+/* ===========================
+   p5: preload / setup / draw
+   =========================== */
 
-    let currentFunction = "sin";
-    let seed = 12345;
-    let inputText = "A";
+function preload() {
+  // 尝试加载字体（变量字体可能失败，所以只用于 UI 文本；失败也不影响主绘制）
+  uiFont = loadFont(
+    FONT_PATH,
+    () => { fontLoaded = true; },
+    () => { fontLoaded = false; uiFont = null; }
+  );
+}
 
-    const msgEl = () => document.getElementById("msg");
+function setup() {
+  createCanvas(CANVAS_W, CANVAS_H);
+  pixelDensity(1);
 
-    function setMsg(s){ msgEl().textContent = s; }
+  // 初始颜色（接近你最开始的白色/可随意改）
+  currentColor = color(255);
 
-    function applyFn(x){
-      const TWO_PI = Math.PI * 2;
-      const PI = Math.PI;
-      switch(currentFunction){
-        case "sin":    return Math.sin(x);
-        case "square": return ((x % TWO_PI) < PI) ? 1 : -1;
-        case "tri":    return (Math.asin(Math.sin(x)) * 2 / PI);
-        case "saw":    return ((x % TWO_PI) / PI) - 1;
-        default:       return Math.sin(x);
-      }
+  // 初始化 Color Wheel
+  wheelSize = min(180, cw - 20);
+  wheelR = wheelSize / 2;
+  wheelX = 10;
+  wheelY = 10;
+
+  brightW = cw - 20;
+  brightH = 14;
+  brightX = 10;
+  brightY = wheelY + wheelSize + 10;
+
+  colorSwatchY = brightY + brightH + 10;
+
+  buildColorWheelGraphics();
+  buildBrightnessGraphics();
+
+  // 初始化 Sliders（位置按你 Processing 的意图排：400..750）
+  // 你原稿 map(i,0,4,400,750) 对 6 个 slider 会挤/错，这里修成合理等间距但视觉一致
+  const sliderStartY = 400;
+  const sliderEndY = 750;
+  for (let i = 0; i < 6; i++) {
+    const y = map(i, 0, 5, sliderStartY, sliderEndY);
+    sliders.push(new Slider(100, y, 150, 40, sliderName[i], 0.5));
+  }
+
+  // 初始化 CapButtons（右侧）
+  const capNames = ["Save", "Toggle Animation", "Reset", "Sin", "Square", "Triangle", "Sawtooth"];
+  for (let i = 0; i < capNames.length; i++) {
+    const y = map(i, 0, capNames.length - 1, 55, 500);
+    capButtons.push(new CapButton(width - 120, y, 150, 30, capNames[i]));
+  }
+
+  // 初始 HSV -> currentColor
+  updateCurrentColorFromHSV();
+}
+
+function draw() {
+  background(240);
+
+  updateParameters();
+  drawGrid();
+
+  push();
+  translate(width / 2, height / 2);
+  scale(scaleVal);
+  drawMathA();
+  pop();
+
+  // 左侧面板背景
+  noStroke();
+  fill(31, 30, 36);
+  rect(0, 0, cw, height);
+
+  // Color Wheel + Brightness + 当前色块
+  drawColorWheelUI();
+
+  // 右下角函数预览
+  drawFunctionDisplay();
+
+  if (isAnimating) t += animationSpeed;
+
+  // Sliders
+  for (let s of sliders) s.run();
+
+  // Buttons
+  for (let b of capButtons) b.display();
+
+  // （可选）显示帧率：对照 Processing println(frameRate)
+  // fill(255); textSize(12); textAlign(LEFT, TOP); text(nf(frameRate(),1,1), 10, height - 20);
+}
+
+/* ===========================
+   Grid
+   =========================== */
+function drawGrid() {
+  stroke(220);
+  strokeWeight(1);
+
+  // 你原来是 for i<=width 然后 line(i+cw...) 会画到画布外
+  // 这里改成“右侧区域宽度”更合理，效果一致（从 cw 开始）
+  const step = 25;
+  for (let x = cw; x <= width; x += step) {
+    line(x, ch, x, height);
+  }
+  for (let y = ch; y <= height; y += step) {
+    line(cw, y, width, y);
+  }
+}
+
+/* ===========================
+   MathA (原逻辑照搬)
+   =========================== */
+function drawMathA() {
+  stroke(currentColor);
+  strokeWeight(strokeW);
+  noFill();
+
+  // Left leg of A
+  drawParametricCurve(-50, 100, 0, -100);
+
+  // Right leg of A
+  drawParametricCurve(50, 100, 0, -100);
+
+  // Crossbar of A
+  drawParametricCurve(-30, 30, 30, 30);
+}
+
+function drawParametricCurve(x1, y1, x2, y2) {
+  beginShape();
+  for (let i = 0; i <= 1.00001; i += 0.01) {
+    let x = lerp(x1, x2, i);
+    let y = lerp(y1, y2, i);
+
+    let dis = dist(x, y, x1, y1) * 0.01;
+    let offset = applyFunction(frequency * dis * TWO_PI + phase + t) * amplitude;
+
+    let baseLen = dist(x1, y1, x2, y2);
+    x += offset * (y2 - y1) / baseLen;
+    y -= offset * (x2 - x1) / baseLen;
+
+    if (currentFunction === 0 || currentFunction === 2) {
+      curveVertex(x, y);
+    } else {
+      vertex(x, y);
+    }
+  }
+  endShape();
+}
+
+function applyFunction(tt) {
+  switch (currentFunction) {
+    case 0: return sin(tt);
+    case 1: return (tt % TWO_PI < PI) ? 1 : -1;
+    case 2: return asin(sin(tt)) * 2 / PI;
+    case 3: return (tt % TWO_PI) / PI - 1;
+    default: return sin(tt);
+  }
+}
+
+/* ===========================
+   Function Display (右下角)
+   =========================== */
+function drawFunctionDisplay() {
+  const displayWidth = 250;
+  const displayHeight = 250;
+  const margin = 50;
+
+  // 坐标轴
+  stroke(0);
+  strokeWeight(3);
+
+  push();
+  translate(width - displayWidth / 2 - margin, height - displayHeight / 2 - margin);
+
+  line(-displayWidth / 2, 0, displayWidth / 2, 0);
+  line(0, -displayHeight / 2, 0, displayHeight / 2);
+
+  fill(0);
+  noStroke();
+  textSize(15);
+
+  triangle(-5, -displayHeight / 2, 5, -displayHeight / 2, 0, -displayHeight / 2 - 15);
+  triangle(displayWidth / 2 + 15, 0, displayWidth / 2, -5, displayWidth / 2, 5);
+
+  fill(0);
+  textSize(15);
+  textAlign(LEFT, TOP);
+
+  if (fontLoaded && uiFont) textFont(uiFont);
+  else textFont('system-ui');
+
+  text("y", 15, -displayHeight / 2);
+  text("x", displayWidth / 2, 25);
+
+  textSize(20);
+  textAlign(CENTER, BOTTOM);
+  text(functionNames[currentFunction] + " Function", 0, -displayHeight / 2 - 40);
+  pop();
+
+  // 波形
+  const picCol = color(140);
+  stroke(picCol);
+  noFill();
+  strokeWeight(3);
+
+  beginShape();
+  for (let x = 0; x < displayWidth; x += 2) {
+    let amp = map(amplitude, 0, maxAmp, 0, displayHeight / 2);
+    let y = applyFunction(frequency * x * 0.02 + phase + t) * amp;
+    vertex(width - displayWidth - margin + x, height - displayHeight / 2 - margin - y);
+  }
+  endShape();
+}
+
+/* ===========================
+   Parameters update (Sliders)
+   =========================== */
+function updateParameters() {
+  scaleVal = map(sliders[0].val, 0, 1, 0.5, 3);
+  strokeW = map(sliders[1].val, 0, 1, 0.5, 20);
+  amplitude = map(sliders[2].val, 0, 1, 0, maxAmp);
+  frequency = map(sliders[3].val, 0, 1, 0.1, 5);
+  phase = map(sliders[4].val, 0, 1, 0, TWO_PI);
+  animationSpeed = map(sliders[5].val, 0, 1, 0, 0.1);
+}
+
+/* ===========================
+   CapButton (原风格复刻)
+   =========================== */
+class CapButton {
+  constructor(x, y, w, h, str) {
+    this.x = x; this.y = y; this.w = w; this.h = h;
+    this.str = str;
+    this.scl = 1;
+    this.gray = 150;
+    this.state = false;
+  }
+
+  hover() {
+    return (abs(mouseX - this.x) < this.w / 2 && abs(mouseY - this.y) < this.h / 2);
+  }
+
+  display() {
+    push();
+    rectMode(CENTER);
+    fill(this.gray);
+
+    if (this.hover() || this.state) {
+      this.gray = lerp(this.gray, 200, 0.12);
+      this.scl = lerp(this.scl, 1.2, 0.12);
+    } else {
+      this.gray = lerp(this.gray, 150, 0.12);
+      this.scl = lerp(this.scl, 1.0, 0.12);
     }
 
-    function hashSeed(n){
-      n = (n|0) ^ 0x9e3779b9;
-      n = Math.imul(n ^ (n >>> 16), 0x85ebca6b);
-      n = Math.imul(n ^ (n >>> 13), 0xc2b2ae35);
-      return (n ^ (n >>> 16)) >>> 0;
+    noStroke();
+    translate(this.x, this.y);
+
+    push();
+    scale(this.scl);
+    rect(0, 0, this.w, this.h, 40);
+    pop();
+
+    fill(255);
+    textSize(this.h * 0.5);
+    textAlign(CENTER, CENTER);
+    if (fontLoaded && uiFont) textFont(uiFont);
+    else textFont('system-ui');
+    text(this.str, 0, 0);
+
+    pop();
+  }
+}
+
+/* ===========================
+   Slider (原逻辑复刻)
+   =========================== */
+class Slider {
+  constructor(x, y, w, h, str, val) {
+    this.x = x; this.y = y; this.w = w; this.h = h;
+    this.str = str;
+    this.val = val;
+    this.state = false;
+  }
+
+  hover() {
+    return (abs(mouseX - this.x) < this.w / 2 && abs(mouseY - this.y) < this.h / 2);
+  }
+
+  click() {
+    this.state = this.hover();
+  }
+
+  drag() {
+    if (!this.state) return;
+    let v = map(mouseX, this.x - this.w / 2, this.x + this.w / 2, 0, 1);
+    v = constrain(v, 0, 1);
+    this.val = lerp(this.val, v, 0.12);
+  }
+
+  run() {
+    this.drag();
+    this.display();
+  }
+
+  display() {
+    push();
+    translate(this.x, this.y);
+    rectMode(CENTER);
+    noStroke();
+
+    // 背景条（接近你原先的 sli fill 85/150）
+    fill(this.hover() ? 110 : 85);
+    rect(0, 0, this.w, this.h, 100);
+
+    // 填充条
+    let vw = map(this.val, 0, 1, 0, this.w);
+    fill(this.hover() ? 160 : 120);
+    rect(-this.w / 2 + vw / 2, 0, vw, this.h, 100);
+
+    // 文本
+    fill(255);
+    textSize(this.h * 0.4);
+    textAlign(CENTER, CENTER);
+    if (fontLoaded && uiFont) textFont(uiFont);
+    else textFont('system-ui');
+    text(this.str, 0, 0);
+
+    pop();
+  }
+}
+
+/* ===========================
+   Mouse Interaction (原逻辑 + ColorWheel)
+   =========================== */
+function mousePressed() {
+  // Color Wheel / Brightness
+  if (hitWheel(mouseX, mouseY)) {
+    draggingWheel = true;
+    pickFromWheel(mouseX, mouseY);
+    return;
+  }
+  if (hitBrightness(mouseX, mouseY)) {
+    draggingBright = true;
+    pickFromBrightness(mouseX, mouseY);
+    return;
+  }
+
+  // Sliders
+  for (let s of sliders) s.click();
+
+  // CapButtons
+  for (let b of capButtons) {
+    if (b.hover()) {
+      handleButtonPress(b.str);
+      return;
     }
+  }
+}
 
-    function reseed(){
-      const s = parseInt(document.getElementById("seedInput").value, 10);
-      seed = Number.isFinite(s) ? s : 12345;
-      randomSeed(hashSeed(seed));
-      noiseSeed(hashSeed(seed));
-    }
+function mouseDragged() {
+  if (draggingWheel) pickFromWheel(mouseX, mouseY);
+  if (draggingBright) pickFromBrightness(mouseX, mouseY);
+}
 
-    function bindUI(){
-      document.getElementById("applyBtn").onclick = () => {
-        inputText = document.getElementById("textInput").value || "A";
-        currentFunction = document.getElementById("fnSelect").value;
-        reseed();
-      };
+function mouseReleased() {
+  draggingWheel = false;
+  draggingBright = false;
 
-      document.getElementById("randBtn").onclick = () => {
-        const newSeed = Math.floor(Math.random()*999999);
-        document.getElementById("seedInput").value = String(newSeed);
-        reseed();
-        amplitude = random(4, 28);
-        frequency = random(0.6, 2.6);
-        phase = random(0, Math.PI*2);
-        strokeW = random(1.2, 4.0);
-      };
+  for (let s of sliders) s.state = false;
+}
 
-      document.getElementById("saveBtn").onclick = () => {
-        saveCanvas("font-path-method", "png");
-      };
-
-      document.getElementById("animBtn").onclick = () => {
-        isAnimating = !isAnimating;
-        document.getElementById("animBtn").textContent = isAnimating ? "Animate" : "Paused";
-      };
-
-      document.getElementById("resetBtn").onclick = () => {
-        inputText = "A";
-        document.getElementById("textInput").value = "A";
-        currentFunction = "sin";
-        document.getElementById("fnSelect").value = "sin";
-        document.getElementById("seedInput").value = "12345";
-        amplitude = 12;
-        frequency = 1.2;
-        phase = 0;
-        strokeW = 2.2;
-        scaleVal = 1.6;
-        animationSpeed = 0.02;
-        reseed();
-      };
-    }
-
-    function setup(){
-      const c = createCanvas(CANVAS_W, CANVAS_H);
-      c.parent("canvasWrap");
-      pixelDensity(window.devicePixelRatio || 1);
-      smooth();
-
-      bindUI();
-      reseed();
-
-      setMsg("Loading font...\n" + FONT_PATH);
-
-      loadFont(
-        FONT_PATH,
-        (f) => {
-          fontObj = f;
-          fontReady = true;
-          setMsg("Font loaded ✅\n" + FONT_PATH);
-        },
-        (err) => {
-          console.error(err);
-          fontReady = false;
-          setMsg(
-            "Font load failed ❌\n" +
-            "请检查：\n" +
-            "1) 字体是否真的在该路径\n" +
-            "2) 文件名大小写是否一致\n\n" +
-            "当前路径：\n" + FONT_PATH
-          );
+function handleButtonPress(label) {
+  switch (label) {
+    case "Save":
+      // p5：保存当前画布 png
+      saveCanvas("MathA", "png");
+      break;
+    case "Toggle Animation":
+      isAnimating = !isAnimating;
+      break;
+    case "Reset":
+      resetToDefaults();
+      break;
+    default:
+      // 切换函数
+      for (let i = 0; i < functionNames.length; i++) {
+        if (label === functionNames[i]) {
+          currentFunction = i;
+          break;
         }
-      );
-    }
-
-    function drawGrid(){
-      const cw = 280;
-      const cell = 25;
-      stroke(255,255,255,18);
-      strokeWeight(1);
-      for(let x=cw; x<=width; x+=cell) line(x, 0, x, height);
-      for(let y=0; y<=height; y+=cell) line(cw, y, width, y);
-    }
-
-    function draw(){
-      background(10,10,14);
-      drawGrid();
-
-      if(!fontReady || !fontObj){
-        noStroke();
-        fill(255,255,255,120);
-        textSize(18);
-        textAlign(CENTER, CENTER);
-        text("Loading font...", width*0.6, height*0.5);
-        return;
       }
+      break;
+  }
+}
 
-      if(isAnimating) t += animationSpeed;
+function resetToDefaults() {
+  currentFunction = 0;
+  isAnimating = true;
+  t = 0;
 
-      const size = 240;
-      const options = { sampleFactor: 0.12, simplifyThreshold: 0 };
+  // 重置 sliders 到 0.5（跟你原来 resetToDefaults 意图一致）
+  for (let i = 0; i < sliders.length; i++) {
+    sliders[i].val = 0.5;
+    sliders[i].state = false;
+  }
 
-      const pts = fontObj.textToPoints(inputText, 0, 0, size, options);
-      const bounds = fontObj.textBounds(inputText, 0, 0, size);
+  // 颜色也回到白（你原来 currentColor = color(255)）
+  hueVal = 0; satVal = 0; briVal = 100;
+  updateCurrentColorFromHSV();
+}
 
-      push();
-      translate(width*0.60, height*0.52);
-      scale(scaleVal);
-      translate(-bounds.x - bounds.w/2, -bounds.y - bounds.h/2);
+/* ===========================
+   Color Wheel UI (替代 controlP5 ColorWheel)
+   =========================== */
 
-      noFill();
-      stroke(255);
-      strokeWeight(strokeW);
-      beginShape(POINTS);
+function buildColorWheelGraphics() {
+  wheelPG = createGraphics(wheelSize, wheelSize);
+  wheelPG.pixelDensity(1);
+  wheelPG.colorMode(HSB, 360, 100, 100, 255);
+  wheelPG.loadPixels();
 
-      for(let i=0;i<pts.length;i++){
-        const p = pts[i];
-        const n = noise(i*0.02, seed*0.001);
-        const ang = n * Math.PI * 2;
+  for (let y = 0; y < wheelSize; y++) {
+    for (let x = 0; x < wheelSize; x++) {
+      const cx = x - wheelR;
+      const cy = y - wheelR;
+      const r = sqrt(cx * cx + cy * cy);
 
-        const dis = i * 0.03;
-        const wave = applyFn(frequency * dis + phase + t);
+      const idx = (y * wheelSize + x) * 4;
 
-        const off = wave * amplitude * (0.35 + n);
-        const dx = Math.cos(ang) * off;
-        const dy = Math.sin(ang) * off;
+      if (r <= wheelR) {
+        const ang = atan2(cy, cx);
+        let h = degrees(ang);
+        if (h < 0) h += 360;
+        const s = constrain(map(r, 0, wheelR, 0, 100), 0, 100);
+        const c = wheelPG.color(h, s, 100, 255);
 
-        vertex(p.x + dx, p.y + dy);
+        wheelPG.pixels[idx] = red(c);
+        wheelPG.pixels[idx + 1] = green(c);
+        wheelPG.pixels[idx + 2] = blue(c);
+        wheelPG.pixels[idx + 3] = 255;
+      } else {
+        wheelPG.pixels[idx + 3] = 0; // 透明
       }
-
-      endShape();
-      pop();
     }
+  }
+  wheelPG.updatePixels();
+}
 
-    function windowResized(){
-    }
-  </script>
+function buildBrightnessGraphics() {
+  brightPG = createGraphics(brightW, brightH);
+  brightPG.pixelDensity(1);
+  brightPG.colorMode(HSB, 360, 100, 100, 255);
+
+  brightPG.noStroke();
+  for (let x = 0; x < brightW; x++) {
+    const b = map(x, 0, brightW - 1, 0, 100);
+    brightPG.fill(hueVal, satVal, b);
+    brightPG.rect(x, 0, 1, brightH);
+  }
+}
+
+function updateCurrentColorFromHSV() {
+  push();
+  colorMode(HSB, 360, 100, 100, 255);
+  currentColor = color(hueVal, satVal, briVal);
+  pop();
+  buildBrightnessGraphics();
+}
+
+function drawColorWheelUI() {
+  // wheel
+  imageMode(CORNER);
+  image(wheelPG, wheelX, wheelY);
+
+  // wheel 边框
+  noFill();
+  stroke(255, 255, 255, 40);
+  strokeWeight(2);
+  circle(wheelX + wheelR, wheelY + wheelR, wheelSize);
+
+  // wheel 游标（根据 hue/sat）
+  const rr = map(satVal, 0, 100, 0, wheelR);
+  const a = radians(hueVal);
+  const kx = wheelX + wheelR + cos(a) * rr;
+  const ky = wheelY + wheelR + sin(a) * rr;
+
+  stroke(255);
+  strokeWeight(2);
+  noFill();
+  circle(kx, ky, 10);
+
+  // brightness bar
+  image(brightPG, brightX, brightY);
+
+  // brightness 游标
+  const bx = map(briVal, 0, 100, brightX, brightX + brightW);
+  stroke(255);
+  strokeWeight(2);
+  line(bx, brightY - 4, bx, brightY + brightH + 4);
+
+  // 当前颜色色块
+  noStroke();
+  fill(currentColor);
+  rect(10, colorSwatchY, cw - 20, 28, 10);
+
+  // 小文字（可选）
+  fill(255, 255, 255, 180);
+  textSize(11);
+  textAlign(LEFT, TOP);
+  if (fontLoaded && uiFont) textFont(uiFont);
+  else textFont('system-ui');
+  text("Color Wheel", 10, colorSwatchY + 36);
+}
+
+function hitWheel(mx, my) {
+  const cx = wheelX + wheelR;
+  const cy = wheelY + wheelR;
+  return dist(mx, my, cx, cy) <= wheelR;
+}
+
+function pickFromWheel(mx, my) {
+  const cx = wheelX + wheelR;
+  const cy = wheelY + wheelR;
+
+  const dx = mx - cx;
+  const dy = my - cy;
+  const r = sqrt(dx * dx + dy * dy);
+
+  let ang = degrees(atan2(dy, dx));
+  if (ang < 0) ang += 360;
+
+  hueVal = ang;
+  satVal = constrain(map(r, 0, wheelR, 0, 100), 0, 100);
+  updateCurrentColorFromHSV();
+}
+
+function hitBrightness(mx, my) {
+  return (mx >= brightX && mx <= brightX + brightW && my >= brightY && my <= brightY + brightH);
+}
+
+function pickFromBrightness(mx, my) {
+  const x = constrain(mx, brightX, brightX + brightW);
+  briVal = map(x, brightX, brightX + brightW, 0, 100);
+  updateCurrentColorFromHSV();
+}
+
+/* ===========================
+   Key shortcuts（跟你原来一样）
+   =========================== */
+function keyPressed() {
+  // Processing 里用 z/y 撤销之类，这里先保留你 MathA 页的逻辑
+  // 如果你想要：1/2/3/4 切换函数，也可以加
+  if (key === '1') currentFunction = 0;
+  if (key === '2') currentFunction = 1;
+  if (key === '3') currentFunction = 2;
+  if (key === '4') currentFunction = 3;
+}
+</script>
 </body>
 </html>
