@@ -21,9 +21,9 @@ let hue = 220;   // 色相 0..360
 let sat = 100;   // 饱和度 0..100
 let bri = 80;    // 明度 0..100
 
-// 颜色面板布局参数
-let sbX, sbY, sbSize;           // 大色块（Sat/Bri 方块）
-let hueX, hueY, hueW, hueH;     // 右侧色条
+// 颜色面板布局参数（这次用“宽度 + 高度”而不是正方形）
+let sbX, sbY, sbW, sbH;        // 大颜色矩形
+let hueX, hueY, hueW, hueH;    // 右侧色条
 let sbGraphic, hueGraphic;
 
 // 最近使用颜色（5 个）
@@ -48,7 +48,7 @@ function preload() {
 
   // SVG 图形：svg/1.svg ~ svg/8.svg
   for (let i = 0; i < svgs.length; i++) {
-    svgs[i] = loadImage("svg/" + (i + 1) + ".svg?v=6");
+    svgs[i] = loadImage("svg/" + (i + 1) + ".svg?v=7");
   }
 }
 
@@ -110,29 +110,30 @@ function computeSvgBounds(index) {
 // =================== 布局：固定位置，按草图来 ===================
 function layoutUI() {
   // ------ 顶部颜色区域 ------
-  // 颜色方块占左侧，竖条占右侧：整体紧贴左/上/右，不留缝隙
-  hueW = 24;                          // 竖条略宽一点
-  sbSize = cw - hueW;                 // 大方块宽 = 总宽 - 竖条宽
+  // 宽度：占满左侧除色条以外的宽度；高度：固定 110 像素（不会太高）
+  hueW = 24;
+  sbW = cw - hueW;
+  sbH = 110;
+
   sbX = 0;
   sbY = 0;
-  hueX = sbSize;                      // 紧贴方块右侧
+  hueX = sbW;      // 贴在右侧
   hueY = 0;
-  hueH = sbSize;
+  hueH = sbH;
 
   buildHueGraphic();
   buildSBGraphic();
 
   // ------ 最近颜色一行（5 个小方块） ------
-  // 高度不参与自适应，全部用固定数值
   const recentSize = 26;
-  const recentY = sbY + sbSize + 12;       // 在颜色块下方留一点缝
+  const recentY = sbY + sbH + 12;   // 紧接在颜色区域下面
 
   // ------ 四个功能按钮（2 行×2 列） ------
   const bw = 90;
   const bh = 34;
   const offset = 70;
-  const row1Y = recentY + recentSize + 18; // 第一行按钮中心 Y
-  const row2Y = row1Y + 44;                // 第二行按钮中心 Y
+  const row1Y = recentY + recentSize + 18;
+  const row2Y = row1Y + 44;
 
   undoButton  = new CapButton(cw / 2 - offset, row1Y, bw, bh, "Undo");
   clearButton = new CapButton(cw / 2 + offset, row1Y, bw, bh, "Clear");
@@ -140,10 +141,10 @@ function layoutUI() {
   saveButton  = new CapButton(cw / 2 + offset, row2Y, bw, bh, "Save");
 
   // ------ 图形按钮区域（10 个：5 行×2 列） ------
-  // 完全固定间距，按照草图往下排
+  // 整体再往下移一点：firstIconY 增大
   const iconSize = 64;
   const iconGapY = 76;
-  const firstIconY = row2Y + 56;          // 第一行图标中心 Y
+  const firstIconY = row2Y + 80;   // 之前是 row2Y + 56，这里下移 24 像素
 
   const xLeft = cw * 0.33;
   const xRight = cw * 0.67;
@@ -255,7 +256,7 @@ function addNewShape() {
   undoStack = [];
 }
 
-// =================== 颜色面板（重新制作） ===================
+// =================== 颜色面板（重新制作，高度 110） ===================
 function buildHueGraphic() {
   hueGraphic = createGraphics(hueW, hueH);
   hueGraphic.colorMode(HSB, 360, 100, 100);
@@ -276,16 +277,16 @@ function buildHueGraphic() {
 }
 
 function buildSBGraphic() {
-  sbGraphic = createGraphics(sbSize, sbSize);
+  sbGraphic = createGraphics(sbW, sbH);
   sbGraphic.colorMode(HSB, 360, 100, 100);
   sbGraphic.noStroke();
   sbGraphic.loadPixels();
-  for (let y = 0; y < sbSize; y++) {
-    for (let x = 0; x < sbSize; x++) {
-      let sVal = map(x, 0, sbSize - 1, 0, 100);       // 左→右：饱和度增加
-      let bVal = map(y, 0, sbSize - 1, 100, 0);       // 上→下：明度降低
+  for (let y = 0; y < sbH; y++) {
+    for (let x = 0; x < sbW; x++) {
+      let sVal = map(x, 0, sbW - 1, 0, 100);       // 左→右：饱和度增加
+      let bVal = map(y, 0, sbH - 1, 100, 0);       // 上→下：明度降低
       let c = sbGraphic.color(hue, sVal, bVal);
-      let idx = (y * sbSize + x) * 4;
+      let idx = (y * sbW + x) * 4;
       sbGraphic.pixels[idx] = red(c);
       sbGraphic.pixels[idx + 1] = green(c);
       sbGraphic.pixels[idx + 2] = blue(c);
@@ -298,8 +299,8 @@ function buildSBGraphic() {
 // 顶部颜色区域：大色块 + 竖条，紧贴边缘
 function drawColorPanel() {
   imageMode(CORNER);
-  image(sbGraphic, sbX, sbY);
-  image(hueGraphic, hueX, hueY);
+  image(sbGraphic, sbX, sbY);           // 大矩形（sbW x sbH）
+  image(hueGraphic, hueX, hueY);        // 竖条（hueW x hueH）
 
   // 在色条上画当前 hue 的小指示箭头
   let huePosY = map(hue, 0, 360, 0, hueH);
@@ -316,7 +317,7 @@ function drawRecentColors() {
   let n = recentColors.length;
   let totalW = n * sw + (n - 1) * gap;
   let startX = cw / 2 - totalW / 2;
-  let y = sbY + sbSize + 12;
+  let y = sbY + sbH + 12;
 
   rectMode(CORNER);
   for (let i = 0; i < n; i++) {
@@ -336,13 +337,13 @@ function drawRecentColors() {
 }
 
 function handleColorClick() {
-  // 点在色块上：修改 sat + bri
-  if (mouseX >= sbX && mouseX <= sbX + sbSize &&
-      mouseY >= sbY && mouseY <= sbY + sbSize) {
-    let sx = constrain(mouseX, sbX, sbX + sbSize);
-    let sy = constrain(mouseY, sbY, sbY + sbSize);
-    sat = map(sx, sbX, sbX + sbSize, 0, 100);
-    bri = map(sy, sbY, sbY + sbSize, 100, 0);
+  // 点在大颜色矩形上：修改 sat + bri
+  if (mouseX >= sbX && mouseX <= sbX + sbW &&
+      mouseY >= sbY && mouseY <= sbY + sbH) {
+    let sx = constrain(mouseX, sbX, sbX + sbW);
+    let sy = constrain(mouseY, sbY, sbY + sbH);
+    sat = map(sx, sbX, sbX + sbW, 0, 100);
+    bri = map(sy, sbY, sbY + sbH, 100, 0);
     updateCurrentColor();
     return true;
   }
@@ -352,7 +353,7 @@ function handleColorClick() {
       mouseY >= hueY && mouseY <= hueY + hueH) {
     let hy = constrain(mouseY, hueY, hueY + hueH);
     hue = map(hy, hueY, hueY + hueH, 0, 360);
-    buildSBGraphic();    // 色相变化后重绘色块
+    buildSBGraphic();    // 色相变化后重绘矩形
     updateCurrentColor();
     return true;
   }
@@ -362,7 +363,7 @@ function handleColorClick() {
   let n = recentColors.length;
   let totalW = n * sw + (n - 1) * gap;
   let startX = cw / 2 - totalW / 2;
-  let y = sbY + sbSize + 12;
+  let y = sbY + sbH + 12;
 
   for (let i = 0; i < n; i++) {
     let px = startX + i * (sw + gap);
@@ -471,7 +472,6 @@ class Shape {
 
   display() {
     push();
-    // draw() 里已经 translate(cw,0)，这里直接按网格坐标画就行
     fill(this.c);
     noStroke();
 
