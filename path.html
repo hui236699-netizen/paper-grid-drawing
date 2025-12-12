@@ -4,500 +4,277 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Font Path Method</title>
+
   <style>
-    html, body { height: 100%; margin: 0; background:#0f1013; overflow:hidden; }
-    canvas { display:block; margin:0 auto; }
-    .ui{
-      font-family: system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
-      font-size:12px; color:#e9e9ee;
+    html, body { margin:0; padding:0; background:#0b0b0e; overflow:hidden; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+    #hud{
+      position:fixed; left:18px; top:18px; width:280px; z-index:10;
+      color:#eaeaf2; font-size:14px; line-height:1.2;
+      background:rgba(20,20,26,.55);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:16px;
+      padding:14px 14px 12px;
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      box-shadow: 0 16px 60px rgba(0,0,0,.35);
     }
-    .ui label{ display:block; margin:10px 0 6px; opacity:.85; }
-    .ui input,.ui select{
-      width:196px; height:34px; border-radius:10px;
-      border:1px solid rgba(255,255,255,.10);
+    #hud h3{ margin:0 0 10px; font-size:15px; font-weight:700; opacity:.95; }
+    #hud label{ display:block; margin:10px 0 6px; opacity:.9; }
+    #hud input, #hud select{
+      width:100%; box-sizing:border-box;
       background:rgba(255,255,255,.06);
-      color:#fff; padding:0 10px; outline:none;
-    }
-    .ui button{
-      height:34px; border-radius:999px;
       border:1px solid rgba(255,255,255,.10);
-      background:rgba(255,255,255,.10);
-      color:#fff; padding:0 14px; cursor:pointer;
+      color:#fff; border-radius:10px;
+      padding:10px 10px;
+      outline:none;
     }
-    .ui button:hover{ background:rgba(255,255,255,.16); }
-    .row{ display:flex; gap:8px; align-items:center; }
-    .row button{ flex:1; }
-    .hint{ margin-top:8px; opacity:.65; line-height:1.4; }
+    #hud input:focus, #hud select:focus{ border-color: rgba(157,124,255,.55); }
+    .row{ display:flex; gap:10px; margin-top:10px; }
+    .btn{
+      flex:1; cursor:pointer;
+      border-radius:999px;
+      padding:10px 12px;
+      border:1px solid rgba(255,255,255,.10);
+      background:rgba(255,255,255,.08);
+      color:#fff; font-weight:600;
+      transition: transform .12s ease, background .12s ease;
+      user-select:none;
+    }
+    .btn:hover{ transform: translateY(-1px); background:rgba(255,255,255,.12); }
+    .btn.primary{ background: rgba(157,124,255,.22); border-color: rgba(157,124,255,.45); }
+    .btn.primary:hover{ background: rgba(157,124,255,.28); }
+    #msg{ margin-top:10px; font-size:12px; opacity:.85; white-space:pre-line; }
+    #canvasWrap{ position:fixed; inset:0; }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
 </head>
 
 <body>
-<script>
-  // ===================== 只改这里：字体路径 =====================
-  // 例：你上传的是 assets/fonts/ABCFavorit.ttf
-  // 就写：const FONT_PATH = "assets/fonts/ABCFavorit.ttf";
-  const FONT_PATH = "assets/fonts/font.ttf";
+  <div id="canvasWrap"></div>
 
-  const CANVAS_W = 1440, CANVAS_H = 900;
-  let cw = 240;
+  <div id="hud">
+    <h3>Font Path Method</h3>
 
-  // 字体加载状态（关键：不再用 preload，避免卡死）
-  let fontObj = null;
-  let fontState = "loading"; // loading | ok | fail
-  let fontErrorMsg = "";
+    <label>Text（输入字母/字符串）</label>
+    <input id="textInput" value="A" maxlength="20"/>
 
-  // 参数
-  let maxAmp = 50;
-  let t = 0;
-  let strokeW = 2;
-  let amplitude = 10;
-  let frequency = 1;
-  let phase = 0;
-  let isAnimating = true;
-  let animationSpeed = 0.02;
+    <label>Function</label>
+    <select id="fnSelect">
+      <option value="sin">Sin</option>
+      <option value="square">Square</option>
+      <option value="tri">Triangle</option>
+      <option value="saw">Sawtooth</option>
+    </select>
 
-  const functionNames = ["Sin","Square","Triangle","Sawtooth"];
-  let currentFunction = 0;
+    <label>Seed（可复现）</label>
+    <input id="seedInput" value="12345" />
 
-  let typedText = "A";
-  let fontSize = 520;
-  let sampleFactor = 0.12;
-  let simplifyThreshold = 0;
+    <div class="row">
+      <button class="btn" id="applyBtn">Apply</button>
+      <button class="btn" id="randBtn">Randomize</button>
+    </div>
 
-  let seed = 12345;
+    <div class="row">
+      <button class="btn" id="saveBtn">Save PNG</button>
+      <button class="btn primary" id="animBtn">Animate</button>
+    </div>
 
-  // HSV 颜色面板
-  let hueVal = 220, satVal = 100, briVal = 80;
-  let currentColor;
+    <div class="row">
+      <button class="btn" id="resetBtn">Reset</button>
+    </div>
 
-  const COLOR_PANEL_H = 170;
-  const COLOR_BG = { x: 10, y: 10, w: cw - 20, h: COLOR_PANEL_H };
-  const HUE_BAR = { x: 10 + (cw - 20) - 20, y: 10, w: 20, h: COLOR_PANEL_H };
-  const SB_PANEL = { x: 10, y: 10, w: (cw - 20) - 26, h: COLOR_PANEL_H };
-  let sbGraphic, hueGraphic;
+    <div id="msg">Loading…</div>
+  </div>
 
-  // UI
-  let uiWrap, inputText, selectPreset, inputSeed, btnRandom, btnApplySeed, btnSave, btnToggle, btnReset;
-  let selectFunc;
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
 
-  // 点缓存
-  let rawPoints = [];
-  let glyphCenter = { x: 0, y: 0 };
-  let lastCacheKey = "";
+  <script>
+    const FONT_PATH = "assets/fonts/ABCFavoritHebrewBoldVariable-Trial.ttf";
 
-  const PRESETS = {
-    "Clean Wave":   { func:0, strokeW:2.5, amp:18, freq:1.1, phase:0.0, speed:0.02,  size:520, sf:0.12 },
-    "Electric":     { func:1, strokeW:2.0, amp:14, freq:3.2, phase:0.0, speed:0.035, size:520, sf:0.11 },
-    "Ribbon":       { func:2, strokeW:3.5, amp:22, freq:1.8, phase:0.6, speed:0.02,  size:540, sf:0.13 },
-    "Poster Bold":  { func:0, strokeW:8.0, amp:10, freq:1.0, phase:0.0, speed:0.015, size:560, sf:0.10 },
-    "Shiver":       { func:3, strokeW:2.2, amp:26, freq:2.3, phase:1.0, speed:0.04,  size:520, sf:0.12 }
-  };
+    const CANVAS_W = 1440;
+    const CANVAS_H = 900;
 
-  function setup() {
-    createCanvas(CANVAS_W, CANVAS_H);
-    pixelDensity(1);
+    let fontReady = false;
+    let fontObj = null;
 
-    buildHueGraphic();
-    buildSBGraphic();
-    updateCurrentColorFromHSV(true);
+    let t = 0;
+    let isAnimating = true;
+    let animationSpeed = 0.02;
 
-    buildDOMUI();
-    applyPreset("Clean Wave");
+    let scaleVal = 1.6;
+    let strokeW = 2.2;
+    let amplitude = 12;
+    let frequency = 1.2;
+    let phase = 0;
 
-    // ✅ 关键：异步加载字体，不阻塞页面
-    tryLoadFont();
-  }
+    let currentFunction = "sin";
+    let seed = 12345;
+    let inputText = "A";
 
-  function tryLoadFont(){
-    fontState = "loading";
-    fontErrorMsg = "";
-    fontObj = loadFont(
-      FONT_PATH,
-      () => { fontState = "ok"; rebuildPointsCache(true); },
-      (err) => {
-        fontState = "fail";
-        fontErrorMsg = String(err || "");
+    const msgEl = () => document.getElementById("msg");
+
+    function setMsg(s){ msgEl().textContent = s; }
+
+    function applyFn(x){
+      const TWO_PI = Math.PI * 2;
+      const PI = Math.PI;
+      switch(currentFunction){
+        case "sin":    return Math.sin(x);
+        case "square": return ((x % TWO_PI) < PI) ? 1 : -1;
+        case "tri":    return (Math.asin(Math.sin(x)) * 2 / PI);
+        case "saw":    return ((x % TWO_PI) / PI) - 1;
+        default:       return Math.sin(x);
       }
-    );
-  }
-
-  function draw() {
-    background(240);
-    drawGrid();
-    drawLeftPanel();
-    drawColorPanel();
-    drawFunctionDisplay();
-
-    // UI 同步
-    typedText = inputText.value() || "";
-    seed = parseInt(inputSeed.value() || "0", 10) || 0;
-
-    if (fontState === "loading") {
-      drawFontStatus("Loading font…");
-      return;
     }
-    if (fontState === "fail" || !fontObj) {
-      drawFontStatus(
-        "Font load FAILED\n\n请检查：\n1) 字体 URL 是否能打开\n2) 字体是否为可变字体(Variable)\n\nFONT_PATH:\n" + FONT_PATH
+
+    function hashSeed(n){
+      n = (n|0) ^ 0x9e3779b9;
+      n = Math.imul(n ^ (n >>> 16), 0x85ebca6b);
+      n = Math.imul(n ^ (n >>> 13), 0xc2b2ae35);
+      return (n ^ (n >>> 16)) >>> 0;
+    }
+
+    function reseed(){
+      const s = parseInt(document.getElementById("seedInput").value, 10);
+      seed = Number.isFinite(s) ? s : 12345;
+      randomSeed(hashSeed(seed));
+      noiseSeed(hashSeed(seed));
+    }
+
+    function bindUI(){
+      document.getElementById("applyBtn").onclick = () => {
+        inputText = document.getElementById("textInput").value || "A";
+        currentFunction = document.getElementById("fnSelect").value;
+        reseed();
+      };
+
+      document.getElementById("randBtn").onclick = () => {
+        const newSeed = Math.floor(Math.random()*999999);
+        document.getElementById("seedInput").value = String(newSeed);
+        reseed();
+        amplitude = random(4, 28);
+        frequency = random(0.6, 2.6);
+        phase = random(0, Math.PI*2);
+        strokeW = random(1.2, 4.0);
+      };
+
+      document.getElementById("saveBtn").onclick = () => {
+        saveCanvas("font-path-method", "png");
+      };
+
+      document.getElementById("animBtn").onclick = () => {
+        isAnimating = !isAnimating;
+        document.getElementById("animBtn").textContent = isAnimating ? "Animate" : "Paused";
+      };
+
+      document.getElementById("resetBtn").onclick = () => {
+        inputText = "A";
+        document.getElementById("textInput").value = "A";
+        currentFunction = "sin";
+        document.getElementById("fnSelect").value = "sin";
+        document.getElementById("seedInput").value = "12345";
+        amplitude = 12;
+        frequency = 1.2;
+        phase = 0;
+        strokeW = 2.2;
+        scaleVal = 1.6;
+        animationSpeed = 0.02;
+        reseed();
+      };
+    }
+
+    function setup(){
+      const c = createCanvas(CANVAS_W, CANVAS_H);
+      c.parent("canvasWrap");
+      pixelDensity(window.devicePixelRatio || 1);
+      smooth();
+
+      bindUI();
+      reseed();
+
+      setMsg("Loading font...\n" + FONT_PATH);
+
+      loadFont(
+        FONT_PATH,
+        (f) => {
+          fontObj = f;
+          fontReady = true;
+          setMsg("Font loaded ✅\n" + FONT_PATH);
+        },
+        (err) => {
+          console.error(err);
+          fontReady = false;
+          setMsg(
+            "Font load failed ❌\n" +
+            "请检查：\n" +
+            "1) 字体是否真的在该路径\n" +
+            "2) 文件名大小写是否一致\n\n" +
+            "当前路径：\n" + FONT_PATH
+          );
+        }
       );
-      return;
     }
 
-    // 正常绘制
-    if (isAnimating) t += animationSpeed;
-    rebuildPointsCache(false);
-    drawDistortedGlyph();
-  }
-
-  function drawFontStatus(msg){
-    push();
-    // 提示区域（右侧）
-    fill(0, 0, 0, 60);
-    noStroke();
-    rect(cw+40, 60, width - cw - 80, 220, 18);
-
-    fill(255);
-    textAlign(LEFT, TOP);
-    textSize(16);
-    text(msg, cw+70, 90);
-
-    textSize(12);
-    fill(230);
-    text("如果你能在浏览器直接打开：\nhttps://paper-grid-drawing.vercel.app/" + FONT_PATH + "\n但仍失败，基本就是 Variable Font 兼容问题。\n建议换成普通 TTF/OTF（非 Variable）。",
-         cw+70, 170);
-    pop();
-  }
-
-  // ======= 左面板 =======
-  function drawLeftPanel(){
-    noStroke();
-    fill(31,30,36);
-    rect(0,0,cw,height);
-
-    fill(255);
-    textSize(14);
-    textAlign(LEFT,TOP);
-    text("Font Path Method (Generator)", 14, COLOR_BG.y + COLOR_BG.h + 12);
-  }
-
-  // ======= 网格 =======
-  function drawGrid(){
-    const step = 25;
-    stroke(220); strokeWeight(1);
-    for(let x=cw;x<=width;x+=step) line(x,0,x,height);
-    for(let y=0;y<=height;y+=step) line(cw,y,width,y);
-  }
-
-  // ======= 文字转点缓存 =======
-  function rebuildPointsCache(force){
-    const key = [typedText, fontSize.toFixed(2), sampleFactor.toFixed(3), simplifyThreshold.toFixed(3)].join("|");
-    if(!force && key === lastCacheKey) return;
-    lastCacheKey = key;
-
-    if(!typedText){ rawPoints=[]; return; }
-
-    const bounds = fontObj.textBounds(typedText, 0, 0, fontSize);
-    const gx = cw + (width - cw)/2 - bounds.w/2 - bounds.x;
-    const gy = height/2 + bounds.h/2 - bounds.y;
-
-    rawPoints = fontObj.textToPoints(typedText, gx, gy, fontSize, {
-      sampleFactor, simplifyThreshold
-    });
-
-    let sx=0, sy=0;
-    for(const p of rawPoints){ sx+=p.x; sy+=p.y; }
-    if(rawPoints.length){
-      glyphCenter.x = sx/rawPoints.length;
-      glyphCenter.y = sy/rawPoints.length;
-    }else{
-      glyphCenter.x = cw + (width - cw)/2;
-      glyphCenter.y = height/2;
+    function drawGrid(){
+      const cw = 280;
+      const cell = 25;
+      stroke(255,255,255,18);
+      strokeWeight(1);
+      for(let x=cw; x<=width; x+=cell) line(x, 0, x, height);
+      for(let y=0; y<=height; y+=cell) line(cw, y, width, y);
     }
-  }
 
-  // ======= 扰动绘制 =======
-  function drawDistortedGlyph(){
-    if(!rawPoints.length) return;
+    function draw(){
+      background(10,10,14);
+      drawGrid();
 
-    stroke(currentColor);
-    strokeWeight(strokeW);
-    noFill();
-
-    const breakDist = max(8, fontSize * 0.05);
-    let started=false;
-    let prev=null;
-
-    for(let i=0;i<rawPoints.length;i++){
-      const p = rawPoints[i];
-
-      if(prev && dist(prev.x,prev.y,p.x,p.y) > breakDist){
-        if(started) endShape();
-        started=false;
-        prev=null;
+      if(!fontReady || !fontObj){
+        noStroke();
+        fill(255,255,255,120);
+        textSize(18);
+        textAlign(CENTER, CENTER);
+        text("Loading font...", width*0.6, height*0.5);
+        return;
       }
 
-      const vdx = p.x - glyphCenter.x;
-      const vdy = p.y - glyphCenter.y;
-      const vlen = max(1e-6, sqrt(vdx*vdx + vdy*vdy));
-      const nx = vdx / vlen;
-      const ny = vdy / vlen;
+      if(isAnimating) t += animationSpeed;
 
-      const input = frequency * (p.x*0.01 + p.y*0.01) + phase + t;
-      const off = applyFunction(input) * amplitude;
+      const size = 240;
+      const options = { sampleFactor: 0.12, simplifyThreshold: 0 };
 
-      const dx = nx * off;
-      const dy = ny * off;
+      const pts = fontObj.textToPoints(inputText, 0, 0, size, options);
+      const bounds = fontObj.textBounds(inputText, 0, 0, size);
 
-      if(!started){ beginShape(); started=true; }
+      push();
+      translate(width*0.60, height*0.52);
+      scale(scaleVal);
+      translate(-bounds.x - bounds.w/2, -bounds.y - bounds.h/2);
 
-      if(currentFunction===0 || currentFunction===2) curveVertex(p.x+dx, p.y+dy);
-      else vertex(p.x+dx, p.y+dy);
+      noFill();
+      stroke(255);
+      strokeWeight(strokeW);
+      beginShape(POINTS);
 
-      prev=p;
-    }
-    if(started) endShape();
-  }
+      for(let i=0;i<pts.length;i++){
+        const p = pts[i];
+        const n = noise(i*0.02, seed*0.001);
+        const ang = n * Math.PI * 2;
 
-  function applyFunction(tt){
-    switch(currentFunction){
-      case 0: return sin(tt);
-      case 1: return (tt % TWO_PI < PI) ? 1 : -1;
-      case 2: return asin(sin(tt)) * 2 / PI;
-      case 3: return (tt % TWO_PI) / PI - 1;
-      default:return sin(tt);
-    }
-  }
+        const dis = i * 0.03;
+        const wave = applyFn(frequency * dis + phase + t);
 
-  // ======= 右下角函数预览 =======
-  function drawFunctionDisplay(){
-    const displayWidth=250, displayHeight=250, margin=50;
+        const off = wave * amplitude * (0.35 + n);
+        const dx = Math.cos(ang) * off;
+        const dy = Math.sin(ang) * off;
 
-    push();
-    stroke(0); strokeWeight(3);
-    translate(width-displayWidth/2-margin, height-displayHeight/2-margin);
-    line(-displayWidth/2,0,displayWidth/2,0);
-    line(0,-displayHeight/2,0,displayHeight/2);
-
-    fill(0); noStroke();
-    triangle(-5,-displayHeight/2, 5,-displayHeight/2, 0,-displayHeight/2-15);
-    triangle(displayWidth/2+15,0, displayWidth/2,-5, displayWidth/2,5);
-
-    fill(0); textSize(15);
-    textAlign(LEFT,TOP); text("y",10,-displayHeight/2+8);
-    textAlign(LEFT,CENTER); text("x",displayWidth/2-10,18);
-
-    textAlign(CENTER,BOTTOM);
-    textSize(18);
-    text(functionNames[currentFunction] + " Function", 0, -displayHeight/2-18);
-    pop();
-
-    stroke(color(140));
-    noFill();
-    strokeWeight(3);
-    beginShape();
-    for(let x=0;x<displayWidth;x+=2){
-      const amp = map(amplitude,0,maxAmp,0,displayHeight/2);
-      const y = applyFunction(frequency*x*0.02 + phase + t) * amp;
-      vertex(width-displayWidth-margin+x, height-displayHeight/2-margin-y);
-    }
-    endShape();
-  }
-
-  // ======= Preset / Randomize =======
-  function applyPreset(name){
-    const p = PRESETS[name];
-    if(!p) return;
-    currentFunction = p.func;
-    strokeW = p.strokeW;
-    amplitude = p.amp;
-    frequency = p.freq;
-    phase = p.phase;
-    animationSpeed = p.speed;
-    fontSize = p.size;
-    sampleFactor = p.sf;
-    selectFunc.value(functionNames[currentFunction]);
-    rebuildPointsCache(true);
-  }
-
-  function randomizeFromSeed(){
-    randomSeed(seed);
-    currentFunction = floor(random(0,4));
-    strokeW = random(1.2,10.0);
-    amplitude = random(0,maxAmp);
-    frequency = random(0.3,4.8);
-    phase = random(0,TWO_PI);
-    animationSpeed = random(0.0,0.06);
-    fontSize = random(360,640);
-    sampleFactor = random(0.08,0.16);
-    selectFunc.value(functionNames[currentFunction]);
-    rebuildPointsCache(true);
-  }
-
-  // ======= DOM UI =======
-  function buildDOMUI(){
-    uiWrap = createDiv(); uiWrap.addClass("ui");
-    uiWrap.position(12,230);
-    uiWrap.style("width",(cw-24)+"px");
-
-    uiWrap.child(createElement("label","Text (输入字符/字符串)"));
-    inputText = createInput("A"); inputText.parent(uiWrap);
-
-    uiWrap.child(createElement("label","Function"));
-    selectFunc = createSelect();
-    functionNames.forEach(n=>selectFunc.option(n));
-    selectFunc.parent(uiWrap);
-    selectFunc.changed(()=> currentFunction = functionNames.indexOf(selectFunc.value()));
-
-    uiWrap.child(createElement("label","Presets"));
-    selectPreset = createSelect();
-    Object.keys(PRESETS).forEach(k=>selectPreset.option(k));
-    selectPreset.parent(uiWrap);
-    selectPreset.changed(()=> applyPreset(selectPreset.value()));
-
-    uiWrap.child(createElement("label","Seed (可复现)"));
-    inputSeed = createInput("12345"); inputSeed.parent(uiWrap);
-
-    const row1 = createDiv(); row1.addClass("row"); row1.parent(uiWrap);
-    btnApplySeed = createButton("Apply"); btnApplySeed.parent(row1);
-    btnApplySeed.mousePressed(()=>{ seed=parseInt(inputSeed.value()||"0",10)||0; randomizeFromSeed(); });
-
-    btnRandom = createButton("Randomize"); btnRandom.parent(row1);
-    btnRandom.mousePressed(()=>{
-      seed = floor(random(1,99999999));
-      inputSeed.value(String(seed));
-      randomizeFromSeed();
-    });
-
-    uiWrap.child(createElement("label","Actions"));
-    const row2=createDiv(); row2.addClass("row"); row2.parent(uiWrap);
-
-    btnSave=createButton("Save PNG"); btnSave.parent(row2);
-    btnSave.mousePressed(()=> saveCanvas("FontPath","png"));
-
-    btnToggle=createButton("Animate"); btnToggle.parent(row2);
-    btnToggle.mousePressed(()=> isAnimating=!isAnimating);
-
-    const row3=createDiv(); row3.addClass("row"); row3.parent(uiWrap);
-    btnReset=createButton("Reset"); btnReset.parent(row3);
-    btnReset.mousePressed(()=> resetToDefaults());
-
-    const hint=createDiv(
-      `<div class="hint">
-        如果一直显示 Loading：<br/>
-        1) 打开 <b>https://paper-grid-drawing.vercel.app/${FONT_PATH}</b> 看是否 404<br/>
-        2) 若能打开仍失败，多半是 <b>Variable Font</b>，换普通 TTF/OTF
-      </div>`
-    );
-    hint.parent(uiWrap);
-  }
-
-  function resetToDefaults(){
-    inputText.value("A");
-    inputSeed.value("12345");
-    seed=12345;
-    hueVal=220; satVal=100; briVal=80;
-    updateCurrentColorFromHSV(true);
-    selectPreset.value("Clean Wave");
-    applyPreset("Clean Wave");
-    isAnimating=true;
-    t=0;
-    rebuildPointsCache(true);
-    // 重新尝试加载字体（如果你刚改了 FONT_PATH）
-    tryLoadFont();
-  }
-
-  // ======= 颜色面板 =======
-  function buildHueGraphic(){
-    hueGraphic = createGraphics(HUE_BAR.w,HUE_BAR.h);
-    hueGraphic.colorMode(HSB,360,100,100);
-    hueGraphic.noStroke();
-    hueGraphic.loadPixels();
-    for(let y=0;y<HUE_BAR.h;y++){
-      const h = map(y,0,HUE_BAR.h-1,0,360);
-      const c = hueGraphic.color(h,100,100);
-      for(let x=0;x<HUE_BAR.w;x++){
-        const idx=(y*HUE_BAR.w+x)*4;
-        hueGraphic.pixels[idx]=red(c);
-        hueGraphic.pixels[idx+1]=green(c);
-        hueGraphic.pixels[idx+2]=blue(c);
-        hueGraphic.pixels[idx+3]=255;
+        vertex(p.x + dx, p.y + dy);
       }
+
+      endShape();
+      pop();
     }
-    hueGraphic.updatePixels();
-  }
 
-  function buildSBGraphic(){
-    sbGraphic = createGraphics(SB_PANEL.w,SB_PANEL.h);
-    sbGraphic.colorMode(HSB,360,100,100);
-    sbGraphic.noStroke();
-    sbGraphic.loadPixels();
-    for(let y=0;y<SB_PANEL.h;y++){
-      for(let x=0;x<SB_PANEL.w;x++){
-        const s=map(x,0,SB_PANEL.w-1,0,100);
-        const b=map(y,0,SB_PANEL.h-1,100,0);
-        const c=sbGraphic.color(hueVal,s,b);
-        const idx=(y*SB_PANEL.w+x)*4;
-        sbGraphic.pixels[idx]=red(c);
-        sbGraphic.pixels[idx+1]=green(c);
-        sbGraphic.pixels[idx+2]=blue(c);
-        sbGraphic.pixels[idx+3]=255;
-      }
+    function windowResized(){
     }
-    sbGraphic.updatePixels();
-  }
-
-  function updateCurrentColorFromHSV(rebuildSB){
-    push(); colorMode(HSB,360,100,100);
-    currentColor = color(hueVal,satVal,briVal);
-    pop();
-    if(rebuildSB) buildSBGraphic();
-  }
-
-  function drawColorPanel(){
-    noStroke();
-    fill(40);
-    rect(COLOR_BG.x-2,COLOR_BG.y-2,COLOR_BG.w+4,COLOR_BG.h+4,14);
-
-    imageMode(CORNER);
-    image(sbGraphic, SB_PANEL.x, SB_PANEL.y);
-    image(hueGraphic, HUE_BAR.x, HUE_BAR.y);
-
-    const sx = map(satVal,0,100,SB_PANEL.x,SB_PANEL.x+SB_PANEL.w);
-    const sy = map(briVal,100,0,SB_PANEL.y,SB_PANEL.y+SB_PANEL.h);
-    stroke(255); strokeWeight(2); noFill();
-    circle(sx,sy,12);
-
-    const hy = map(hueVal,0,360,HUE_BAR.y,HUE_BAR.y+HUE_BAR.h);
-    line(HUE_BAR.x-4,hy,HUE_BAR.x,hy);
-    line(HUE_BAR.x+HUE_BAR.w,hy,HUE_BAR.x+HUE_BAR.w+4,hy);
-
-    noStroke();
-    fill(currentColor);
-    rect(10, COLOR_BG.y + COLOR_BG.h + 12, cw - 20, 26, 10);
-  }
-
-  function handleColorClick(){
-    if(mouseX>=SB_PANEL.x && mouseX<=SB_PANEL.x+SB_PANEL.w &&
-       mouseY>=SB_PANEL.y && mouseY<=SB_PANEL.y+SB_PANEL.h){
-      const sx=constrain(mouseX,SB_PANEL.x,SB_PANEL.x+SB_PANEL.w);
-      const sy=constrain(mouseY,SB_PANEL.y,SB_PANEL.y+SB_PANEL.h);
-      satVal = map(sx,SB_PANEL.x,SB_PANEL.x+SB_PANEL.w,0,100);
-      briVal = map(sy,SB_PANEL.y,SB_PANEL.y+SB_PANEL.h,100,0);
-      updateCurrentColorFromHSV(false);
-      return true;
-    }
-    if(mouseX>=HUE_BAR.x && mouseX<=HUE_BAR.x+HUE_BAR.w &&
-       mouseY>=HUE_BAR.y && mouseY<=HUE_BAR.y+HUE_BAR.h){
-      const hy=constrain(mouseY,HUE_BAR.y,HUE_BAR.y+HUE_BAR.h);
-      hueVal = map(hy,HUE_BAR.y,HUE_BAR.y+HUE_BAR.h,0,360);
-      updateCurrentColorFromHSV(true);
-      return true;
-    }
-    return false;
-  }
-
-  function mousePressed(){ handleColorClick(); }
-</script>
+  </script>
 </body>
 </html>
