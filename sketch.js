@@ -1,11 +1,11 @@
-// =================== 全局设置（响应式 + AI式拖拽 + Smart Guides + 选中移动） ===================
+// =================== 全局设置（响应式 + AI式拖拽 + 网格强吸附 + 选中移动） ===================
 
 let cw = 240;
 let cellSize = 36;
 
 let dragStart, dragEnd;
-let isDragging = false;
-let isMoving = false;
+let isDragging = false;   // 正在画新图形
+let isMoving = false;     // 正在移动选中图形
 
 let currentShape = 0;
 let currentColor;
@@ -18,12 +18,6 @@ let showGrid = true;
 let selectedIndex = -1;
 let moveStartGrid = null;
 let moveOrigXY = null;
-
-// Smart Guides
-let smartGuides = true;
-let snapThreshold = 0.75; // 单位：网格格数（允许 0.5 线）
-let activeGuideX = null;  // 当前吸附的垂直参考线（网格坐标，可为 .5）
-let activeGuideY = null;  // 当前吸附的水平参考线（网格坐标，可为 .5）
 
 // 资源
 let icons = new Array(10);
@@ -58,7 +52,7 @@ function sign1(v) {
   return v >= 0 ? 1 : -1;
 }
 
-// 鼠标 -> 网格坐标（更稳：floor）
+// 鼠标 -> 网格坐标（强吸附：floor，永远不会落在半格）
 function mouseToGrid() {
   const gx = floor((mouseX - cw) / cellSize);
   const gy = floor(mouseY / cellSize);
@@ -66,9 +60,11 @@ function mouseToGrid() {
 }
 
 /**
- * AI矩形工具核心（角点到角点），允许负宽高
- * Shift：锁比例
- * Alt：中心扩张
+ * AI矩形工具核心（角点到角点），允许负宽高：
+ * x = sx, y = sy, w = ex - sx, h = ey - sy
+ *
+ * Shift：锁比例（保留方向符号）
+ * Alt：从中心扩张（AI 的 Option 行为）
  */
 function getAIBoxGrid(start, end, useCenter, lockAspect) {
   let sx = start.x, sy = start.y;
@@ -77,6 +73,7 @@ function getAIBoxGrid(start, end, useCenter, lockAspect) {
   let w = ex - sx;
   let h = ey - sy;
 
+  // Alt/Option：中心扩张（start 是中心）
   if (useCenter) {
     let halfW = abs(w);
     let halfH = abs(h);
@@ -95,6 +92,7 @@ function getAIBoxGrid(start, end, useCenter, lockAspect) {
     };
   }
 
+  // Shift：锁比例（角点模式）
   if (lockAspect) {
     const size = max(abs(w), abs(h));
     w = sign1(w) * size;
@@ -104,6 +102,7 @@ function getAIBoxGrid(start, end, useCenter, lockAspect) {
   return { x: sx, y: sy, w, h };
 }
 
+// 网格盒子 -> 像素盒子
 function gridBoxToPixel(box) {
   return {
     x: box.x * cellSize,
@@ -113,7 +112,8 @@ function gridBoxToPixel(box) {
   };
 }
 
-// 统一 Shape 存储为正 w/h
+// 将 AI box（可能负宽高）转换为 Shape 的“统一正向存储”
+// 并强制整数网格（避免任何中间值）
 function normalizeBoxToShape(box) {
   let x = box.x;
   let y = box.y;
@@ -123,13 +123,20 @@ function normalizeBoxToShape(box) {
   if (w < 0) { x = x + w; w = -w; }
   if (h < 0) { y = y + h; h = -h; }
 
+  // 强制整数格
+  x = round(x);
+  y = round(y);
+  w = round(w);
+  h = round(h);
+
+  // 至少 1 格
   w = max(1, w);
   h = max(1, h);
 
   return { x, y, w, h };
 }
 
-// 命中图形（Shape 存的是正 w/h）
+// 命中最上层图形（从后往前）
 function hitTestShape(gx, gy) {
   for (let i = shapes.length - 1; i >= 0; i--) {
     const s = shapes[i];
@@ -137,112 +144,9 @@ function hitTestShape(gx, gy) {
     const y0 = s.y;
     const x1 = s.x + s.w;
     const y1 = s.y + s.h;
-
     if (gx >= x0 && gx < x1 && gy >= y0 && gy < y1) return i;
   }
   return -1;
-}
-
-// =================== Smart Guides（吸附 + 提示线） ===================
-function getGuideLines(excludeIndex) {
-  const xLines = [];
-  const yLines = [];
-
-  for (let i = 0; i < shapes.length; i++) {
-    if (i === excludeIndex) continue;
-    const s = shapes[i];
-
-    const left = s.x;
-    const right = s.x + s.w;
-    const cx = s.x + s.w / 2;
-
-    const top = s.y;
-    const bottom = s.y + s.h;
-    const cy = s.y + s.h / 2;
-
-    xLines.push(left, cx, right);
-    yLines.push(top, cy, bottom);
-  }
-
-  return { xLines, yLines };
-}
-
-function boxEdgesCenter(box) {
-  const left = min(box.x, box.x + box.w);
-  const right = max(box.x, box.x + box.w);
-  const top = min(box.y, box.y + box.h);
-  const bottom = max(box.y, box.y + box.h);
-  const cx = (left + right) / 2;
-  const cy = (top + bottom) / 2;
-  return { left, right, top, bottom, cx, cy };
-}
-
-function bestSnapDelta(currentLines, targetLines, threshold) {
-  let best = null;
-  for (let i = 0; i < currentLines.length; i++) {
-    const cl = currentLines[i];
-    for (let j = 0; j < targetLines.length; j++) {
-      const tl = targetLines[j];
-      const d = tl - cl;
-      if (abs(d) <= threshold) {
-        if (best === null || abs(d) < abs(best.delta)) {
-          best = { delta: d, target: tl };
-        }
-      }
-    }
-  }
-  return best;
-}
-
-// 将 box 整体平移吸附到其它 shape 的边/中心（不改变 w/h）
-function applySmartGuidesToBox(box, excludeIndex) {
-  activeGuideX = null;
-  activeGuideY = null;
-
-  if (!smartGuides || shapes.length === 0) return box;
-
-  const { xLines, yLines } = getGuideLines(excludeIndex);
-  if (xLines.length === 0 && yLines.length === 0) return box;
-
-  const ec = boxEdgesCenter(box);
-
-  const snapX = bestSnapDelta([ec.left, ec.cx, ec.right], xLines, snapThreshold);
-  const snapY = bestSnapDelta([ec.top, ec.cy, ec.bottom], yLines, snapThreshold);
-
-  const out = { x: box.x, y: box.y, w: box.w, h: box.h };
-
-  if (snapX) {
-    out.x += snapX.delta;
-    activeGuideX = snapX.target;
-  }
-  if (snapY) {
-    out.y += snapY.delta;
-    activeGuideY = snapY.target;
-  }
-
-  return out;
-}
-
-function drawGuides() {
-  if (!smartGuides) return;
-  if (activeGuideX === null && activeGuideY === null) return;
-
-  const w = width - cw;
-  const h = height;
-
-  push();
-  strokeWeight(1.5);
-  stroke(255, 0, 200, 200); // 类似 AI 的洋红参考线
-
-  if (activeGuideX !== null) {
-    const x = activeGuideX * cellSize;
-    line(x, 0, x, h);
-  }
-  if (activeGuideY !== null) {
-    const y = activeGuideY * cellSize;
-    line(0, y, w, y);
-  }
-  pop();
 }
 
 // =================== 响应式布局 ===================
@@ -439,13 +343,14 @@ function rectToCapButton(rect, label) {
 function setup() {
   createCanvas(windowWidth, windowHeight);
 
-  // 高清：让大图边缘更顺
+  // 高清：更干净的边缘
   pixelDensity(window.devicePixelRatio || 1);
   smooth();
 
   currentColor = color("#482BCC");
   recentColors = defaultRecentHex.map(h => color(h));
   layoutUI();
+
   for (let i = 0; i < svgs.length; i++) computeSvgBounds(i);
 }
 
@@ -462,25 +367,20 @@ function windowResized() {
 function draw() {
   background(240);
 
-  // 右侧画布区
+  // 右侧画布区域
   push();
   translate(cw, 0);
 
   if (showGrid) drawGrid();
-
   drawShapes();
 
-  // 你要求：选中移动时不要黑色边框
-  // 所以这里不画任何选中框
+  // 你要求：选中不要黑框，所以这里不画选中框
 
   if (isDragging) drawPreview();
 
-  // Smart Guides 提示线
-  drawGuides();
-
   pop();
 
-  // 左侧
+  // 左侧 UI
   noStroke();
   fill("#1F1E24");
   rect(0, 0, cw, height);
@@ -496,7 +396,7 @@ function draw() {
   for (let b of buttons) b.display();
 }
 
-// =================== 网格 / 图形 ===================
+// =================== 网格 & 图形 ===================
 function drawGrid() {
   const w = width - cw;
   const h = height;
@@ -515,17 +415,14 @@ function drawShapes() {
   for (let s of shapes) s.display();
 }
 
-// =================== 预览（AI式拖拽 + Smart Guides） ===================
+// =================== 预览（AI式拖拽 + 网格强吸附） ===================
 function drawPreview() {
   const useCenter = keyIsDown(ALT);
   const lockAspect = keyIsDown(SHIFT);
 
-  let box = getAIBoxGrid(dragStart, dragEnd, useCenter, lockAspect);
-
-  // 预览时做 Smart Guides（排除无：-1）
-  box = applySmartGuidesToBox(box, -1);
-
+  const box = getAIBoxGrid(dragStart, dragEnd, useCenter, lockAspect);
   const px = gridBoxToPixel(box);
+
   const previewFill = color(red(currentColor), green(currentColor), blue(currentColor), 80);
 
   push();
@@ -547,6 +444,7 @@ function drawPreview() {
       drawParaFromBox(px.x, px.y, px.w, px.h);
       break;
     default: {
+      // SVG：负宽高不直接画，归一化后画（仍保证落网格）
       const norm = normalizeBoxToShape(box);
       drawSvgShape(currentShape, norm.x * cellSize, norm.y * cellSize, norm.w * cellSize, norm.h * cellSize, previewFill);
       break;
@@ -560,12 +458,9 @@ function addNewShape() {
   const useCenter = keyIsDown(ALT);
   const lockAspect = keyIsDown(SHIFT);
 
-  let box = getAIBoxGrid(dragStart, dragEnd, useCenter, lockAspect);
-
-  // 落笔最终也吸附（保证预览=最终）
-  box = applySmartGuidesToBox(box, -1);
-
+  const box = getAIBoxGrid(dragStart, dragEnd, useCenter, lockAspect);
   const norm = normalizeBoxToShape(box);
+
   shapes.push(new Shape(norm.x, norm.y, norm.w, norm.h, currentShape, currentColor));
   undoStack = [];
 }
@@ -603,6 +498,7 @@ function drawRecentColors() {
 }
 
 function handleColorClick() {
+  // S/B
   if (mouseX >= COLOR_MAIN.x && mouseX <= COLOR_MAIN.x + COLOR_MAIN.w &&
       mouseY >= COLOR_MAIN.y && mouseY <= COLOR_MAIN.y + COLOR_MAIN.h) {
     let sx = constrain(mouseX, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w);
@@ -613,6 +509,7 @@ function handleColorClick() {
     return true;
   }
 
+  // Hue
   if (mouseX >= COLOR_HUE.x && mouseX <= COLOR_HUE.x + COLOR_HUE.w &&
       mouseY >= COLOR_HUE.y && mouseY <= COLOR_HUE.y + COLOR_HUE.h) {
     let hy = constrain(mouseY, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h);
@@ -622,6 +519,7 @@ function handleColorClick() {
     return true;
   }
 
+  // Recent
   for (let i = 0; i < RECENT_RECTS.length; i++) {
     const r = RECENT_RECTS[i];
     if (mouseX >= r.x && mouseX <= r.x + r.w &&
@@ -657,9 +555,9 @@ function colorsEqual(c1, c2) {
          blue(c1) === blue(c2);
 }
 
-// =================== 鼠标交互（选中移动 + Smart Guides） ===================
+// =================== 鼠标交互（选中移动 / 网格强吸附） ===================
 function mousePressed() {
-  // 右侧区域
+  // 右侧画布区
   if (mouseX > cw && mouseY >= 0 && mouseY <= height) {
     const { gx, gy } = mouseToGrid();
 
@@ -673,6 +571,7 @@ function mousePressed() {
     }
 
     selectedIndex = -1;
+
     isDragging = true;
     dragStart = createVector(gx, gy);
     dragEnd = dragStart.copy();
@@ -691,26 +590,25 @@ function mousePressed() {
 }
 
 function mouseDragged() {
+  // 移动：严格按格子（不会出现网格中间）
   if (isMoving && selectedIndex >= 0 && selectedIndex < shapes.length) {
     const { gx, gy } = mouseToGrid();
     const dx = gx - moveStartGrid.x;
     const dy = gy - moveStartGrid.y;
 
-    // 先得到“提议位置”
     let nx = max(0, moveOrigXY.x + dx);
     let ny = max(0, moveOrigXY.y + dy);
 
-    // 对移动也做 Smart Guides：把选中 shape 当作 box，整体平移吸附
-    const s = shapes[selectedIndex];
-    let box = { x: nx, y: ny, w: s.w, h: s.h };
-    box = applySmartGuidesToBox(box, selectedIndex);
+    // 强制整数
+    nx = round(nx);
+    ny = round(ny);
 
-    // 再应用回去（shape 存正 w/h）
-    shapes[selectedIndex].x = max(0, box.x);
-    shapes[selectedIndex].y = max(0, box.y);
+    shapes[selectedIndex].x = nx;
+    shapes[selectedIndex].y = ny;
     return;
   }
 
+  // 绘制：四向拖拽（AI 逻辑）
   if (isDragging) {
     const { gx, gy } = mouseToGrid();
     dragEnd = createVector(gx, gy);
@@ -722,16 +620,12 @@ function mouseReleased() {
     isMoving = false;
     moveStartGrid = null;
     moveOrigXY = null;
-    activeGuideX = null;
-    activeGuideY = null;
     return;
   }
 
   if (isDragging) {
     isDragging = false;
     addNewShape();
-    activeGuideX = null;
-    activeGuideY = null;
   }
 }
 
@@ -742,24 +636,24 @@ function undo() {
     if (selectedIndex >= shapes.length) selectedIndex = -1;
   }
 }
+
 function redo() {
   if (undoStack.length > 0) shapes.push(undoStack.pop());
 }
+
 function clearShapes() {
   shapes = [];
   undoStack = [];
   selectedIndex = -1;
-  activeGuideX = null;
-  activeGuideY = null;
 }
 
-// =================== Shape ===================
+// =================== Shape 类（内部统一正 w/h） ===================
 class Shape {
   constructor(x, y, w, h, type, c) {
-    this.x = x;
-    this.y = y;
-    this.w = max(1, w);
-    this.h = max(1, h);
+    this.x = round(x);
+    this.y = round(y);
+    this.w = max(1, round(w));
+    this.h = max(1, round(h));
     this.type = type;
     this.c = color(c);
   }
@@ -796,7 +690,7 @@ class Shape {
   }
 }
 
-// =================== 形状绘制辅助 ===================
+// =================== 形状绘制辅助（支持预览负宽高） ===================
 function drawTriFromBox(x, y, w, h) {
   const x0 = x, y0 = y;
   const x1 = x + w, y1 = y + h;
@@ -824,6 +718,7 @@ function drawParaFromBox(x, y, w, h) {
   endShape(CLOSE);
 }
 
+// 平行四边形（正向）
 function drawParallelogram(x, y, w, h) {
   beginShape();
   vertex(x + w / 4, y);
@@ -833,14 +728,13 @@ function drawParallelogram(x, y, w, h) {
   endShape(CLOSE);
 }
 
-// SVG 形状（提升大尺寸绘制平滑度）
+// SVG 形状（保留高清平滑，但不改 SVG 文件）
 function drawSvgShape(type, x, y, w, h, col) {
   let idx = type - 4;
   if (idx < 0 || idx >= svgs.length) return;
   const img = svgs[idx];
   if (!img) return;
 
-  // 高质量平滑（对大尺寸边缘锯齿有帮助）
   const ctx = drawingContext;
   ctx.imageSmoothingEnabled = true;
   if (ctx.imageSmoothingQuality) ctx.imageSmoothingQuality = "high";
@@ -864,7 +758,7 @@ function drawSvgShape(type, x, y, w, h, col) {
   pop();
 }
 
-// =================== 左侧按钮 ===================
+// =================== 左侧图标按钮 ===================
 class IconButton {
   constructor(x, y, s, index) {
     this.x = x;
@@ -913,6 +807,7 @@ class IconButton {
   }
 }
 
+// =================== 功能按钮 ===================
 class CapButton {
   constructor(x, y, w, h, str) {
     this.x = x;
@@ -951,21 +846,14 @@ class CapButton {
 
 // =================== 键盘 ===================
 function keyPressed() {
+  // 删除选中
   if ((keyCode === BACKSPACE || keyCode === DELETE) && selectedIndex >= 0) {
     shapes.splice(selectedIndex, 1);
     selectedIndex = -1;
-    activeGuideX = null;
-    activeGuideY = null;
     return false;
   }
 
+  // Undo/Redo
   if (key === "z" || key === "Z") undo();
   if (key === "y" || key === "Y") redo();
-
-  // 可选：G 切换 Smart Guides
-  if (key === "g" || key === "G") {
-    smartGuides = !smartGuides;
-    activeGuideX = null;
-    activeGuideY = null;
-  }
 }
