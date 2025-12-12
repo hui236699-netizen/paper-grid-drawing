@@ -10,7 +10,7 @@ let shapes = [];
 let undoStack = [];
 let showGrid = true;
 
-// 图形按钮 & 图标，只用前 10 个
+// 左侧按钮 & 图标，只用前 10 个
 let icons = new Array(10);
 let buttons = new Array(10);
 let svgs = new Array(8);              // 8 个 SVG 形状
@@ -107,92 +107,62 @@ function computeSvgBounds(index) {
   pg.remove();
 }
 
-// =================== 布局：按照你的草图重新排 ===================
+// =================== 布局：完全按侧边栏结构来 ===================
 function layoutUI() {
-  // ----- 1. 顶部颜色区域（大色块 + 竖色条） -----
-  // 紧贴顶部和左右两边：没有任何空隙
-  hueW = 18;
-  sbSize = cw - hueW;
+  // ------ 顶部颜色区域：紧贴左、上、右 ------
+  hueW = 20;                          // 竖条宽一点更清楚
+  sbSize = cw - hueW;                 // 大方块宽 = 总宽 - 竖条宽
   sbX = 0;
   sbY = 0;
-  hueX = sbSize;
+  hueX = sbSize;                      // 紧贴方块右侧
   hueY = 0;
   hueH = sbSize;
 
   buildHueGraphic();
   buildSBGraphic();
 
-  const colorAreaBottom = sbY + sbSize;   // 顶部颜色区域的底部位置
+  // ------ 最近颜色一行（5 个小方块） ------
+  const recentSize = 26;
+  const recentGap = 8;
+  const recentY = sbY + sbSize + 12;  // 紧接在颜色块下面
+  const recentBlockBottom = recentY + recentSize;
 
-  // ----- 2. 最近使用颜色（5 个小方块） -----
-  const sw = 26;
-  const sh = 26;
-  const swGap = 8;
-  const swCount = 5;
-  const swTotalW = swCount * sw + (swCount - 1) * swGap;
-  const swStartX = (cw - swTotalW) / 2;
-  const swY = colorAreaBottom + 12;
-  // 记住这个区域底部
-  const recentBottom = swY + sh;
-
-  // 我们在 drawRecentColors 里按这个逻辑再算一遍
-  layoutUI._sw = { sw, sh, swGap, swStartX, swY };
-
-  // ----- 3. 四个功能按钮（Undo / Clear / Grid / Save），两行 -----
-  const bw = cw * 0.4;  // 按钮宽度占栏宽的 40%
+  // ------ 四个功能按钮，2 行×2 列 ------
+  const bw = 90;
   const bh = 34;
-  const btnGapRow = 10;
-  const btnGapCol = 20;
+  const offset = 70;                  // 左右偏移量
+  const row1Y = recentBlockBottom + 24;
+  const row2Y = row1Y + 42;
 
-  const row1Y = recentBottom + 18 + bh / 2;
-  const row2Y = row1Y + bh + btnGapRow;
+  undoButton  = new CapButton(cw / 2 - offset, row1Y, bw, bh, "Undo");
+  clearButton = new CapButton(cw / 2 + offset, row1Y, bw, bh, "Clear");
+  gridButton  = new CapButton(cw / 2 - offset, row2Y, bw, bh, "Grid");
+  saveButton  = new CapButton(cw / 2 + offset, row2Y, bw, bh, "Save");
 
-  const centerX = cw / 2;
-  undoButton  = new CapButton(centerX - bw / 2 - btnGapCol / 2, row1Y, bw, bh, "Undo");
-  clearButton = new CapButton(centerX + bw / 2 + btnGapCol / 2, row1Y, bw, bh, "Clear");
-  gridButton  = new CapButton(centerX - bw / 2 - btnGapCol / 2, row2Y, bw, bh, "Grid");
-  saveButton  = new CapButton(centerX + bw / 2 + btnGapCol / 2, row2Y, bw, bh, "Save");
+  // ------ 图形按钮区域（10 个：5 行×2 列） ------
+  const topUsed = row2Y + bh / 2;     // 第二排按钮的底
+  const iconsTopStart = topUsed + 30; // 图标区域开始
+  const iconsBottomMargin = 24;
+  const iconsBottom = height - iconsBottomMargin;
 
-  const funcBottom = row2Y + bh / 2;
+  const availableH = max(iconsBottom - iconsTopStart, 120); // 可用高度
 
-  // ----- 4. 底部 10 个图形按钮（5 行 × 2 列），自适应高度 -----
   const rows = 5;
-  const cols = 2;
-  const iconsTopStart = funcBottom + 26;     // 第一个图标矩形区域上边界
-  const iconsBottomMargin = 24;              // 底部预留
-  const availableH = height - iconsTopStart - iconsBottomMargin;
+  let iconSize = min(72, availableH / (rows + 1)); // 图标最大 72，窗口矮时会缩小
+  let gapRow = (availableH - rows * iconSize) / (rows + 1);
+  if (gapRow < 6) gapRow = 6;
 
-  // 默认图标尺寸 & 行间距
-  let sDefault = 60;
-  let gapRowDefault = 16;
-
-  // 先按默认值计算需要的高度
-  let needH = rows * sDefault + (rows - 1) * gapRowDefault;
-  let s, gapRow;
-  if (needH <= availableH) {
-    // 空间足够，用默认
-    s = sDefault;
-    // 把多余的高度均匀分到间距里（让整体更居中）
-    const extra = availableH - needH;
-    gapRow = gapRowDefault + extra / (rows + 1);
-  } else {
-    // 空间不够：按比例缩小图标 & 间距
-    const scale = availableH / needH;
-    s = sDefault * scale;
-    gapRow = gapRowDefault * scale;
-  }
-
-  const colGap = cw * 0.25;
-  const xLeft = cw / 2 - colGap / 2;
-  const xRight = cw / 2 + colGap / 2;
+  // 左右两列 X 位置
+  const xLeft = cw * 0.33;
+  const xRight = cw * 0.67;
 
   buttons = new Array(icons.length);
   for (let i = 0; i < icons.length; i++) {
-    let col = i % cols;
-    let row = floor(i / cols);
-    let yCenter = iconsTopStart + gapRow * (row + 1) + s * row + s / 2;
-    let xCenter = col === 0 ? xLeft : xRight;
-    buttons[i] = new IconButton(xCenter, yCenter, s, i);
+    let col = i % 2;
+    let row = floor(i / 2);
+    let y = iconsTopStart + gapRow * (row + 1) + iconSize * row + iconSize / 2;
+    let x = (col === 0) ? xLeft : xRight;
+    buttons[i] = new IconButton(x, y, iconSize, i);
   }
 }
 
@@ -216,7 +186,7 @@ function windowResized() {
 function draw() {
   background(240);
 
-  // 右侧画布区域（平移 cw）
+  // 右侧画布区域：平移 cw
   push();
   translate(cw, 0);
   if (showGrid) drawGrid();
@@ -229,16 +199,15 @@ function draw() {
   fill("#1F1E24");
   rect(0, 0, cw, height);
 
+  // 颜色面板 & 最近颜色 & 功能按钮 & 图形按钮
   drawColorPanel();
   drawRecentColors();
 
-  // 功能按钮
   undoButton.display();
   clearButton.display();
   gridButton.display();
   saveButton.display();
 
-  // 图形按钮
   for (let b of buttons) b.display();
 }
 
@@ -258,7 +227,7 @@ function drawShapes() {
   for (let s of shapes) s.display();
 }
 
-// 鼠标拖拽时的预览
+// 鼠标拖拽时的预览（在画布坐标系中）
 function drawPreview() {
   let gx0 = dragStart.x;
   let gy0 = dragStart.y;
@@ -333,13 +302,13 @@ function buildSBGraphic() {
   sbGraphic.updatePixels();
 }
 
+// 顶部颜色区域：大色块 + 竖条，紧贴边缘
 function drawColorPanel() {
-  // 顶部颜色区域：大色块 + 竖色条，紧贴边缘
   imageMode(CORNER);
   image(sbGraphic, sbX, sbY);
   image(hueGraphic, hueX, hueY);
 
-  // 在色条上画当前 hue 的小指示
+  // 在色条上画当前 hue 的小指示箭头
   let huePosY = map(hue, 0, 360, 0, hueH);
   stroke(255);
   strokeWeight(2);
@@ -347,29 +316,28 @@ function drawColorPanel() {
   line(hueX + hueW, hueY + huePosY, hueX + hueW + 4, hueY + huePosY);
 }
 
+// 最近颜色一行（5 个）
 function drawRecentColors() {
-  const cfg = layoutUI._sw;
-  const sw = cfg.sw;
-  const sh = cfg.sh;
-  const swGap = cfg.swGap;
-  const swStartX = cfg.swStartX;
-  const swY = cfg.swY;
-
+  let sw = 26, sh = 26;
+  let gap = 8;
   let n = recentColors.length;
+  let totalW = n * sw + (n - 1) * gap;
+  let startX = cw / 2 - totalW / 2;
+  let y = sbY + sbSize + 12;
 
   rectMode(CORNER);
   for (let i = 0; i < n; i++) {
-    let px = swStartX + i * (sw + swGap);
+    let px = startX + i * (sw + gap);
     stroke(60);
     strokeWeight(1);
     fill(recentColors[i]);
-    rect(px, swY, sw, sh, 6);
+    rect(px, y, sw, sh, 6);
 
     if (colorsEqual(recentColors[i], currentColor)) {
       noFill();
       stroke(255);
       strokeWeight(2);
-      rect(px - 3, swY - 3, sw + 6, sh + 6, 8);
+      rect(px - 3, y - 3, sw + 6, sh + 6, 8);
     }
   }
 }
@@ -397,19 +365,16 @@ function handleColorClick() {
   }
 
   // 点击最近颜色
-  const cfg = layoutUI._sw;
-  const sw = cfg.sw;
-  const sh = cfg.sh;
-  const swGap = cfg.swGap;
-  const swStartX = cfg.swStartX;
-  const swY = cfg.swY;
-
+  let sw = 26, sh = 26, gap = 8;
   let n = recentColors.length;
+  let totalW = n * sw + (n - 1) * gap;
+  let startX = cw / 2 - totalW / 2;
+  let y = sbY + sbSize + 12;
 
   for (let i = 0; i < n; i++) {
-    let px = swStartX + i * (sw + swGap);
+    let px = startX + i * (sw + gap);
     if (mouseX >= px && mouseX <= px + sw &&
-        mouseY >= swY && mouseY <= swY + sh) {
+        mouseY >= y && mouseY <= y + sh) {
       currentColor = color(recentColors[i]);
       addRecentColor(currentColor);
       return true;
@@ -513,8 +478,7 @@ class Shape {
 
   display() {
     push();
-    translate(cw, 0);  // 绘制时平移到画布区域
-
+    // 注意：draw() 里已经 translate(cw, 0)，这里就不用再平移
     fill(this.c);
     noStroke();
 
@@ -564,7 +528,7 @@ function drawParallelogramPreview(x, y, w, h) {
   endShape(CLOSE);
 }
 
-// 绘制 SVG 形状（裁掉透明边，让它贴网格，并且可以改变颜色）
+// 绘制 SVG 形状（裁掉透明边，让它贴网格，并且可以染色）
 function drawSvgShape(type, x, y, w, h, col) {
   let idx = type - 4;
   if (idx < 0 || idx >= svgs.length) return;
@@ -584,7 +548,7 @@ function drawSvgShape(type, x, y, w, h, col) {
 
   push();
   if (col) {
-    tint(col);     // 让白色 SVG 变成当前颜色
+    tint(col);     // 用当前颜色染色（原 SVG 需是白底透明）
   } else {
     tint(255);
   }
@@ -657,7 +621,7 @@ class CapButton {
     translate(this.x, this.y);
     rectMode(CENTER);
 
-    // 底色改为 #464548，hover 稍微亮一点
+    // 底色 #464548，hover 稍微亮一点
     if (this.hover()) fill(90, 89, 93);
     else fill("#464548");
     rect(0, 0, this.w, this.h, 40);
@@ -678,7 +642,7 @@ class CapButton {
   }
 }
 
-// =================== 键盘快捷键（可选） ===================
+// =================== 键盘快捷键 ===================
 function keyPressed() {
   if (key === 'z' || key === 'Z') undo();
   if (key === 'y' || key === 'Y') redo();
