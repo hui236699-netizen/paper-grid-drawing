@@ -1,11 +1,11 @@
-// =================== 全局设置（响应式 + 中心点扩张四向绘制 + 选中移动） ===================
+// =================== 全局设置（响应式 + AI式拖拽 + 选中移动） ===================
 
 let cw = 240;
 let cellSize = 36;
 
 let dragStart, dragEnd;
-let isDragging = false;
-let isMoving = false;
+let isDragging = false;   // 正在画新图形
+let isMoving = false;     // 正在移动选中图形
 
 let currentShape = 0;
 let currentColor;
@@ -49,7 +49,11 @@ function clamp(v, lo, hi) {
   return max(lo, min(hi, v));
 }
 
-// 鼠标 -> 网格坐标（更顺滑：floor）
+function sign1(v) {
+  return v >= 0 ? 1 : -1;
+}
+
+// 鼠标 -> 网格坐标（AI手感更稳：floor）
 function mouseToGrid() {
   const gx = floor((mouseX - cw) / cellSize);
   const gy = floor(mouseY / cellSize);
@@ -57,47 +61,76 @@ function mouseToGrid() {
 }
 
 /**
- * Shift 锁比例（中心点扩张版）
- * 我们锁的是“半径”（到中心的格数）
+ * AI矩形工具核心（角点到角点），允许负宽高：
+ * x = sx, y = sy, w = ex - sx, h = ey - sy
+ *
+ * Shift：锁比例 |w| == |h|，方向符号保留
+ * Alt：从中心扩张（AI 的 Option 行为）
  */
-function lockAspectCenterByShift(start, end) {
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  const m = max(abs(dx), abs(dy));
-  const sx = dx >= 0 ? 1 : -1;
-  const sy = dy >= 0 ? 1 : -1;
-  return createVector(start.x + sx * m, start.y + sy * m);
+function getAIBoxGrid(start, end, useCenter, lockAspect) {
+  let sx = start.x, sy = start.y;
+  let ex = end.x, ey = end.y;
+
+  let w = ex - sx;
+  let h = ey - sy;
+
+  // Alt/Option：中心扩张（start 是中心）
+  if (useCenter) {
+    // 让 w/h 表示“半径方向”的位移，然后生成左右/上下对称的框
+    // 这里 w/h 仍然保留符号用于方向（仅影响 Shift 的符号一致性）
+    // 实际框用 halfW/halfH 的 abs。
+    let halfW = abs(w);
+    let halfH = abs(h);
+
+    if (lockAspect) {
+      const m = max(halfW, halfH);
+      halfW = m;
+      halfH = m;
+    }
+
+    return {
+      x: sx - halfW,
+      y: sy - halfH,
+      w: 2 * halfW,
+      h: 2 * halfH
+    };
+  }
+
+  // Shift：锁比例（角点模式）
+  if (lockAspect) {
+    const size = max(abs(w), abs(h));
+    w = sign1(w) * size;
+    h = sign1(h) * size;
+  }
+
+  return { x: sx, y: sy, w, h };
 }
 
-/**
- * 关键：中心点扩张矩形
- * - start 是中心点（不动）
- * - end 决定中心到边的“半宽/半高”（格数）
- * - 宽 = 2*halfW + 1，高 = 2*halfH + 1
- * - 左上角 = (start.x - halfW, start.y - halfH)
- */
-function rectFromCenterDrag(center, end) {
-  const halfW = abs(end.x - center.x);
-  const halfH = abs(end.y - center.y);
-
-  const w = max(1, 2 * halfW + 1);
-  const h = max(1, 2 * halfH + 1);
-
-  const x = center.x - halfW;
-  const y = center.y - halfH;
-
-  return { x, y, w, h };
+// 把网格盒子转成像素盒子
+function gridBoxToPixel(box) {
+  return {
+    x: box.x * cellSize,
+    y: box.y * cellSize,
+    w: box.w * cellSize,
+    h: box.h * cellSize
+  };
 }
 
-// 命中最上层图形
+// 命中最上层图形（从后往前）
 function hitTestShape(gx, gy) {
   for (let i = shapes.length - 1; i >= 0; i--) {
     const s = shapes[i];
-    if (gx >= s.x && gx < s.x + s.w && gy >= s.y && gy < s.y + s.h) return i;
+    const x0 = s.x;
+    const y0 = s.y;
+    const x1 = s.x + s.w; // 注意：这里 w/h 存储为正数（Shape 内部统一正）
+    const y1 = s.y + s.h;
+
+    if (gx >= x0 && gx < x1 && gy >= y0 && gy < y1) return i;
   }
   return -1;
 }
 
+// 选中框
 function drawSelectionOutline(s) {
   const px = s.x * cellSize;
   const py = s.y * cellSize;
@@ -112,9 +145,28 @@ function drawSelectionOutline(s) {
   pop();
 }
 
+// 将 AI box（可能负宽高）转换为 Shape 的“统一正向存储”
+function normalizeBoxToShape(box) {
+  let x = box.x;
+  let y = box.y;
+  let w = box.w;
+  let h = box.h;
+
+  // 统一：Shape 存 w/h 为正数，并把 x/y 调整到左上角
+  if (w < 0) { x = x + w; w = -w; }
+  if (h < 0) { y = y + h; h = -h; }
+
+  // 至少 1 格（避免 0）
+  w = max(1, w);
+  h = max(1, h);
+
+  return { x, y, w, h };
+}
+
 // =================== 响应式布局 ===================
 function computeLayout() {
   cw = clamp(width * 0.18, 200, 320);
+
   COLOR_PANEL_H = clamp(height * 0.22, 160, 230);
 
   const rightW = max(1, width - cw);
@@ -124,7 +176,7 @@ function computeLayout() {
   cellSize = clamp(min(byWidth, byHeight), 24, 52);
 
   COLOR_MAIN = { x: 0, y: 0, w: cw - 30, h: COLOR_PANEL_H };
-  COLOR_HUE  = { x: cw - 30, y: 0, w: 30, h: COLOR_PANEL_H };
+  COLOR_HUE = { x: cw - 30, y: 0, w: 30, h: COLOR_PANEL_H };
 
   // Recent colors
   RECENT_RECTS = [];
@@ -175,7 +227,7 @@ function computeLayout() {
   }
 }
 
-// =================== preload ===================
+// =================== 预加载 ===================
 function preload() {
   for (let i = 0; i < icons.length; i++) icons[i] = loadImage("assets/" + i + ".png");
   for (let i = 0; i < svgs.length; i++) svgs[i] = loadImage("svg/" + (i + 1) + ".svg?v=10");
@@ -324,7 +376,11 @@ function draw() {
   translate(cw, 0);
   if (showGrid) drawGrid();
   drawShapes();
-  if (selectedIndex >= 0 && selectedIndex < shapes.length) drawSelectionOutline(shapes[selectedIndex]);
+
+  if (selectedIndex >= 0 && selectedIndex < shapes.length) {
+    drawSelectionOutline(shapes[selectedIndex]);
+  }
+
   if (isDragging) drawPreview();
   pop();
 
@@ -363,16 +419,13 @@ function drawShapes() {
   for (let s of shapes) s.display();
 }
 
+// 预览：半透明填充 + 实线边框（AI式：负宽高）
 function drawPreview() {
-  let end = dragEnd.copy();
-  if (keyIsDown(SHIFT)) end = lockAspectCenterByShift(dragStart, end);
+  const useCenter = keyIsDown(ALT);         // Option/Alt：中心扩张
+  const lockAspect = keyIsDown(SHIFT);      // Shift：锁比例
 
-  const r = rectFromCenterDrag(dragStart, end);
-
-  const x = r.x * cellSize;
-  const y = r.y * cellSize;
-  const w = r.w * cellSize;
-  const h = r.h * cellSize;
+  const box = getAIBoxGrid(dragStart, dragEnd, useCenter, lockAspect);
+  const px = gridBoxToPixel(box);
 
   const previewFill = color(red(currentColor), green(currentColor), blue(currentColor), 80);
 
@@ -382,24 +435,41 @@ function drawPreview() {
   fill(previewFill);
 
   switch (currentShape) {
-    case 0: rect(x, y, w, h); break;
-    case 1: ellipse(x + w / 2, y + h / 2, w, h); break;
-    case 2: triangle(x + w / 2, y, x, y + h, x + w, y + h); break;
-    case 3: drawParallelogramPreview(x, y, w, h); break;
-    default: drawSvgShape(currentShape, x, y, w, h, previewFill); break;
+    case 0:
+      rect(px.x, px.y, px.w, px.h);
+      break;
+    case 1:
+      // ellipse 不接受负宽高，所以用 abs + 中心点
+      ellipse(px.x + px.w / 2, px.y + px.h / 2, abs(px.w), abs(px.h));
+      break;
+    case 2:
+      // triangle：用“包围盒”方式（负宽高也能表现一致）
+      drawTriFromBox(px.x, px.y, px.w, px.h);
+      break;
+    case 3:
+      drawParaFromBox(px.x, px.y, px.w, px.h, true);
+      break;
+    default:
+      // SVG：不直接用负宽高裁切，先归一化成正盒子再画
+      const norm = normalizeBoxToShape(box);
+      drawSvgShape(currentShape, norm.x * cellSize, norm.y * cellSize, norm.w * cellSize, norm.h * cellSize, previewFill);
+      break;
   }
+
   pop();
 }
 
 function addNewShape() {
-  let end = dragEnd.copy();
-  if (keyIsDown(SHIFT)) end = lockAspectCenterByShift(dragStart, end);
-  const r = rectFromCenterDrag(dragStart, end);
-  shapes.push(new Shape(r.x, r.y, r.w, r.h, currentShape, currentColor));
+  const useCenter = keyIsDown(ALT);
+  const lockAspect = keyIsDown(SHIFT);
+
+  const box = getAIBoxGrid(dragStart, dragEnd, useCenter, lockAspect);
+  const norm = normalizeBoxToShape(box);
+  shapes.push(new Shape(norm.x, norm.y, norm.w, norm.h, currentShape, currentColor));
   undoStack = [];
 }
 
-// =================== color panel ===================
+// =================== 颜色面板 ===================
 function drawColorPanel() {
   imageMode(CORNER);
   image(sbGraphic, COLOR_MAIN.x, COLOR_MAIN.y);
@@ -432,6 +502,7 @@ function drawRecentColors() {
 }
 
 function handleColorClick() {
+  // S/B
   if (mouseX >= COLOR_MAIN.x && mouseX <= COLOR_MAIN.x + COLOR_MAIN.w &&
       mouseY >= COLOR_MAIN.y && mouseY <= COLOR_MAIN.y + COLOR_MAIN.h) {
     let sx = constrain(mouseX, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w);
@@ -442,6 +513,7 @@ function handleColorClick() {
     return true;
   }
 
+  // Hue
   if (mouseX >= COLOR_HUE.x && mouseX <= COLOR_HUE.x + COLOR_HUE.w &&
       mouseY >= COLOR_HUE.y && mouseY <= COLOR_HUE.y + COLOR_HUE.h) {
     let hy = constrain(mouseY, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h);
@@ -451,6 +523,7 @@ function handleColorClick() {
     return true;
   }
 
+  // Recent
   for (let i = 0; i < RECENT_RECTS.length; i++) {
     const r = RECENT_RECTS[i];
     if (mouseX >= r.x && mouseX <= r.x + r.w &&
@@ -486,8 +559,9 @@ function colorsEqual(c1, c2) {
          blue(c1) === blue(c2);
 }
 
-// =================== mouse interactions ===================
+// =================== 鼠标交互（选中移动 / AI式绘制） ===================
 function mousePressed() {
+  // 右侧画布区
   if (mouseX > cw && mouseY >= 0 && mouseY <= height) {
     const { gx, gy } = mouseToGrid();
 
@@ -501,12 +575,14 @@ function mousePressed() {
     }
 
     selectedIndex = -1;
+
     isDragging = true;
-    dragStart = createVector(gx, gy);   // 中心点
+    dragStart = createVector(gx, gy);   // AI：第一个角
     dragEnd = dragStart.copy();
     return;
   }
 
+  // 左侧按钮
   if (undoButton.hover()) { undo(); return; }
   if (clearButton.hover()) { clearShapes(); return; }
   if (gridButton.hover()) { showGrid = !showGrid; return; }
@@ -522,6 +598,7 @@ function mouseDragged() {
     const { gx, gy } = mouseToGrid();
     const dx = gx - moveStartGrid.x;
     const dy = gy - moveStartGrid.y;
+
     shapes[selectedIndex].x = max(0, moveOrigXY.x + dx);
     shapes[selectedIndex].y = max(0, moveOrigXY.y + dy);
     return;
@@ -547,7 +624,7 @@ function mouseReleased() {
   }
 }
 
-// =================== undo/redo/clear ===================
+// =================== 撤销 / 清空 ===================
 function undo() {
   if (shapes.length > 0) {
     undoStack.push(shapes.pop());
@@ -565,10 +642,13 @@ function clearShapes() {
   selectedIndex = -1;
 }
 
-// =================== Shape ===================
+// =================== Shape 类（内部统一正 w/h） ===================
 class Shape {
   constructor(x, y, w, h, type, c) {
-    this.x = x; this.y = y; this.w = w; this.h = h;
+    this.x = x;
+    this.y = y;
+    this.w = max(1, w);
+    this.h = max(1, h);
     this.type = type;
     this.c = color(c);
   }
@@ -584,17 +664,62 @@ class Shape {
     const ph = this.h * cellSize;
 
     switch (this.type) {
-      case 0: rect(px, py, pw, ph); break;
-      case 1: ellipse(px + pw / 2, py + ph / 2, pw, ph); break;
-      case 2: triangle(px + pw / 2, py, px, py + ph, px + pw, py + ph); break;
-      case 3: drawParallelogram(px, py, pw, ph); break;
-      default: drawSvgShape(this.type, px, py, pw, ph, this.c); break;
+      case 0:
+        rect(px, py, pw, ph);
+        break;
+      case 1:
+        ellipse(px + pw / 2, py + ph / 2, pw, ph);
+        break;
+      case 2:
+        triangle(px + pw / 2, py, px, py + ph, px + pw, py + ph);
+        break;
+      case 3:
+        drawParallelogram(px, py, pw, ph);
+        break;
+      default:
+        drawSvgShape(this.type, px, py, pw, ph, this.c);
+        break;
     }
+
     pop();
   }
 }
 
-// Parallelogram
+// =================== 形状绘制辅助（支持预览负宽高） ===================
+function drawTriFromBox(x, y, w, h) {
+  // 用包围盒的“真实四角”构造三角形：顶点在上边中点，底边左右角
+  const x0 = x;
+  const y0 = y;
+  const x1 = x + w;
+  const y1 = y + h;
+
+  // 让顶点始终在“上边”（符合你当前 triangle 样式）
+  // 当 h 为负，y0 > y1，需要交换上/下
+  const topY = min(y0, y1);
+  const botY = max(y0, y1);
+  const leftX = min(x0, x1);
+  const rightX = max(x0, x1);
+  const midX = (leftX + rightX) / 2;
+
+  triangle(midX, topY, leftX, botY, rightX, botY);
+}
+
+function drawParaFromBox(x, y, w, h, preview) {
+  // 平行四边形用“正向盒子”绘制，预览保持一致
+  const x0 = min(x, x + w);
+  const y0 = min(y, y + h);
+  const ww = abs(w);
+  const hh = abs(h);
+
+  beginShape();
+  vertex(x0 + ww / 4, y0);
+  vertex(x0 + ww, y0);
+  vertex(x0 + (3 * ww) / 4, y0 + hh);
+  vertex(x0, y0 + hh);
+  endShape(CLOSE);
+}
+
+// 平行四边形（正向）
 function drawParallelogram(x, y, w, h) {
   beginShape();
   vertex(x + w / 4, y);
@@ -604,16 +729,7 @@ function drawParallelogram(x, y, w, h) {
   endShape(CLOSE);
 }
 
-function drawParallelogramPreview(x, y, w, h) {
-  beginShape();
-  vertex(x + w / 4, y);
-  vertex(x + w, y);
-  vertex(x + (3 * w) / 4, y + h);
-  vertex(x, y + h);
-  endShape(CLOSE);
-}
-
-// SVG
+// SVG 形状
 function drawSvgShape(type, x, y, w, h, col) {
   let idx = type - 4;
   if (idx < 0 || idx >= svgs.length) return;
@@ -639,10 +755,12 @@ function drawSvgShape(type, x, y, w, h, col) {
   pop();
 }
 
-// Icon button
+// =================== 左侧图标按钮 ===================
 class IconButton {
   constructor(x, y, s, index) {
-    this.x = x; this.y = y; this.s = s;
+    this.x = x;
+    this.y = y;
+    this.s = s;
     this.index = index;
     this.img = icons[index];
     this.state = false;
@@ -686,10 +804,13 @@ class IconButton {
   }
 }
 
-// Cap button
+// =================== 功能按钮 ===================
 class CapButton {
   constructor(x, y, w, h, str) {
-    this.x = x; this.y = y; this.w = w; this.h = h;
+    this.x = x;
+    this.y = y;
+    this.w = w;
+    this.h = h;
     this.str = str;
   }
 
@@ -706,6 +827,7 @@ class CapButton {
     textAlign(CENTER, CENTER);
     textSize(this.h * 0.5);
     text(this.str, 0, 0);
+
     pop();
   }
 
@@ -719,14 +841,16 @@ class CapButton {
   }
 }
 
-// =================== keyboard ===================
+// =================== 键盘 ===================
 function keyPressed() {
+  // 删除选中
   if ((keyCode === BACKSPACE || keyCode === DELETE) && selectedIndex >= 0) {
     shapes.splice(selectedIndex, 1);
     selectedIndex = -1;
     return false;
   }
 
+  // 兼容：Z/Y
   if (key === "z" || key === "Z") undo();
   if (key === "y" || key === "Y") redo();
 }
