@@ -6,22 +6,13 @@
   <title>Font Playground</title>
 
   <style>
-    :root{
-      --bg:#ffffff;
-      --ink:#111111;
-      --muted:#666666;
-      --card:#ffffff;
-      --border:#111111;
-      --radius:44px;
-    }
-
-    *{ box-sizing:border-box; }
-    html,body{ height:100%; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body{
       margin:0;
       font-family: ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, "PingFang SC";
-      background: var(--bg);
-      color: var(--ink);
+      color:#111;
+      background:#fff;
       overflow-x:hidden;
     }
     a{ color:inherit; text-decoration:none; }
@@ -49,17 +40,10 @@
       align-items:center;
       gap:10px;
       font-weight:800;
-      letter-spacing:.2px;
     }
-    .dot{
-      width:10px;height:10px;border-radius:999px;
-      background:#111;
-    }
-    .nav-actions{
-      display:flex;
-      gap:10px;
-      align-items:center;
-    }
+    .dot{ width:10px;height:10px;border-radius:999px; background:#111; }
+
+    .nav-actions{ display:flex; gap:10px; align-items:center; }
     .btn{
       padding:10px 14px;
       border:1px solid rgba(0,0,0,.18);
@@ -67,6 +51,7 @@
       font-weight:700;
       transition:.15s ease;
       user-select:none;
+      background:#fff;
     }
     .btn:hover{ transform: translateY(-1px); }
     .btn.primary{
@@ -81,119 +66,68 @@
     }
 
     /* Hero */
-    .hero{
-      padding: 72px 0 34px;
-    }
-    .kicker{
-      font-size:12px;
-      letter-spacing:.22em;
-      color:#777;
-      text-transform:uppercase;
-      font-weight:800;
-      margin-bottom:14px;
-    }
+    .hero{ padding: 56px 0 26px; }
     h1{
-      margin:0 0 12px;
-      font-size: clamp(40px, 4.6vw, 72px);
-      line-height:1.02;
-      letter-spacing:-.03em;
+      margin:0 0 10px;
+      font-size: clamp(34px, 4.2vw, 56px);
+      line-height:1.05;
+      letter-spacing:-.02em;
     }
     .hero p{
       margin:0;
       max-width: 72ch;
-      color: var(--muted);
-      font-size: 16px;
+      color:#666;
+      font-size: 15px;
       line-height:1.75;
     }
     .hero-cta{
-      margin-top:22px;
+      margin-top:18px;
       display:flex;
       gap:12px;
       flex-wrap:wrap;
       align-items:center;
     }
-    .scroll-hint{
-      margin-top: 28px;
-      display:inline-flex;
-      gap:10px;
-      align-items:center;
-      color:#333;
-      font-weight:800;
-      user-select:none;
-    }
-    .chev{
-      width:30px;height:30px;border-radius:999px;
-      border:1px solid rgba(0,0,0,.22);
-      display:grid;place-items:center;
-      animation:bob 1.6s ease-in-out infinite;
-    }
-    @keyframes bob{ 0%,100%{ transform: translateY(0); } 50%{ transform: translateY(4px); } }
 
-    /* Section */
-    .section{
-      padding: 26px 0 84px;
-    }
+    /* Choose section */
+    .section{ padding: 26px 0 84px; }
     .section h2{
       margin:0 0 6px;
-      font-size: 28px;
+      font-size: 24px;
       letter-spacing:-.01em;
     }
     .section .sub{
-      margin:0 0 22px;
-      color: var(--muted);
-      font-size: 14px;
+      margin:0 0 18px;
+      color:#666;
+      font-size: 13px;
       line-height:1.6;
     }
 
-    /* Cards */
-    .cards{
+    /* Cards without outer border */
+    .grid{
       display:grid;
       grid-template-columns: repeat(3, 1fr);
-      gap:26px;
+      gap:44px;
+      align-items:start;
     }
     @media (max-width: 980px){
-      .cards{ grid-template-columns: 1fr; }
+      .grid{ grid-template-columns: 1fr; gap:34px; }
     }
 
-    .card{
-      background: var(--card);
-      border: 1.6px solid var(--border);
-      border-radius: var(--radius);
-      overflow:hidden;
+    .item{
       display:flex;
       flex-direction:column;
-      min-height: 660px;
-      transition: transform .15s ease;
-    }
-    .card:hover{ transform: translateY(-3px); }
-
-    .card-head{
-      padding: 22px 22px 10px;
-      display:flex;
       align-items:center;
-      justify-content:space-between;
-      gap:10px;
-      font-weight:900;
-      font-size: 18px;
-    }
-    .badge{
-      font-size:12px;
-      font-weight:800;
-      padding:6px 10px;
-      border-radius:999px;
-      border:1px solid rgba(0,0,0,.18);
-      color:#111;
-      background: rgba(0,0,0,.03);
-      white-space:nowrap;
+      gap:12px;
     }
 
+    /* Only keep the small border around the image area */
     .thumb{
-      margin: 0 18px 0;
-      border-radius: 34px;
-      border: 1px solid rgba(0,0,0,.12);
+      width:100%;
+      aspect-ratio: 3 / 4.7; /* 接近你图里那种竖向卡片比例 */
+      border-radius: 54px;
+      border: 1.6px solid rgba(0,0,0,.25);
       overflow:hidden;
       background:#fff;
-      flex: 1;
       display:flex;
       align-items:center;
       justify-content:center;
@@ -201,16 +135,17 @@
     .thumb img{
       width:100%;
       height:100%;
-      object-fit: contain;   /* 完整显示图片，不裁切 */
+      object-fit: cover; /* 你的图片本身就是卡片，不会裁坏；如果你想完整显示改成 contain */
       display:block;
       background:#fff;
     }
 
-    .card-foot{
-      padding: 14px 22px 22px;
-      color: var(--muted);
-      font-size: 12.5px;
-      line-height:1.6;
+    .note{
+      font-size: 12px;
+      line-height: 1.35;
+      color:#111;
+      text-align:center;
+      max-width: 44ch;
     }
 
     footer{
@@ -227,12 +162,12 @@
     <div class="nav">
       <div class="brand">
         <span class="dot"></span>
-        <span>Font Playground</span>
+        <span>字体游乐场</span>
       </div>
 
       <div class="nav-actions">
-        <a class="btn" href="#choose">Explore</a>
-        <a class="btn primary" href="draw.html">Open Builder</a>
+        <a class="btn" href="#choose">探索</a>
+        <a class="btn primary" href="draw.html">开放式构建器</a>
       </div>
     </div>
   </header>
@@ -240,21 +175,15 @@
   <main>
     <section class="hero">
       <div class="wrap">
-        <div class="kicker">EXPERIMENTAL TYPOGRAPHY TOOLKIT</div>
         <h1>Build modular glyphs<br/>with generative methods</h1>
         <p>
           Scroll down to choose a method. The first one opens your grid builder page.
-          The other two pages are placeholders for now (we’ll build them next).
+          The other two pages are placeholders for now.
         </p>
 
         <div class="hero-cta">
           <a class="btn primary" href="#choose">Choose a Method</a>
           <a class="btn" href="draw.html">Go to Grid Builder</a>
-        </div>
-
-        <div class="scroll-hint">
-          <div class="chev">⌄</div>
-          <div>Scroll down</div>
         </div>
       </div>
     </section>
@@ -262,45 +191,33 @@
     <section id="choose" class="section">
       <div class="wrap">
         <h2>Choose a Method</h2>
-        <p class="sub">Click a card to enter. Left card is your finished grid drawing page.</p>
+        <p class="sub">Click an image to enter.</p>
 
-        <div class="cards">
-          <a class="card" href="draw.html">
-            <div class="card-head">
-              <span>Font building blocks</span>
-              <span class="badge">Available</span>
-            </div>
+        <div class="grid">
+          <a class="item" href="draw.html">
             <div class="thumb">
               <img src="assets/home/blocks.png" alt="Font building blocks">
             </div>
-            <div class="card-foot">
-              Experiment with building modular glyphs using mathematical grids and geometric patterns.
+            <div class="note">
+              Experiment with building modular glyphs using mathematical gridsand geometric patterns
             </div>
           </a>
 
-          <a class="card" href="path.html">
-            <div class="card-head">
-              <span>Font Path Method</span>
-              <span class="badge">Coming soon</span>
-            </div>
+          <a class="item" href="path.html">
             <div class="thumb">
               <img src="assets/home/path.png" alt="Font Path Method">
             </div>
-            <div class="card-foot">
-              Placeholder page for now. Next we’ll build a path-based editor (nodes / curves).
+            <div class="note">
+              Experiment with building modular glyphs using mathematical gridsand geometric patterns
             </div>
           </a>
 
-          <a class="card" href="texture.html">
-            <div class="card-head">
-              <span>Font Texture Method</span>
-              <span class="badge">Coming soon</span>
-            </div>
+          <a class="item" href="texture.html">
             <div class="thumb">
               <img src="assets/home/texture.png" alt="Font Texture Method">
             </div>
-            <div class="card-foot">
-              Placeholder page for now. Later we’ll add texture / brush / pattern based glyph generation.
+            <div class="note">
+              Experiment with building modular glyphs using mathematical gridsand geometric patterns
             </div>
           </a>
         </div>
