@@ -1,739 +1,512 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Font Path Method</title>
+
   <style>
-    :root{
-      --bg:#0f1013;
-      --panel:#17181d;
-      --panel2:#1f2027;
-      --ink:#f2f2f2;
-      --muted:#b7b7b7;
-      --line:rgba(255,255,255,.10);
-      --accent:#7c5cff;
-      --btn:#2a2c36;
-      --btn2:#333545;
-      --grid1:rgba(255,255,255,.06);
-      --grid2:rgba(255,255,255,.10);
-      --danger:#ff4d4d;
-    }
-    *{ box-sizing:border-box; }
-    html,body{ height:100%; }
-    body{
-      margin:0;
-      font-family: ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, "PingFang SC";
-      background:var(--bg);
-      color:var(--ink);
-      overflow:hidden;
-    }
-    a{ color:inherit; text-decoration:none; }
-
-    /* top bar */
-    header{
-      height:64px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      border-bottom:1px solid var(--line);
-      background:rgba(15,16,19,.85);
-      backdrop-filter: blur(10px);
-    }
-    .nav{
-      width:min(1200px, calc(100% - 32px));
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-    }
-    .brand{ display:flex; align-items:center; gap:10px; font-weight:900; }
-    .dot{ width:10px;height:10px;border-radius:999px;background:var(--accent); }
-    .nav-actions{ display:flex; gap:10px; align-items:center; }
-    .pill{
-      padding:10px 14px;
-      border:1px solid rgba(255,255,255,.14);
-      border-radius:999px;
-      font-weight:800;
-      background:transparent;
-      user-select:none;
-    }
-    .pill.primary{
-      background:rgba(124,92,255,.16);
-      border-color:rgba(124,92,255,.45);
-    }
-
-    /* layout */
-    .app{
-      height: calc(100% - 64px);
-      display:flex;
-      min-width: 320px;
-    }
-    .side{
-      width:280px;
-      background: linear-gradient(180deg, var(--panel), var(--panel2));
-      border-right:1px solid var(--line);
-      padding:16px;
-      display:flex;
-      flex-direction:column;
-      gap:12px;
-    }
-    .card{
-      border:1px solid var(--line);
-      border-radius:18px;
-      background: rgba(255,255,255,.03);
-      padding:12px;
-    }
-    .title{
-      font-weight:900;
-      margin:0 0 6px;
-      letter-spacing:.2px;
-    }
-    .desc{
-      margin:0;
-      color:var(--muted);
-      font-size:12.5px;
-      line-height:1.55;
-    }
-    .row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-    .btn{
-      background: var(--btn);
-      color: var(--ink);
-      border:1px solid rgba(255,255,255,.12);
-      border-radius:999px;
-      padding:10px 12px;
-      font-weight:900;
-      cursor:pointer;
-      user-select:none;
-      transition:.12s ease;
-    }
-    .btn:hover{ transform: translateY(-1px); background: var(--btn2); }
-    .btn.danger{ background: rgba(255,77,77,.12); border-color: rgba(255,77,77,.4); }
-    .btn.small{ padding:8px 10px; font-size:12px; }
-    .btn.on{
-      background: rgba(124,92,255,.18);
-      border-color: rgba(124,92,255,.55);
-    }
-    .kbd{
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-      font-size:12px;
-      padding:2px 6px;
-      border:1px solid rgba(255,255,255,.18);
-      border-bottom-width:2px;
-      border-radius:8px;
-      background: rgba(255,255,255,.06);
-      color: #fff;
-    }
-    .hint{
-      color: var(--muted);
-      font-size:12px;
-      line-height:1.55;
-      margin-top:8px;
-    }
-
-    .main{
-      flex:1;
-      position:relative;
-      overflow:hidden;
-    }
-
-    /* canvas wrap */
-    .stage{
-      position:absolute;
-      inset:0;
-    }
-    canvas{
-      width:100%;
-      height:100%;
-      display:block;
-    }
-
-    /* toast */
-    .toast{
-      position:absolute;
-      left:16px;
-      bottom:16px;
-      padding:10px 12px;
-      border-radius:12px;
-      border:1px solid rgba(255,255,255,.12);
-      background: rgba(0,0,0,.35);
-      color:#fff;
-      font-size:12.5px;
-      opacity:0;
-      transform: translateY(6px);
-      transition: .18s ease;
-      pointer-events:none;
-      backdrop-filter: blur(8px);
-    }
-    .toast.show{
-      opacity:1;
-      transform: translateY(0);
-    }
+    html, body { height: 100%; margin: 0; background: #0f1013; overflow: hidden; }
+    canvas { display: block; margin: 0 auto; }
   </style>
+
+  <!-- p5.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
 </head>
 
 <body>
-<header>
-  <div class="nav">
-    <div class="brand">
-      <span class="dot"></span>
-      <span>Font Playground · Path Method</span>
-    </div>
-    <div class="nav-actions">
-      <a class="pill" href="index.html#choose">Back</a>
-      <a class="pill primary" href="draw.html">Open Grid Builder</a>
-    </div>
-  </div>
-</header>
-
-<div class="app">
-  <aside class="side">
-    <div class="card">
-      <p class="title">Tools</p>
-      <div class="row" style="margin-bottom:6px;">
-        <button id="toolSelect" class="btn on">Select</button>
-        <button id="toolPen" class="btn">Pen</button>
-      </div>
-      <p class="desc">
-        <b>Select</b>: drag anchors to move. <b>Pen</b>: click to add anchors.
-      </p>
-      <div class="hint">
-        Delete anchor: <span class="kbd">Backspace</span>/<span class="kbd">Delete</span><br/>
-        Constrain (45°): hold <span class="kbd">Shift</span><br/>
-        Pan: hold <span class="kbd">Space</span> then drag<br/>
-        Zoom: <span class="kbd">Ctrl</span> + mouse wheel (or trackpad pinch)
-      </div>
-    </div>
-
-    <div class="card">
-      <p class="title">Grid</p>
-      <div class="row">
-        <button id="toggleSnap" class="btn on small">Snap: ON</button>
-        <button id="toggleGrid" class="btn on small">Grid: ON</button>
-      </div>
-      <div class="hint">
-        All anchors will snap to grid when Snap is ON.
-      </div>
-    </div>
-
-    <div class="card">
-      <p class="title">Actions</p>
-      <div class="row">
-        <button id="undoBtn" class="btn small">Undo</button>
-        <button id="redoBtn" class="btn small">Redo</button>
-        <button id="clearBtn" class="btn danger small">Clear</button>
-      </div>
-      <div class="row" style="margin-top:10px;">
-        <button id="exportBtn" class="btn small">Export SVG Path</button>
-      </div>
-      <div class="hint" id="stats">Anchors: 0</div>
-    </div>
-
-    <div class="card">
-      <p class="title">About</p>
-      <p class="desc">
-        This is a first usable version of the Path editor. Next steps we can add:
-        Bezier handles, closed shapes, boolean ops, stroke → outline, and font export.
-      </p>
-    </div>
-  </aside>
-
-  <main class="main">
-    <div class="stage">
-      <canvas id="cv"></canvas>
-    </div>
-    <div id="toast" class="toast"></div>
-  </main>
-</div>
-
 <script>
-(() => {
-  // ====== Config ======
-  const GRID = 36;              // grid size in px (world)
-  const HIT_R = 10;             // anchor hit radius (screen)
-  const ANCHOR_R = 5;           // anchor draw radius (screen)
-  const PATH_W = 3;             // path stroke width (screen)
-  const BG = "#f7f7f7";
+  // =============== 基本参数（对应你的 Processing 代码） ===============
+  const CANVAS_W = 1440;
+  const CANVAS_H = 900;
 
-  // ====== State ======
-  let tool = "select"; // "select" | "pen"
-  let showGrid = true;
-  let snap = true;
+  let maxAmp = 50;
+  let t = 0;
 
-  let anchors = []; // {x,y} in world coords
-  let selected = -1;
+  let scl = 1.0;
+  let strokeW = 2;
+  let amplitude = 10;
+  let frequency = 1;
+  let phase = 0;
 
-  // view transform
-  let camX = 0, camY = 0; // world offset
-  let zoom = 1;
+  let isAnimating = true;
+  let animationSpeed = 0.02;
 
-  // dragging
-  let isDown = false;
-  let draggingAnchor = false;
-  let dragStart = null;
-  let spacePan = false;
-  let panStart = null;
+  let ch = 0;
+  let cw = 200;
 
-  // undo/redo
-  let undoStack = [];
-  let redoStack = [];
+  const functionNames = ["Sin", "Square", "Triangle", "Sawtooth"];
+  let currentFunction = 0;
 
-  // ====== DOM ======
-  const cv = document.getElementById("cv");
-  const ctx = cv.getContext("2d");
+  // 当前颜色（用 HSV 方案替代 ControlP5 ColorWheel）
+  let hueVal = 220;
+  let satVal = 100;
+  let briVal = 80;
+  let currentColor;
 
-  const stats = document.getElementById("stats");
-  const toast = document.getElementById("toast");
+  // =============== UI：颜色选择面板 ===============
+  const COLOR_PANEL = {
+    x: 10,
+    y: 10,
+    w: cw - 20,
+    h: 170
+  };
+  const HUE_BAR = {
+    x: 10 + (cw - 20) - 20,
+    y: 10,
+    w: 20,
+    h: 170
+  };
+  const SB_PANEL = {
+    x: 10,
+    y: 10,
+    w: (cw - 20) - 26,
+    h: 170
+  };
 
-  const toolSelect = document.getElementById("toolSelect");
-  const toolPen = document.getElementById("toolPen");
+  let sbGraphic, hueGraphic;
 
-  const toggleGrid = document.getElementById("toggleGrid");
-  const toggleSnap = document.getElementById("toggleSnap");
+  // =============== UI：滑块 & 按钮（对应你的 Slider / CapButton） ===============
+  const sliderName = ["Scale", "Stroke Weight", "Amplitude", "Frequency", "Phase", "Animation Speed"];
+  let sliders = new Array(6);
+  let capButtons = new Array(7);
 
-  const undoBtn = document.getElementById("undoBtn");
-  const redoBtn = document.getElementById("redoBtn");
-  const clearBtn = document.getElementById("clearBtn");
-  const exportBtn = document.getElementById("exportBtn");
-
-  // ====== Helpers ======
-  function showToast(msg){
-    toast.textContent = msg;
-    toast.classList.add("show");
-    clearTimeout(showToast._t);
-    showToast._t = setTimeout(()=>toast.classList.remove("show"), 1200);
-  }
-
-  function setTool(t){
-    tool = t;
-    toolSelect.classList.toggle("on", tool === "select");
-    toolPen.classList.toggle("on", tool === "pen");
-    showToast(tool === "select" ? "Select tool" : "Pen tool");
-  }
-
-  function pushUndo(){
-    undoStack.push(JSON.stringify(anchors));
-    if (undoStack.length > 200) undoStack.shift();
-    redoStack.length = 0;
-  }
-
-  function snapToGrid(x,y){
-    if(!snap) return {x,y};
-    return {
-      x: Math.round(x / GRID) * GRID,
-      y: Math.round(y / GRID) * GRID
-    };
-  }
-
-  function worldToScreen(p){
-    return {
-      x: (p.x + camX) * zoom,
-      y: (p.y + camY) * zoom
-    };
-  }
-
-  function screenToWorld(x,y){
-    return {
-      x: x / zoom - camX,
-      y: y / zoom - camY
-    };
-  }
-
-  function dist2(ax,ay,bx,by){
-    const dx = ax-bx, dy=ay-by;
-    return dx*dx+dy*dy;
-  }
-
-  function hitTestAnchor(mx,my){
-    // mx,my are screen
-    for(let i=anchors.length-1;i>=0;i--){
-      const s = worldToScreen(anchors[i]);
-      if(dist2(mx,my,s.x,s.y) <= HIT_R*HIT_R) return i;
+  // =============== 自定义 Slider（网页 p5 版） ===============
+  class Slider {
+    constructor(x, y, w, h, label, val) {
+      this.x = x; this.y = y; this.w = w; this.h = h;
+      this.label = label;
+      this.val = val;
+      this.state = false;
+      this.animVal = val;
     }
-    return -1;
-  }
-
-  function constrain45(from, to){
-    // from/to in world coords, returns constrained "to"
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
-    const ang = Math.atan2(dy, dx);
-    const step = Math.PI / 4; // 45 deg
-    const snapped = Math.round(ang / step) * step;
-    const len = Math.hypot(dx,dy);
-    return { x: from.x + Math.cos(snapped)*len, y: from.y + Math.sin(snapped)*len };
-  }
-
-  function updateStats(){
-    stats.textContent = `Anchors: ${anchors.length}` + (selected>=0 ? `  ·  Selected: #${selected+1}` : "");
-  }
-
-  // ====== Resize & DPR ======
-  function resize(){
-    const dpr = Math.max(1, window.devicePixelRatio || 1);
-    const r = cv.getBoundingClientRect();
-    cv.width = Math.round(r.width * dpr);
-    cv.height = Math.round(r.height * dpr);
-    ctx.setTransform(dpr,0,0,dpr,0,0);
-    draw();
-  }
-  window.addEventListener("resize", resize);
-
-  // ====== Drawing ======
-  function drawGrid(){
-    if(!showGrid) return;
-    const w = cv.getBoundingClientRect().width;
-    const h = cv.getBoundingClientRect().height;
-
-    // world origin at top-left; grid in world coords
-    // find visible world range
-    const topLeft = screenToWorld(0,0);
-    const bottomRight = screenToWorld(w,h);
-
-    const startX = Math.floor(topLeft.x / GRID) * GRID;
-    const endX = Math.ceil(bottomRight.x / GRID) * GRID;
-    const startY = Math.floor(topLeft.y / GRID) * GRID;
-    const endY = Math.ceil(bottomRight.y / GRID) * GRID;
-
-    ctx.save();
-    ctx.lineWidth = 1;
-
-    // minor lines
-    ctx.strokeStyle = "rgba(0,0,0,.06)";
-    for(let x=startX; x<=endX; x+=GRID){
-      const sx = worldToScreen({x, y:0}).x;
-      ctx.beginPath(); ctx.moveTo(sx,0); ctx.lineTo(sx,h); ctx.stroke();
+    hover() {
+      return (abs(mouseX - this.x) < this.w / 2 && abs(mouseY - this.y) < this.h / 2);
     }
-    for(let y=startY; y<=endY; y+=GRID){
-      const sy = worldToScreen({x:0, y}).y;
-      ctx.beginPath(); ctx.moveTo(0,sy); ctx.lineTo(w,sy); ctx.stroke();
+    click() {
+      this.state = this.hover();
+    }
+    drag() {
+      if (!this.state) return;
+      let v = map(mouseX, this.x - this.w / 2, this.x + this.w / 2, 0, 1);
+      v = constrain(v, 0, 1);
+      this.val = lerp(this.val, v, 0.18);
+    }
+    run() {
+      this.drag();
+      this.display();
+    }
+    display() {
+      push();
+      translate(this.x, this.y);
+      rectMode(CENTER);
+      noStroke();
+
+      // 背条
+      fill(50);
+      rect(0, 0, this.w, this.h, 999);
+
+      // 前景填充
+      const vw = map(this.val, 0, 1, 0, this.w);
+      fill(this.hover() ? 160 : 110);
+      rect(-this.w / 2 + vw / 2, 0, vw, this.h, 999);
+
+      // 文案
+      fill(255);
+      textAlign(CENTER, CENTER);
+      textSize(this.h * 0.38);
+      text(this.label, 0, 0);
+      pop();
+    }
+  }
+
+  // =============== 自定义 CapButton（网页 p5 版） ===============
+  class CapButton {
+    constructor(x, y, w, h, str) {
+      this.x = x; this.y = y; this.w = w; this.h = h;
+      this.str = str;
+      this.s = 1;
+      this.gray = 150;
+      this.state = false;
+    }
+    hover() {
+      return (abs(mouseX - this.x) < this.w / 2 && abs(mouseY - this.y) < this.h / 2);
+    }
+    display() {
+      push();
+      translate(this.x, this.y);
+      rectMode(CENTER);
+
+      if (this.hover() || this.state) {
+        this.gray = lerp(this.gray, 200, 0.12);
+        this.s = lerp(this.s, 1.06, 0.12);
+      } else {
+        this.gray = lerp(this.gray, 150, 0.12);
+        this.s = lerp(this.s, 1.0, 0.12);
+      }
+
+      noStroke();
+      fill(this.gray);
+      push();
+      scale(this.s);
+      rect(0, 0, this.w, this.h, 999);
+      pop();
+
+      fill(255);
+      textAlign(CENTER, CENTER);
+      textSize(this.h * 0.55);
+      text(this.str, 0, 0);
+      pop();
+    }
+  }
+
+  // =============== p5：setup / draw ===============
+  function setup() {
+    const c = createCanvas(CANVAS_W, CANVAS_H);
+    pixelDensity(1);
+
+    currentColor = color("#482BCC");
+    buildHueGraphic();
+    buildSBGraphic();
+    updateCurrentColorFromHSV(false);
+
+    // sliders：放在左侧面板下方
+    for (let i = 0; i < sliders.length; i++) {
+      const y = map(i, 0, sliders.length - 1, 240, 520);
+      sliders[i] = new Slider(100, y, 170, 38, sliderName[i], 0.5);
     }
 
-    // major lines (every 5)
-    ctx.strokeStyle = "rgba(0,0,0,.10)";
-    const major = GRID*5;
-    const startMX = Math.floor(topLeft.x / major) * major;
-    const endMX = Math.ceil(bottomRight.x / major) * major;
-    const startMY = Math.floor(topLeft.y / major) * major;
-    const endMY = Math.ceil(bottomRight.y / major) * major;
-
-    for(let x=startMX; x<=endMX; x+=major){
-      const sx = worldToScreen({x, y:0}).x;
-      ctx.beginPath(); ctx.moveTo(sx,0); ctx.lineTo(sx,h); ctx.stroke();
+    // buttons：放在右侧（和你原 Processing 类似）
+    const names = ["Save", "Toggle Animation", "Reset", "Sin", "Square", "Triangle", "Sawtooth"];
+    for (let i = 0; i < capButtons.length; i++) {
+      const y = map(i, 0, capButtons.length - 1, 80, 520);
+      capButtons[i] = new CapButton(width - 120, y, 170, 34, names[i]);
     }
-    for(let y=startMY; y<=endMY; y+=major){
-      const sy = worldToScreen({x:0, y}).y;
-      ctx.beginPath(); ctx.moveTo(0,sy); ctx.lineTo(w,sy); ctx.stroke();
-    }
-
-    ctx.restore();
   }
 
-  function drawPath(){
-    if(anchors.length < 2) return;
-    ctx.save();
-    ctx.lineJoin = "round";
-    ctx.lineCap = "round";
-    ctx.lineWidth = PATH_W;
-    ctx.strokeStyle = "#2b2d33";
-    ctx.beginPath();
-    const s0 = worldToScreen(anchors[0]);
-    ctx.moveTo(s0.x, s0.y);
-    for(let i=1;i<anchors.length;i++){
-      const s = worldToScreen(anchors[i]);
-      ctx.lineTo(s.x, s.y);
-    }
-    ctx.stroke();
-    ctx.restore();
-  }
+  function draw() {
+    background(240);
 
-  function drawAnchors(){
-    ctx.save();
-    for(let i=0;i<anchors.length;i++){
-      const s = worldToScreen(anchors[i]);
-
-      // anchor dot
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, ANCHOR_R, 0, Math.PI*2);
-      ctx.fillStyle = (i===selected) ? "#7c5cff" : "#111";
-      ctx.fill();
-
-      // ring
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, ANCHOR_R+3, 0, Math.PI*2);
-      ctx.strokeStyle = (i===selected) ? "rgba(124,92,255,.65)" : "rgba(17,17,17,.25)";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  function draw(){
-    const w = cv.getBoundingClientRect().width;
-    const h = cv.getBoundingClientRect().height;
-    ctx.clearRect(0,0,w,h);
-
-    // background
-    ctx.save();
-    ctx.fillStyle = BG;
-    ctx.fillRect(0,0,w,h);
-    ctx.restore();
-
+    updateParameters();
     drawGrid();
-    drawPath();
-    drawAnchors();
 
-    updateStats();
+    // 中间绘制 MathA
+    push();
+    translate(width / 2, height / 2);
+    scale(scl);
+    drawMathA();
+    pop();
+
+    // 左侧深色面板
+    noStroke();
+    fill(31, 30, 36);
+    rect(0, 0, cw, height);
+
+    // 颜色选择 UI
+    drawColorPanel();
+
+    // 右下角函数预览
+    drawFunctionDisplay();
+
+    // 动画推进
+    if (isAnimating) t += animationSpeed;
+
+    // sliders
+    for (let s of sliders) s.run();
+
+    // buttons
+    for (let b of capButtons) b.display();
   }
 
-  // ====== Events ======
-  function pointerPos(e){
-    const r = cv.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  // =============== 网格（对应你的 drawGrid） ===============
+  function drawGrid() {
+    stroke(220);
+    strokeWeight(1);
+    const step = 25;
+
+    for (let i = 0; i <= width; i += step) {
+      line(i + cw, ch, i + cw, height);
+    }
+    for (let i = ch; i <= height; i += step) {
+      line(0 + cw, i, width + cw, i);
+    }
   }
 
-  cv.addEventListener("mousedown", (e)=>{
-    cv.focus?.();
-    isDown = true;
+  // =============== MathA（对应你的 drawMathA / drawParametricCurve） ===============
+  function drawMathA() {
+    stroke(currentColor);
+    strokeWeight(strokeW);
+    noFill();
 
-    // space pan
-    if(spacePan){
-      panStart = { ...pointerPos(e), camX, camY };
-      return;
-    }
-
-    const m = pointerPos(e);
-    const hit = hitTestAnchor(m.x, m.y);
-
-    if(tool === "select"){
-      if(hit >= 0){
-        selected = hit;
-        draggingAnchor = true;
-        dragStart = { m, world: {...anchors[hit]} };
-      }else{
-        selected = -1;
-      }
-      draw();
-      return;
-    }
-
-    if(tool === "pen"){
-      // if clicking existing anchor -> select it
-      if(hit >= 0){
-        selected = hit;
-        draggingAnchor = true;
-        dragStart = { m, world: {...anchors[hit]} };
-        draw();
-        return;
-      }
-
-      pushUndo();
-
-      let wpt = screenToWorld(m.x, m.y);
-      if(e.shiftKey && anchors.length>0){
-        wpt = constrain45(anchors[anchors.length-1], wpt);
-      }
-      wpt = snapToGrid(wpt.x, wpt.y);
-      anchors.push({x:wpt.x, y:wpt.y});
-      selected = anchors.length - 1;
-      draw();
-    }
-  });
-
-  cv.addEventListener("mousemove", (e)=>{
-    const m = pointerPos(e);
-
-    if(!isDown){
-      // hover cursor
-      const hit = hitTestAnchor(m.x, m.y);
-      cv.style.cursor = spacePan ? "grab" : (hit>=0 ? "pointer" : (tool==="pen" ? "crosshair" : "default"));
-      return;
-    }
-
-    if(spacePan && panStart){
-      cv.style.cursor = "grabbing";
-      const dx = (m.x - panStart.x) / zoom;
-      const dy = (m.y - panStart.y) / zoom;
-      camX = panStart.camX + dx;
-      camY = panStart.camY + dy;
-      draw();
-      return;
-    }
-
-    if(draggingAnchor && selected>=0 && dragStart){
-      let wpt = screenToWorld(m.x, m.y);
-
-      // shift constrain relative to original anchor
-      if(e.shiftKey){
-        wpt = constrain45(dragStart.world, wpt);
-      }
-
-      wpt = snapToGrid(wpt.x, wpt.y);
-      anchors[selected] = {x:wpt.x, y:wpt.y};
-      draw();
-    }
-  });
-
-  cv.addEventListener("mouseup", ()=>{
-    isDown = false;
-    draggingAnchor = false;
-    dragStart = null;
-    panStart = null;
-    cv.style.cursor = spacePan ? "grab" : "default";
-  });
-
-  cv.addEventListener("mouseleave", ()=>{
-    isDown = false;
-    draggingAnchor = false;
-    dragStart = null;
-    panStart = null;
-  });
-
-  // Zoom (Ctrl + wheel)
-  cv.addEventListener("wheel", (e)=>{
-    if(!e.ctrlKey) return;
-    e.preventDefault();
-
-    const m = pointerPos(e);
-    const before = screenToWorld(m.x, m.y);
-
-    const factor = (e.deltaY < 0) ? 1.08 : 1/1.08;
-    const next = Math.min(4, Math.max(0.35, zoom * factor));
-    zoom = next;
-
-    const after = screenToWorld(m.x, m.y);
-    camX += (after.x - before.x);
-    camY += (after.y - before.y);
-
-    draw();
-  }, { passive:false });
-
-  // Keyboard
-  window.addEventListener("keydown", (e)=>{
-    if(e.code === "Space"){
-      spacePan = true;
-      cv.style.cursor = "grab";
-    }
-
-    if(e.key === "Escape"){
-      selected = -1;
-      draw();
-    }
-
-    // Delete selected anchor
-    if((e.key === "Backspace" || e.key === "Delete") && selected >= 0){
-      e.preventDefault();
-      pushUndo();
-      anchors.splice(selected, 1);
-      selected = Math.min(selected, anchors.length-1);
-      draw();
-      showToast("Anchor deleted");
-    }
-
-    // Undo / Redo
-    if((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z")){
-      e.preventDefault();
-      if(undoStack.length){
-        redoStack.push(JSON.stringify(anchors));
-        anchors = JSON.parse(undoStack.pop());
-        selected = -1;
-        draw();
-        showToast("Undo");
-      }
-    }
-    if((e.ctrlKey || e.metaKey) && (e.key === "y" || e.key === "Y")){
-      e.preventDefault();
-      if(redoStack.length){
-        undoStack.push(JSON.stringify(anchors));
-        anchors = JSON.parse(redoStack.pop());
-        selected = -1;
-        draw();
-        showToast("Redo");
-      }
-    }
-  });
-
-  window.addEventListener("keyup", (e)=>{
-    if(e.code === "Space"){
-      spacePan = false;
-      cv.style.cursor = "default";
-    }
-  });
-
-  // Buttons
-  toolSelect.addEventListener("click", ()=> setTool("select"));
-  toolPen.addEventListener("click", ()=> setTool("pen"));
-
-  toggleGrid.addEventListener("click", ()=>{
-    showGrid = !showGrid;
-    toggleGrid.classList.toggle("on", showGrid);
-    toggleGrid.textContent = `Grid: ${showGrid ? "ON" : "OFF"}`;
-    draw();
-  });
-
-  toggleSnap.addEventListener("click", ()=>{
-    snap = !snap;
-    toggleSnap.classList.toggle("on", snap);
-    toggleSnap.textContent = `Snap: ${snap ? "ON" : "OFF"}`;
-    draw();
-  });
-
-  undoBtn.addEventListener("click", ()=>{
-    if(!undoStack.length) return;
-    redoStack.push(JSON.stringify(anchors));
-    anchors = JSON.parse(undoStack.pop());
-    selected = -1;
-    draw();
-    showToast("Undo");
-  });
-
-  redoBtn.addEventListener("click", ()=>{
-    if(!redoStack.length) return;
-    undoStack.push(JSON.stringify(anchors));
-    anchors = JSON.parse(redoStack.pop());
-    selected = -1;
-    draw();
-    showToast("Redo");
-  });
-
-  clearBtn.addEventListener("click", ()=>{
-    if(!anchors.length) return;
-    pushUndo();
-    anchors = [];
-    selected = -1;
-    draw();
-    showToast("Cleared");
-  });
-
-  function toSvgPathD(){
-    if(anchors.length === 0) return "";
-    let d = `M ${anchors[0].x.toFixed(2)} ${anchors[0].y.toFixed(2)}`;
-    for(let i=1;i<anchors.length;i++){
-      d += ` L ${anchors[i].x.toFixed(2)} ${anchors[i].y.toFixed(2)}`;
-    }
-    return d;
+    // Left leg
+    drawParametricCurve(-50, 100, 0, -100);
+    // Right leg
+    drawParametricCurve(50, 100, 0, -100);
+    // Crossbar
+    drawParametricCurve(-30, 30, 30, 30);
   }
 
-  exportBtn.addEventListener("click", async ()=>{
-    const d = toSvgPathD();
-    if(!d){
-      showToast("No anchors to export");
-      return;
-    }
-    try{
-      await navigator.clipboard.writeText(d);
-      showToast("SVG path d copied!");
-    }catch(err){
-      // fallback prompt
-      window.prompt("Copy SVG path d:", d);
-    }
-  });
+  function drawParametricCurve(x1, y1, x2, y2) {
+    beginShape();
+    for (let i = 0; i <= 1.00001; i += 0.01) {
+      let x = lerp(x1, x2, i);
+      let y = lerp(y1, y2, i);
 
-  // init
-  setTool("select");
-  resize();
-  draw();
-})();
+      const baseLen = dist(x1, y1, x2, y2);
+      const dis = dist(x, y, x1, y1) * 0.01;
+
+      let offset = applyFunction(frequency * dis * TWO_PI + phase + t) * amplitude;
+
+      x += offset * (y2 - y1) / baseLen;
+      y -= offset * (x2 - x1) / baseLen;
+
+      if (currentFunction === 0 || currentFunction === 2) {
+        curveVertex(x, y);
+      } else {
+        vertex(x, y);
+      }
+    }
+    endShape();
+  }
+
+  function applyFunction(tt) {
+    switch (currentFunction) {
+      case 0: return sin(tt);
+      case 1: return (tt % TWO_PI < PI) ? 1 : -1;
+      case 2: return asin(sin(tt)) * 2 / PI;
+      case 3: return (tt % TWO_PI) / PI - 1;
+      default: return sin(tt);
+    }
+  }
+
+  // =============== 参数映射（对应你的 updateParameters） ===============
+  function updateParameters() {
+    scl = map(sliders[0].val, 0, 1, 0.5, 3);
+    strokeW = map(sliders[1].val, 0, 1, 0.5, 20);
+    amplitude = map(sliders[2].val, 0, 1, 0, maxAmp);
+    frequency = map(sliders[3].val, 0, 1, 0.1, 5);
+    phase = map(sliders[4].val, 0, 1, 0, TWO_PI);
+    animationSpeed = map(sliders[5].val, 0, 1, 0, 0.1);
+  }
+
+  // =============== 右下角函数显示（对应你的 drawFunctionDisplay） ===============
+  function drawFunctionDisplay() {
+    const displayWidth = 250;
+    const displayHeight = 250;
+    const margin = 50;
+
+    push();
+    stroke(0);
+    strokeWeight(3);
+    translate(width - displayWidth / 2 - margin, height - displayHeight / 2 - margin);
+
+    // axes
+    line(-displayWidth / 2, 0, displayWidth / 2, 0);
+    line(0, -displayHeight / 2, 0, displayHeight / 2);
+
+    // arrows
+    fill(0);
+    noStroke();
+    triangle(-5, -displayHeight / 2, 5, -displayHeight / 2, 0, -displayHeight / 2 - 15);
+    triangle(displayWidth / 2 + 15, 0, displayWidth / 2, -5, displayWidth / 2, 5);
+
+    // labels
+    fill(0);
+    textSize(15);
+    textAlign(LEFT, TOP);
+    text("y", 10, -displayHeight / 2 + 8);
+    textAlign(LEFT, CENTER);
+    text("x", displayWidth / 2 - 10, 18);
+
+    // title
+    textAlign(CENTER, BOTTOM);
+    textSize(18);
+    text(functionNames[currentFunction] + " Function", 0, -displayHeight / 2 - 18);
+    pop();
+
+    // wave
+    const picCol = color(140);
+    stroke(picCol);
+    noFill();
+    strokeWeight(3);
+
+    beginShape();
+    for (let x = 0; x < displayWidth; x += 2) {
+      const amp = map(amplitude, 0, maxAmp, 0, displayHeight / 2);
+      const y = applyFunction(frequency * x * 0.02 + phase + t) * amp;
+      vertex(width - displayWidth - margin + x, height - displayHeight / 2 - margin - y);
+    }
+    endShape();
+  }
+
+  // =============== 颜色面板（替代 ColorWheel，稳定且好看） ===============
+  function buildHueGraphic() {
+    hueGraphic = createGraphics(HUE_BAR.w, HUE_BAR.h);
+    hueGraphic.colorMode(HSB, 360, 100, 100);
+    hueGraphic.noStroke();
+    hueGraphic.loadPixels();
+    for (let y = 0; y < HUE_BAR.h; y++) {
+      const h = map(y, 0, HUE_BAR.h - 1, 0, 360);
+      const c = hueGraphic.color(h, 100, 100);
+      for (let x = 0; x < HUE_BAR.w; x++) {
+        const idx = (y * HUE_BAR.w + x) * 4;
+        hueGraphic.pixels[idx] = red(c);
+        hueGraphic.pixels[idx + 1] = green(c);
+        hueGraphic.pixels[idx + 2] = blue(c);
+        hueGraphic.pixels[idx + 3] = 255;
+      }
+    }
+    hueGraphic.updatePixels();
+  }
+
+  function buildSBGraphic() {
+    sbGraphic = createGraphics(SB_PANEL.w, SB_PANEL.h);
+    sbGraphic.colorMode(HSB, 360, 100, 100);
+    sbGraphic.noStroke();
+    sbGraphic.loadPixels();
+    for (let y = 0; y < SB_PANEL.h; y++) {
+      for (let x = 0; x < SB_PANEL.w; x++) {
+        const s = map(x, 0, SB_PANEL.w - 1, 0, 100);
+        const b = map(y, 0, SB_PANEL.h - 1, 100, 0);
+        const c = sbGraphic.color(hueVal, s, b);
+        const idx = (y * SB_PANEL.w + x) * 4;
+        sbGraphic.pixels[idx] = red(c);
+        sbGraphic.pixels[idx + 1] = green(c);
+        sbGraphic.pixels[idx + 2] = blue(c);
+        sbGraphic.pixels[idx + 3] = 255;
+      }
+    }
+    sbGraphic.updatePixels();
+  }
+
+  function updateCurrentColorFromHSV(rebuildSB) {
+    push();
+    colorMode(HSB, 360, 100, 100);
+    currentColor = color(hueVal, satVal, briVal);
+    pop();
+    if (rebuildSB) buildSBGraphic();
+  }
+
+  function drawColorPanel() {
+    // 面板背景
+    noStroke();
+    fill(40);
+    rect(8, 8, cw - 16, 184, 14);
+
+    // 贴图
+    imageMode(CORNER);
+    image(sbGraphic, SB_PANEL.x, SB_PANEL.y);
+    image(hueGraphic, HUE_BAR.x, HUE_BAR.y);
+
+    // SB 游标
+    const sx = map(satVal, 0, 100, SB_PANEL.x, SB_PANEL.x + SB_PANEL.w);
+    const sy = map(briVal, 100, 0, SB_PANEL.y, SB_PANEL.y + SB_PANEL.h);
+    stroke(255);
+    strokeWeight(2);
+    noFill();
+    circle(sx, sy, 12);
+
+    // Hue 游标
+    const hy = map(hueVal, 0, 360, HUE_BAR.y, HUE_BAR.y + HUE_BAR.h);
+    stroke(255);
+    strokeWeight(2);
+    line(HUE_BAR.x - 4, hy, HUE_BAR.x, hy);
+    line(HUE_BAR.x + HUE_BAR.w, hy, HUE_BAR.x + HUE_BAR.w + 4, hy);
+
+    // 当前颜色小块
+    noStroke();
+    fill(currentColor);
+    rect(10, 190, cw - 20, 34, 10);
+  }
+
+  function handleColorClick() {
+    // SB
+    if (mouseX >= SB_PANEL.x && mouseX <= SB_PANEL.x + SB_PANEL.w &&
+        mouseY >= SB_PANEL.y && mouseY <= SB_PANEL.y + SB_PANEL.h) {
+
+      const sx = constrain(mouseX, SB_PANEL.x, SB_PANEL.x + SB_PANEL.w);
+      const sy = constrain(mouseY, SB_PANEL.y, SB_PANEL.y + SB_PANEL.h);
+
+      satVal = map(sx, SB_PANEL.x, SB_PANEL.x + SB_PANEL.w, 0, 100);
+      briVal = map(sy, SB_PANEL.y, SB_PANEL.y + SB_PANEL.h, 100, 0);
+
+      updateCurrentColorFromHSV(false);
+      return true;
+    }
+
+    // Hue
+    if (mouseX >= HUE_BAR.x && mouseX <= HUE_BAR.x + HUE_BAR.w &&
+        mouseY >= HUE_BAR.y && mouseY <= HUE_BAR.y + HUE_BAR.h) {
+
+      const hy = constrain(mouseY, HUE_BAR.y, HUE_BAR.y + HUE_BAR.h);
+      hueVal = map(hy, HUE_BAR.y, HUE_BAR.y + HUE_BAR.h, 0, 360);
+
+      updateCurrentColorFromHSV(true);
+      return true;
+    }
+    return false;
+  }
+
+  // =============== 交互：鼠标点击 ===============
+  function mousePressed() {
+    // 左侧颜色面板
+    if (handleColorClick()) return;
+
+    // sliders
+    for (let s of sliders) s.click();
+
+    // buttons
+    for (let b of capButtons) {
+      if (b.hover()) {
+        handleButtonPress(b.str);
+      }
+    }
+  }
+
+  function mouseReleased() {
+    for (let s of sliders) s.state = false;
+  }
+
+  // =============== 按钮逻辑（对应你的 handleButtonPress） ===============
+  function handleButtonPress(label) {
+    switch (label) {
+      case "Save":
+        saveCanvas("MathA", "png");
+        break;
+      case "Toggle Animation":
+        isAnimating = !isAnimating;
+        break;
+      case "Reset":
+        resetToDefaults();
+        break;
+      default:
+        for (let i = 0; i < functionNames.length; i++) {
+          if (label === functionNames[i]) {
+            currentFunction = i;
+            break;
+          }
+        }
+        break;
+    }
+  }
+
+  function resetToDefaults() {
+    currentFunction = 0;
+    isAnimating = true;
+    t = 0;
+
+    // 重置 sliders 到 0.5
+    for (let i = 0; i < sliders.length; i++) {
+      sliders[i].val = 0.5;
+      sliders[i].state = false;
+    }
+
+    // 重置颜色（可按你喜欢改）
+    hueVal = 220;
+    satVal = 100;
+    briVal = 80;
+    updateCurrentColorFromHSV(true);
+  }
 </script>
 </body>
 </html>
