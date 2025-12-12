@@ -7,7 +7,7 @@ const CANVAS_H = 900;
 // 左侧操作栏宽度
 let cw = 240;
 
-// 网格（比原来的 30 稍微大一点）
+// 网格：稍微大一点
 let cellSize = 36;
 
 let dragStart, dragEnd;
@@ -29,21 +29,36 @@ let hue = 220;
 let sat = 100;
 let bri = 80;
 
-// ===== 左侧布局（按像素写死） =====
+// ========== 左侧布局（统一按像素） ==========
 
-// 颜色区域（占据整个顶部，没有留缝）
-const COLOR_MAIN = { x: 0,   y: 0, w: 210, h: 210 }; // 左边大色块
-const COLOR_HUE  = { x: 210, y: 0, w: 30,  h: 210 }; // 右边色条
+// 顶部调色区域整体高度（重写）
+const COLOR_PANEL_H = 190;
+
+// 左边：颜色方块区域（S / B）
+const COLOR_MAIN = {
+  x: 0,
+  y: 0,
+  w: cw - 30,    // 210
+  h: COLOR_PANEL_H
+};
+
+// 右边：色相条（H）
+const COLOR_HUE = {
+  x: cw - 30,    // 210
+  y: 0,
+  w: 30,
+  h: COLOR_PANEL_H
+};
 
 let sbGraphic, hueGraphic;
 
-// 最近颜色 5 个小格（整体上移 10px：y=220 -> 210）
+// 最近颜色 5 个小格（整体上移 5px：原来 220 -> 215）
 const RECENT_RECTS = [
-  { x: 16,  y: 210, w: 28, h: 28 },
-  { x: 62,  y: 210, w: 28, h: 28 },
-  { x: 108, y: 210, w: 28, h: 28 },
-  { x: 154, y: 210, w: 28, h: 28 },
-  { x: 200, y: 210, w: 28, h: 28 }
+  { x: 16,  y: COLOR_PANEL_H + 25, w: 28, h: 28 }, // 215
+  { x: 62,  y: COLOR_PANEL_H + 25, w: 28, h: 28 },
+  { x: 108, y: COLOR_PANEL_H + 25, w: 28, h: 28 },
+  { x: 154, y: COLOR_PANEL_H + 25, w: 28, h: 28 },
+  { x: 200, y: COLOR_PANEL_H + 25, w: 28, h: 28 }
 ];
 
 const defaultRecentHex = [
@@ -55,23 +70,23 @@ const defaultRecentHex = [
 ];
 let recentColors = [];
 
-// 四个功能按钮（整体上移 10px）
+// 四个功能按钮（只上移约 5px：在上一版基础上再往下移 5）
 const FUNC_RECTS = {
-  undo:  { x: 20,  y: 258, w: 90, h: 32 },
-  clear: { x: 130, y: 258, w: 90, h: 32 },
-  grid:  { x: 20,  y: 302, w: 90, h: 32 },
-  save:  { x: 130, y: 302, w: 90, h: 32 }
+  undo:  { x: 20,  y: COLOR_PANEL_H + 68,  w: 90, h: 32 }, // 原 258 → 263 左右
+  clear: { x: 130, y: COLOR_PANEL_H + 68,  w: 90, h: 32 },
+  grid:  { x: 20,  y: COLOR_PANEL_H + 112, w: 90, h: 32 },
+  save:  { x: 130, y: COLOR_PANEL_H + 112, w: 90, h: 32 }
 };
 
 let undoButton, clearButton, gridButton, saveButton;
 
-// 10 个图形按钮，从整体上移 10px：startY 380 -> 370
+// 10 个图形按钮（整体只上移 5px：startY 380 → 375）
 const SHAPE_RECTS = [];
 (function buildShapeRects() {
   const size = 76;
   const col1x = 36;
   const col2x = 128;
-  let startY = 370; // 整块往上挪 10px
+  let startY = 375; // 比最原始只上移约 5px
   const gap = 86;   // 行间距
 
   for (let row = 0; row < 5; row++) {
@@ -278,7 +293,9 @@ function addNewShape() {
   undoStack = [];
 }
 
-// =================== 颜色面板 ===================
+// =================== 颜色面板（重写部分） ===================
+
+// 构建色相条
 function buildHueGraphic() {
   hueGraphic = createGraphics(COLOR_HUE.w, COLOR_HUE.h);
   hueGraphic.colorMode(HSB, 360, 100, 100);
@@ -298,6 +315,7 @@ function buildHueGraphic() {
   hueGraphic.updatePixels();
 }
 
+// 构建 S/B 方块
 function buildSBGraphic() {
   sbGraphic = createGraphics(COLOR_MAIN.w, COLOR_MAIN.h);
   sbGraphic.colorMode(HSB, 360, 100, 100);
@@ -318,11 +336,13 @@ function buildSBGraphic() {
   sbGraphic.updatePixels();
 }
 
+// 绘制调色区域
 function drawColorPanel() {
   imageMode(CORNER);
-  image(sbGraphic, COLOR_MAIN.x, COLOR_MAIN.y);
-  image(hueGraphic, COLOR_HUE.x, COLOR_HUE.y);
+  image(sbGraphic, COLOR_MAIN.x, COLOR_MAIN.y);   // 左边大色块
+  image(hueGraphic, COLOR_HUE.x, COLOR_HUE.y);    // 右边色条
 
+  // 在色相条上画当前 hue 的小标记
   let huePosY = map(hue, 0, 360, 0, COLOR_HUE.h);
   stroke(255);
   strokeWeight(2);
@@ -332,6 +352,7 @@ function drawColorPanel() {
   line(hx + COLOR_HUE.w, hy, hx + COLOR_HUE.w + 4, hy);
 }
 
+// 绘制 5 个最近颜色
 function drawRecentColors() {
   for (let i = 0; i < RECENT_RECTS.length; i++) {
     const r = RECENT_RECTS[i];
@@ -349,8 +370,9 @@ function drawRecentColors() {
   }
 }
 
+// 处理点击调色区域
 function handleColorClick() {
-  // 大色块：sat + bri
+  // 大色块：sat + bri（左边）
   if (mouseX >= COLOR_MAIN.x && mouseX <= COLOR_MAIN.x + COLOR_MAIN.w &&
       mouseY >= COLOR_MAIN.y && mouseY <= COLOR_MAIN.y + COLOR_MAIN.h) {
     let sx = constrain(mouseX, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w);
@@ -361,7 +383,7 @@ function handleColorClick() {
     return true;
   }
 
-  // 色相条：hue
+  // 色相条：hue（右边）
   if (mouseX >= COLOR_HUE.x && mouseX <= COLOR_HUE.x + COLOR_HUE.w &&
       mouseY >= COLOR_HUE.y && mouseY <= COLOR_HUE.y + COLOR_HUE.h) {
     let hy = constrain(mouseY, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h);
@@ -371,7 +393,7 @@ function handleColorClick() {
     return true;
   }
 
-  // 最近颜色
+  // 最近颜色 5 个小块
   for (let i = 0; i < RECENT_RECTS.length; i++) {
     const r = RECENT_RECTS[i];
     if (mouseX >= r.x && mouseX <= r.x + r.w &&
@@ -386,6 +408,7 @@ function handleColorClick() {
   return false;
 }
 
+// 更新当前颜色
 function updateCurrentColor() {
   push();
   colorMode(HSB, 360, 100, 100);
