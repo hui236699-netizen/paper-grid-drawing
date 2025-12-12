@@ -1,11 +1,11 @@
-// =================== 全局设置（响应式布局 + 锚点翻转四向绘制 + 选中移动版） ===================
+// =================== 全局设置（响应式 + 中心点扩张四向绘制 + 选中移动） ===================
 
-let cw = 240;        // 左侧栏宽度（动态）
-let cellSize = 36;   // 网格尺寸（动态）
+let cw = 240;
+let cellSize = 36;
 
 let dragStart, dragEnd;
-let isDragging = false;   // 画新图形
-let isMoving = false;     // 移动已选图形
+let isDragging = false;
+let isMoving = false;
 
 let currentShape = 0;
 let currentColor;
@@ -49,15 +49,18 @@ function clamp(v, lo, hi) {
   return max(lo, min(hi, v));
 }
 
-// 鼠标 -> 网格坐标（更顺滑：floor，不抖）
+// 鼠标 -> 网格坐标（更顺滑：floor）
 function mouseToGrid() {
   const gx = floor((mouseX - cw) / cellSize);
   const gy = floor(mouseY / cellSize);
   return { gx, gy };
 }
 
-// Shift 锁比例：把 end 调整成与 start 等边（保持拖拽象限）
-function lockAspectByShift(start, end) {
+/**
+ * Shift 锁比例（中心点扩张版）
+ * 我们锁的是“半径”（到中心的格数）
+ */
+function lockAspectCenterByShift(start, end) {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
   const m = max(abs(dx), abs(dy));
@@ -67,37 +70,34 @@ function lockAspectByShift(start, end) {
 }
 
 /**
- * 关键：锚点翻转逻辑（你要的）
- * - start 永远固定（落笔点）
- * - 宽高 = abs(dx/dy)+1
- * - 若向左拖，则 x = start.x - (w-1)；向右则 x = start.x
- * - 若向上拖，则 y = start.y - (h-1)；向下则 y = start.y
+ * 关键：中心点扩张矩形
+ * - start 是中心点（不动）
+ * - end 决定中心到边的“半宽/半高”（格数）
+ * - 宽 = 2*halfW + 1，高 = 2*halfH + 1
+ * - 左上角 = (start.x - halfW, start.y - halfH)
  */
-function rectFromAnchorDrag(start, end) {
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
+function rectFromCenterDrag(center, end) {
+  const halfW = abs(end.x - center.x);
+  const halfH = abs(end.y - center.y);
 
-  const w = max(1, abs(dx) + 1);
-  const h = max(1, abs(dy) + 1);
+  const w = max(1, 2 * halfW + 1);
+  const h = max(1, 2 * halfH + 1);
 
-  const x = dx >= 0 ? start.x : (start.x - (w - 1));
-  const y = dy >= 0 ? start.y : (start.y - (h - 1));
+  const x = center.x - halfW;
+  const y = center.y - halfH;
 
   return { x, y, w, h };
 }
 
-// 点击命中最上层图形（从后往前）
+// 命中最上层图形
 function hitTestShape(gx, gy) {
   for (let i = shapes.length - 1; i >= 0; i--) {
     const s = shapes[i];
-    if (gx >= s.x && gx < s.x + s.w && gy >= s.y && gy < s.y + s.h) {
-      return i;
-    }
+    if (gx >= s.x && gx < s.x + s.w && gy >= s.y && gy < s.y + s.h) return i;
   }
   return -1;
 }
 
-// 选中框
 function drawSelectionOutline(s) {
   const px = s.x * cellSize;
   const py = s.y * cellSize;
@@ -112,10 +112,9 @@ function drawSelectionOutline(s) {
   pop();
 }
 
-// =================== 响应式布局重算 ===================
+// =================== 响应式布局 ===================
 function computeLayout() {
   cw = clamp(width * 0.18, 200, 320);
-
   COLOR_PANEL_H = clamp(height * 0.22, 160, 230);
 
   const rightW = max(1, width - cw);
@@ -125,7 +124,7 @@ function computeLayout() {
   cellSize = clamp(min(byWidth, byHeight), 24, 52);
 
   COLOR_MAIN = { x: 0, y: 0, w: cw - 30, h: COLOR_PANEL_H };
-  COLOR_HUE = { x: cw - 30, y: 0, w: 30, h: COLOR_PANEL_H };
+  COLOR_HUE  = { x: cw - 30, y: 0, w: 30, h: COLOR_PANEL_H };
 
   // Recent colors
   RECENT_RECTS = [];
@@ -133,18 +132,16 @@ function computeLayout() {
   const padX = 16;
   const gap = 10;
   const rW = clamp((cw - padX * 2 - gap * (recentCount - 1)) / recentCount, 22, 34);
-  const rH = rW;
   const recentY = COLOR_PANEL_H + clamp(height * 0.03, 18, 30);
   for (let i = 0; i < recentCount; i++) {
-    const x = padX + i * (rW + gap);
-    RECENT_RECTS.push({ x, y: recentY, w: rW, h: rH });
+    RECENT_RECTS.push({ x: padX + i * (rW + gap), y: recentY, w: rW, h: rW });
   }
 
   // Func buttons
   const btnGapX = 12;
   const btnW = (cw - padX * 2 - btnGapX) / 2;
   const btnH = clamp(height * 0.035, 30, 38);
-  const funcY1 = recentY + rH + clamp(height * 0.02, 16, 26);
+  const funcY1 = recentY + rW + clamp(height * 0.02, 16, 26);
   const funcY2 = funcY1 + btnH + clamp(height * 0.012, 10, 16);
 
   FUNC_RECTS = {
@@ -178,7 +175,7 @@ function computeLayout() {
   }
 }
 
-// =================== 预加载资源 ===================
+// =================== preload ===================
 function preload() {
   for (let i = 0; i < icons.length; i++) icons[i] = loadImage("assets/" + i + ".png");
   for (let i = 0; i < svgs.length; i++) svgs[i] = loadImage("svg/" + (i + 1) + ".svg?v=10");
@@ -236,7 +233,7 @@ function computeSvgBounds(index) {
   pg.remove();
 }
 
-// =================== 颜色面板构建 ===================
+// =================== Color graphics ===================
 function buildHueGraphic() {
   hueGraphic = createGraphics(COLOR_HUE.w, COLOR_HUE.h);
   hueGraphic.colorMode(HSB, 360, 100, 100);
@@ -278,7 +275,7 @@ function buildSBGraphic() {
   sbGraphic.updatePixels();
 }
 
-// =================== UI 布局 ===================
+// =================== UI layout ===================
 function layoutUI() {
   computeLayout();
   buildHueGraphic();
@@ -322,16 +319,12 @@ function windowResized() {
 function draw() {
   background(240);
 
-  // 右侧画布区
+  // 右侧
   push();
   translate(cw, 0);
   if (showGrid) drawGrid();
   drawShapes();
-
-  if (selectedIndex >= 0 && selectedIndex < shapes.length) {
-    drawSelectionOutline(shapes[selectedIndex]);
-  }
-
+  if (selectedIndex >= 0 && selectedIndex < shapes.length) drawSelectionOutline(shapes[selectedIndex]);
   if (isDragging) drawPreview();
   pop();
 
@@ -351,7 +344,7 @@ function draw() {
   for (let b of buttons) b.display();
 }
 
-// =================== 网格 / 图形 ===================
+// =================== grid / shapes ===================
 function drawGrid() {
   const w = width - cw;
   const h = height;
@@ -372,17 +365,15 @@ function drawShapes() {
 
 function drawPreview() {
   let end = dragEnd.copy();
-  if (keyIsDown(SHIFT)) end = lockAspectByShift(dragStart, end);
+  if (keyIsDown(SHIFT)) end = lockAspectCenterByShift(dragStart, end);
 
-  // 关键：锚点翻转矩形
-  const r = rectFromAnchorDrag(dragStart, end);
+  const r = rectFromCenterDrag(dragStart, end);
 
   const x = r.x * cellSize;
   const y = r.y * cellSize;
   const w = r.w * cellSize;
   const h = r.h * cellSize;
 
-  // 半透明预览
   const previewFill = color(red(currentColor), green(currentColor), blue(currentColor), 80);
 
   push();
@@ -391,36 +382,24 @@ function drawPreview() {
   fill(previewFill);
 
   switch (currentShape) {
-    case 0:
-      rect(x, y, w, h);
-      break;
-    case 1:
-      ellipse(x + w / 2, y + h / 2, w, h);
-      break;
-    case 2:
-      triangle(x + w / 2, y, x, y + h, x + w, y + h);
-      break;
-    case 3:
-      drawParallelogramPreview(x, y, w, h);
-      break;
-    default:
-      // SVG 预览：用 tint 半透明
-      drawSvgShape(currentShape, x, y, w, h, previewFill);
-      break;
+    case 0: rect(x, y, w, h); break;
+    case 1: ellipse(x + w / 2, y + h / 2, w, h); break;
+    case 2: triangle(x + w / 2, y, x, y + h, x + w, y + h); break;
+    case 3: drawParallelogramPreview(x, y, w, h); break;
+    default: drawSvgShape(currentShape, x, y, w, h, previewFill); break;
   }
   pop();
 }
 
 function addNewShape() {
   let end = dragEnd.copy();
-  if (keyIsDown(SHIFT)) end = lockAspectByShift(dragStart, end);
-
-  const r = rectFromAnchorDrag(dragStart, end);
+  if (keyIsDown(SHIFT)) end = lockAspectCenterByShift(dragStart, end);
+  const r = rectFromCenterDrag(dragStart, end);
   shapes.push(new Shape(r.x, r.y, r.w, r.h, currentShape, currentColor));
   undoStack = [];
 }
 
-// =================== 颜色面板 ===================
+// =================== color panel ===================
 function drawColorPanel() {
   imageMode(CORNER);
   image(sbGraphic, COLOR_MAIN.x, COLOR_MAIN.y);
@@ -452,7 +431,6 @@ function drawRecentColors() {
   }
 }
 
-// =================== 颜色交互 ===================
 function handleColorClick() {
   if (mouseX >= COLOR_MAIN.x && mouseX <= COLOR_MAIN.x + COLOR_MAIN.w &&
       mouseY >= COLOR_MAIN.y && mouseY <= COLOR_MAIN.y + COLOR_MAIN.h) {
@@ -508,13 +486,11 @@ function colorsEqual(c1, c2) {
          blue(c1) === blue(c2);
 }
 
-// =================== 鼠标交互（绘制 / 选中 / 移动） ===================
+// =================== mouse interactions ===================
 function mousePressed() {
-  // 右侧区域
   if (mouseX > cw && mouseY >= 0 && mouseY <= height) {
     const { gx, gy } = mouseToGrid();
 
-    // 点击命中 -> 选中并移动
     const hit = hitTestShape(gx, gy);
     if (hit >= 0) {
       selectedIndex = hit;
@@ -524,15 +500,13 @@ function mousePressed() {
       return;
     }
 
-    // 空白 -> 开始绘制（锚点=落笔点）
     selectedIndex = -1;
     isDragging = true;
-    dragStart = createVector(gx, gy);
+    dragStart = createVector(gx, gy);   // 中心点
     dragEnd = dragStart.copy();
     return;
   }
 
-  // 左侧按钮
   if (undoButton.hover()) { undo(); return; }
   if (clearButton.hover()) { clearShapes(); return; }
   if (gridButton.hover()) { showGrid = !showGrid; return; }
@@ -544,18 +518,15 @@ function mousePressed() {
 }
 
 function mouseDragged() {
-  // 移动选中图形（按网格）
   if (isMoving && selectedIndex >= 0 && selectedIndex < shapes.length) {
     const { gx, gy } = mouseToGrid();
     const dx = gx - moveStartGrid.x;
     const dy = gy - moveStartGrid.y;
-
     shapes[selectedIndex].x = max(0, moveOrigXY.x + dx);
     shapes[selectedIndex].y = max(0, moveOrigXY.y + dy);
     return;
   }
 
-  // 绘制：仅更新 dragEnd（四向，锚点不动）
   if (isDragging) {
     const { gx, gy } = mouseToGrid();
     dragEnd = createVector(gx, gy);
@@ -576,7 +547,7 @@ function mouseReleased() {
   }
 }
 
-// =================== 撤销 / 清空 ===================
+// =================== undo/redo/clear ===================
 function undo() {
   if (shapes.length > 0) {
     undoStack.push(shapes.pop());
@@ -594,13 +565,10 @@ function clearShapes() {
   selectedIndex = -1;
 }
 
-// =================== Shape 类 ===================
+// =================== Shape ===================
 class Shape {
   constructor(x, y, w, h, type, c) {
-    this.x = x;
-    this.y = y;
-    this.w = w;
-    this.h = h;
+    this.x = x; this.y = y; this.w = w; this.h = h;
     this.type = type;
     this.c = color(c);
   }
@@ -616,28 +584,17 @@ class Shape {
     const ph = this.h * cellSize;
 
     switch (this.type) {
-      case 0:
-        rect(px, py, pw, ph);
-        break;
-      case 1:
-        ellipse(px + pw / 2, py + ph / 2, pw, ph);
-        break;
-      case 2:
-        triangle(px + pw / 2, py, px, py + ph, px + pw, py + ph);
-        break;
-      case 3:
-        drawParallelogram(px, py, pw, ph);
-        break;
-      default:
-        drawSvgShape(this.type, px, py, pw, ph, this.c);
-        break;
+      case 0: rect(px, py, pw, ph); break;
+      case 1: ellipse(px + pw / 2, py + ph / 2, pw, ph); break;
+      case 2: triangle(px + pw / 2, py, px, py + ph, px + pw, py + ph); break;
+      case 3: drawParallelogram(px, py, pw, ph); break;
+      default: drawSvgShape(this.type, px, py, pw, ph, this.c); break;
     }
-
     pop();
   }
 }
 
-// 平行四边形
+// Parallelogram
 function drawParallelogram(x, y, w, h) {
   beginShape();
   vertex(x + w / 4, y);
@@ -656,7 +613,7 @@ function drawParallelogramPreview(x, y, w, h) {
   endShape(CLOSE);
 }
 
-// SVG 形状
+// SVG
 function drawSvgShape(type, x, y, w, h, col) {
   let idx = type - 4;
   if (idx < 0 || idx >= svgs.length) return;
@@ -682,12 +639,10 @@ function drawSvgShape(type, x, y, w, h, col) {
   pop();
 }
 
-// =================== 左侧图标按钮 ===================
+// Icon button
 class IconButton {
   constructor(x, y, s, index) {
-    this.x = x;
-    this.y = y;
-    this.s = s;
+    this.x = x; this.y = y; this.s = s;
     this.index = index;
     this.img = icons[index];
     this.state = false;
@@ -731,13 +686,10 @@ class IconButton {
   }
 }
 
-// =================== 功能按钮 ===================
+// Cap button
 class CapButton {
   constructor(x, y, w, h, str) {
-    this.x = x;
-    this.y = y;
-    this.w = w;
-    this.h = h;
+    this.x = x; this.y = y; this.w = w; this.h = h;
     this.str = str;
   }
 
@@ -754,7 +706,6 @@ class CapButton {
     textAlign(CENTER, CENTER);
     textSize(this.h * 0.5);
     text(this.str, 0, 0);
-
     pop();
   }
 
@@ -768,7 +719,7 @@ class CapButton {
   }
 }
 
-// =================== 键盘（删除/撤销/重做） ===================
+// =================== keyboard ===================
 function keyPressed() {
   if ((keyCode === BACKSPACE || keyCode === DELETE) && selectedIndex >= 0) {
     shapes.splice(selectedIndex, 1);
