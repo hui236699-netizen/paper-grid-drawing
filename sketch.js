@@ -1,6 +1,6 @@
 // =================== 全局设置 ===================
 let cellSize = 30;              // 网格大小
-let cw = 240;                   // 左侧操作栏宽度（改为 240）
+let cw = 240;                   // 左侧操作栏宽度
 
 let dragStart, dragEnd;
 let isDragging = false;
@@ -48,7 +48,7 @@ function preload() {
 
   // SVG 图形：svg/1.svg ~ svg/8.svg
   for (let i = 0; i < svgs.length; i++) {
-    svgs[i] = loadImage("svg/" + (i + 1) + ".svg?v=4");
+    svgs[i] = loadImage("svg/" + (i + 1) + ".svg?v=5");
   }
 }
 
@@ -107,11 +107,12 @@ function computeSvgBounds(index) {
   pg.remove();
 }
 
-// =================== 初始化布局 ===================
+// =================== 布局：按照你的草图重新排 ===================
 function layoutUI() {
-  // --- 颜色面板：紧贴顶部和左右边 ---
+  // ----- 1. 顶部颜色区域（大色块 + 竖色条） -----
+  // 紧贴顶部和左右两边：没有任何空隙
   hueW = 18;
-  sbSize = cw - hueW;   // 大方块占左侧，其宽度 = cw - 色条宽度
+  sbSize = cw - hueW;
   sbX = 0;
   sbY = 0;
   hueX = sbSize;
@@ -121,41 +122,77 @@ function layoutUI() {
   buildHueGraphic();
   buildSBGraphic();
 
-  // 最近颜色区域高度 = 30(方块) + margin
-  const recentTop = sbY + sbSize + 16;
-  const recentBlockBottom = recentTop + 30;
+  const colorAreaBottom = sbY + sbSize;   // 顶部颜色区域的底部位置
 
-  // --- 四个功能按钮 ---
-  const bw = 90, bh = 34, offset = 70;
-  const row1Y = recentBlockBottom + 24;
-  const row2Y = row1Y + 40;
+  // ----- 2. 最近使用颜色（5 个小方块） -----
+  const sw = 26;
+  const sh = 26;
+  const swGap = 8;
+  const swCount = 5;
+  const swTotalW = swCount * sw + (swCount - 1) * swGap;
+  const swStartX = (cw - swTotalW) / 2;
+  const swY = colorAreaBottom + 12;
+  // 记住这个区域底部
+  const recentBottom = swY + sh;
 
-  undoButton  = new CapButton(cw / 2 - offset, row1Y, bw, bh, "Undo");
-  clearButton = new CapButton(cw / 2 + offset, row1Y, bw, bh, "Clear");
-  gridButton  = new CapButton(cw / 2 - offset, row2Y, bw, bh, "Grid");
-  saveButton  = new CapButton(cw / 2 + offset, row2Y, bw, bh, "Save");
+  // 我们在 drawRecentColors 里按这个逻辑再算一遍
+  layoutUI._sw = { sw, sh, swGap, swStartX, swY };
 
-  // --- 图形按钮（10 个，5 行 × 2 列）---
-  const topUsed = row2Y + bh / 2;
-  const iconsTopStart = topUsed + 30;   // 图标区域上边距
-  const iconsBottomMargin = 30;
+  // ----- 3. 四个功能按钮（Undo / Clear / Grid / Save），两行 -----
+  const bw = cw * 0.4;  // 按钮宽度占栏宽的 40%
+  const bh = 34;
+  const btnGapRow = 10;
+  const btnGapCol = 20;
+
+  const row1Y = recentBottom + 18 + bh / 2;
+  const row2Y = row1Y + bh + btnGapRow;
+
+  const centerX = cw / 2;
+  undoButton  = new CapButton(centerX - bw / 2 - btnGapCol / 2, row1Y, bw, bh, "Undo");
+  clearButton = new CapButton(centerX + bw / 2 + btnGapCol / 2, row1Y, bw, bh, "Clear");
+  gridButton  = new CapButton(centerX - bw / 2 - btnGapCol / 2, row2Y, bw, bh, "Grid");
+  saveButton  = new CapButton(centerX + bw / 2 + btnGapCol / 2, row2Y, bw, bh, "Save");
+
+  const funcBottom = row2Y + bh / 2;
+
+  // ----- 4. 底部 10 个图形按钮（5 行 × 2 列），自适应高度 -----
+  const rows = 5;
+  const cols = 2;
+  const iconsTopStart = funcBottom + 26;     // 第一个图标矩形区域上边界
+  const iconsBottomMargin = 24;              // 底部预留
   const availableH = height - iconsTopStart - iconsBottomMargin;
 
-  const rows = 5;
-  let s = min(70, availableH / (rows + 1)); // 图标尺寸
-  let gapRow = (availableH - rows * s) / (rows + 1);
-  if (gapRow < 6) gapRow = 6;
+  // 默认图标尺寸 & 行间距
+  let sDefault = 60;
+  let gapRowDefault = 16;
 
-  const xLeft = cw * 0.35;
-  const xRight = cw * 0.65;
+  // 先按默认值计算需要的高度
+  let needH = rows * sDefault + (rows - 1) * gapRowDefault;
+  let s, gapRow;
+  if (needH <= availableH) {
+    // 空间足够，用默认
+    s = sDefault;
+    // 把多余的高度均匀分到间距里（让整体更居中）
+    const extra = availableH - needH;
+    gapRow = gapRowDefault + extra / (rows + 1);
+  } else {
+    // 空间不够：按比例缩小图标 & 间距
+    const scale = availableH / needH;
+    s = sDefault * scale;
+    gapRow = gapRowDefault * scale;
+  }
+
+  const colGap = cw * 0.25;
+  const xLeft = cw / 2 - colGap / 2;
+  const xRight = cw / 2 + colGap / 2;
 
   buttons = new Array(icons.length);
   for (let i = 0; i < icons.length; i++) {
-    let col = i % 2;
-    let row = floor(i / 2);
-    let y = iconsTopStart + gapRow * (row + 1) + s * row + s / 2;
-    let x = col === 0 ? xLeft : xRight;
-    buttons[i] = new IconButton(x, y, s, i);
+    let col = i % cols;
+    let row = floor(i / cols);
+    let yCenter = iconsTopStart + gapRow * (row + 1) + s * row + s / 2;
+    let xCenter = col === 0 ? xLeft : xRight;
+    buttons[i] = new IconButton(xCenter, yCenter, s, i);
   }
 }
 
@@ -165,10 +202,8 @@ function setup() {
   currentColor = color("#482BCC");
   recentColors = defaultRecentHex.map(h => color(h));
 
-  // 初始化布局 & 颜色面板
   layoutUI();
 
-  // 计算 SVG 非透明区域
   for (let i = 0; i < svgs.length; i++) computeSvgBounds(i);
 }
 
@@ -299,7 +334,7 @@ function buildSBGraphic() {
 }
 
 function drawColorPanel() {
-  // 不再画 “Color” 文本，色块直接贴顶部和左右边
+  // 顶部颜色区域：大色块 + 竖色条，紧贴边缘
   imageMode(CORNER);
   image(sbGraphic, sbX, sbY);
   image(hueGraphic, hueX, hueY);
@@ -313,26 +348,28 @@ function drawColorPanel() {
 }
 
 function drawRecentColors() {
-  let sw = 30, sh = 30;
-  let gap = 8;
+  const cfg = layoutUI._sw;
+  const sw = cfg.sw;
+  const sh = cfg.sh;
+  const swGap = cfg.swGap;
+  const swStartX = cfg.swStartX;
+  const swY = cfg.swY;
+
   let n = recentColors.length;
-  let totalW = n * sw + (n - 1) * gap;
-  let startX = cw / 2 - totalW / 2;
-  let y = sbY + sbSize + 16;
 
   rectMode(CORNER);
   for (let i = 0; i < n; i++) {
-    let px = startX + i * (sw + gap);
+    let px = swStartX + i * (sw + swGap);
     stroke(60);
     strokeWeight(1);
     fill(recentColors[i]);
-    rect(px, y, sw, sh, 6);
+    rect(px, swY, sw, sh, 6);
 
     if (colorsEqual(recentColors[i], currentColor)) {
       noFill();
       stroke(255);
       strokeWeight(2);
-      rect(px - 3, y - 3, sw + 6, sh + 6, 8);
+      rect(px - 3, swY - 3, sw + 6, sh + 6, 8);
     }
   }
 }
@@ -360,16 +397,19 @@ function handleColorClick() {
   }
 
   // 点击最近颜色
-  let sw = 30, sh = 30, gap = 8;
+  const cfg = layoutUI._sw;
+  const sw = cfg.sw;
+  const sh = cfg.sh;
+  const swGap = cfg.swGap;
+  const swStartX = cfg.swStartX;
+  const swY = cfg.swY;
+
   let n = recentColors.length;
-  let totalW = n * sw + (n - 1) * gap;
-  let startX = cw / 2 - totalW / 2;
-  let y = sbY + sbSize + 16;
 
   for (let i = 0; i < n; i++) {
-    let px = startX + i * (sw + gap);
+    let px = swStartX + i * (sw + swGap);
     if (mouseX >= px && mouseX <= px + sw &&
-        mouseY >= y && mouseY <= y + sh) {
+        mouseY >= swY && mouseY <= swY + sh) {
       currentColor = color(recentColors[i]);
       addRecentColor(currentColor);
       return true;
