@@ -8,7 +8,6 @@
     html, body { margin:0; padding:0; background:#0f1013; overflow:hidden; }
     canvas { display:block; margin:0 auto; }
 
-    /* 输入框样式：和你左侧面板风格一致 */
     .glyphInput {
       position: absolute;
       background: #3A393D;
@@ -30,13 +29,12 @@
 const CANVAS_W = 1440;
 const CANVAS_H = 900;
 
-/* =================== 左侧操作栏（完全对齐 draw.html） =================== */
-let cw = 240;     // ✅ 与 draw.html 一致
+/* =================== 左侧操作栏（与 draw.html 一致） =================== */
+let cw = 240;
 let ch = 0;
-
 let showGrid = true;
 
-/* =================== 你的参数（保留逻辑） =================== */
+/* =================== 原始参数（保留你的逻辑） =================== */
 let maxAmp = 50;
 let t = 0;
 
@@ -45,7 +43,7 @@ let strokeW = 2;
 let amplitude = 10;
 let frequency = 1;
 
-// ✅ phase 逻辑保留（不做滑块 UI）
+// ✅ phase 逻辑保留（无滑块）
 let phase = 0;
 
 let isAnimating = true;
@@ -54,37 +52,34 @@ let animationSpeed = 0.02;
 let currentFunction = 0;
 const functionNames = ["Sin", "Square", "Triangle", "Sawtooth"];
 
-/* =================== 字体（仅用于 UI 文本） =================== */
+/* =================== 字体加载（用于生成字形轮廓） =================== */
 const FONT_PATH = "assets/fonts/ABCFavoritHebrewBoldVariable-Trial.ttf";
-let uiFont = null;
+let fontObj = null;
 let fontLoaded = false;
 
-/* =================== 颜色模块（完全复制 draw.html 结构） =================== */
+/* =================== glyph 输入框 =================== */
+let glyphInput;
+let glyphChar = "A";
+let glyphDirty = true;
+
+/* =================== 字形轮廓点（textToPoints 生成） =================== */
+let glyphContours = [];      // Array< Array<{x,y,s}> >
+let glyphBaseSize = 420;     // 字形基准大小（再由 scaleVal 控制整体缩放）
+let sampleFactor = 0.18;     // 轮廓采样密度：越大越细（性能也更高）
+let simplifyThreshold = 0;   // 简化阈值：0=不简化（保持“原味路径”）
+
+/* =================== 颜色模块（完全对齐 draw.html） =================== */
 let hue = 220;
 let sat = 100;
 let bri = 80;
-
 let currentColor;
 
 const COLOR_PANEL_H = 190;
-
-const COLOR_MAIN = {
-  x: 0,
-  y: 0,
-  w: cw - 30,   // 210
-  h: COLOR_PANEL_H
-};
-
-const COLOR_HUE = {
-  x: cw - 30,   // 210
-  y: 0,
-  w: 30,
-  h: COLOR_PANEL_H
-};
+const COLOR_MAIN = { x: 0, y: 0, w: cw - 30, h: COLOR_PANEL_H };
+const COLOR_HUE  = { x: cw - 30, y: 0, w: 30, h: COLOR_PANEL_H };
 
 let sbGraphic, hueGraphic;
 
-// 最近颜色 5 格（对齐 draw.html）
 const RECENT_RECTS = [
   { x: 16,  y: COLOR_PANEL_H + 25, w: 28, h: 28 },
   { x: 62,  y: COLOR_PANEL_H + 25, w: 28, h: 28 },
@@ -92,36 +87,23 @@ const RECENT_RECTS = [
   { x: 154, y: COLOR_PANEL_H + 25, w: 28, h: 28 },
   { x: 200, y: COLOR_PANEL_H + 25, w: 28, h: 28 }
 ];
-
-const defaultRecentHex = [
-  "#482BCC",
-  "#FF04A5",
-  "#FFE900",
-  "#8CE255",
-  "#8EC8EC"
-];
-
+const defaultRecentHex = ["#482BCC","#FF04A5","#FFE900","#8CE255","#8EC8EC"];
 let recentColors = [];
 
-/* =================== 四个功能按钮（位置完全对齐 draw.html 的 FUNC_RECTS） =================== */
+/* =================== 四个功能按钮（与 draw.html 一致的位置） =================== */
 const FUNC_RECTS = {
   reset: { x: 20,  y: COLOR_PANEL_H + 68,  w: 90, h: 32 },
   pause: { x: 130, y: COLOR_PANEL_H + 68,  w: 90, h: 32 },
   grid:  { x: 20,  y: COLOR_PANEL_H + 112, w: 90, h: 32 },
   save:  { x: 130, y: COLOR_PANEL_H + 112, w: 90, h: 32 }
 };
-
 let resetButton, pauseButton, gridButton, saveButton;
 
-/* =================== 输入框（放在按钮下方） =================== */
-let glyphInput;
-let glyphChar = "A";
-
-/* =================== 5个滑块（你的顺序） =================== */
+/* =================== 5 个滑块（无 Phase） =================== */
 const sliderName = ["Scale", "Stroke Weight", "Amplitude", "Frequency", "Animation Speed"];
 let sliders = [];
 
-/* =================== 波形按钮（放右边） =================== */
+/* =================== 右侧波形按钮（你要求放右边） =================== */
 let waveButtons = [];
 
 /* =================== setup =================== */
@@ -133,109 +115,125 @@ function setup() {
   currentColor = color("#482BCC");
   recentColors = defaultRecentHex.map(h => color(h));
 
-  // 构建颜色图
   buildHueGraphic();
   buildSBGraphic();
 
-  // 四按钮（样式对齐 draw.html 的 CapButton）
   resetButton = rectToCapButton(FUNC_RECTS.reset, "Reset");
   pauseButton = rectToCapButton(FUNC_RECTS.pause, "Pause");
   gridButton  = rectToCapButton(FUNC_RECTS.grid,  "Grid");
   saveButton  = rectToCapButton(FUNC_RECTS.save,  "Save");
 
-  // 输入框：放在四按钮下面
-  // 你要求：这里必须能删掉 A / 输入其他字母（bug修复）
+  // 输入框（可删 A、可输入任意单字符）
   glyphInput = createInput("A");
   glyphInput.addClass("glyphInput");
   glyphInput.attribute("maxlength", "1");
-  placeGlyphInput(); // 初次定位
+  placeGlyphInput();
 
-  // 输入事件：不再强行回填“A”，允许为空
   glyphInput.input(() => {
     let v = glyphInput.value();
 
-    // 允许空字符串（用户删除中）
+    // 允许空（删除中）
     if (v.length === 0) {
       glyphChar = "";
+      glyphDirty = true;
       return;
     }
 
-    // 只保留第一个字符（防止粘贴多个）
+    // 只取第一个字符（防粘贴多个）
     if (v.length > 1) {
       v = v[0];
       glyphInput.value(v);
     }
+
     glyphChar = v;
+    glyphDirty = true;
   });
 
-  // 失焦：如果空，就回到 A（避免最终为空）
+  // 失焦：如果空，回到 A（避免最终空）
   glyphInput.elt.addEventListener("blur", () => {
     if (!glyphInput.value() || glyphInput.value().length === 0) {
       glyphChar = "A";
       glyphInput.value("A");
+      glyphDirty = true;
     }
   });
 
-  // 5个滑块（放在输入框下面）
-  const firstSliderY = COLOR_PANEL_H + 160 + 70; // 输入框 y + 间距
+  // 5个滑块：输入框下方
+  const firstSliderY = (COLOR_PANEL_H + 160) + 70;
   const gap = 54;
   for (let i = 0; i < 5; i++) {
-    const y = firstSliderY + i * gap;
-    sliders.push(new Slider(120, y, 200, 34, sliderName[i], 0.5));
+    sliders.push(new Slider(120, firstSliderY + i * gap, 200, 34, sliderName[i], 0.5));
   }
 
-  // 右侧波形按钮（你要求放右边）
+  // 右侧波形按钮
   const bx = width - 120;
   const by0 = 160;
   const bGap = 46;
   const names = ["Sin","Square","Triangle","Sawtooth"];
   for (let i = 0; i < 4; i++) {
-    waveButtons.push(new CapButton(bx, by0 + i*bGap, 150, 30, names[i]));
+    waveButtons.push(new CapButton(bx, by0 + i*bGap, 150, 30, names[i], false));
   }
   setWaveSelected(0);
 
-  tryLoadUIFont();
+  // 加载字体（成功后生成当前字母的轮廓点）
+  loadFont(
+    FONT_PATH,
+    (f) => { fontObj = f; fontLoaded = true; glyphDirty = true; },
+    ()  => { fontObj = null; fontLoaded = false; glyphDirty = false; }
+  );
 }
 
-/* 仅当窗口变化/不聚焦时更新输入框位置，避免打字时光标抖 */
 function windowResized() {
-  // 画布固定不变（你原来也是固定），这里只重定位 input
   placeGlyphInput();
 }
 
+/* =================== draw =================== */
 function draw() {
   background(240);
 
   updateParameters();
 
-  // 右侧绘制区
+  // 字体加载成功，且字符变化了，就重建轮廓
+  if (fontLoaded && glyphDirty) {
+    rebuildGlyphContours();
+    glyphDirty = false;
+  }
+
+  // 右侧区域：网格
   if (showGrid) drawGrid();
 
-  push();
-  translate(width / 2, height / 2);
-  scale(scaleVal);
-  drawMathA();
-  pop();
+  // ✅ 绘制字形（保持你的“沿路径扰动”风格）
+  if (fontLoaded && glyphChar !== "" && glyphContours.length > 0) {
+    drawGlyphContours();
+  } else {
+    // 字体未加载/字为空：给个提示（不黑屏）
+    push();
+    fill(60);
+    noStroke();
+    textAlign(CENTER, CENTER);
+    textSize(18);
+    text(fontLoaded ? "Type a glyph on the left" : "Loading font… (check assets/fonts/…)", (cw + width)/2, height/2);
+    pop();
+  }
 
-  // 左侧背景（对齐 draw.html）
+  // 左侧背景
   noStroke();
   fill("#1F1E24");
   rect(0, 0, cw, height);
 
-  // 颜色面板 + 最近颜色（完全 draw.html 逻辑）
+  // 左侧颜色模块 + 最近颜色
   drawColorPanel();
   drawRecentColors();
 
-  // 四按钮（Pause 显示 Play/Pause）
+  // 四按钮（Pause/Play）
   pauseButton.str = isAnimating ? "Pause" : "Play";
   resetButton.display();
   pauseButton.display();
   gridButton.display();
   saveButton.display();
 
-  // 输入框标题（可选小提示）
+  // glyph 标签
   fill(255);
-  useUIFont();
   textAlign(LEFT, CENTER);
   textSize(12);
   text("Glyph", 20, COLOR_PANEL_H + 145);
@@ -246,29 +244,24 @@ function draw() {
   // 右侧波形按钮
   for (let b of waveButtons) b.display();
 
-  // 右下角函数预览
+  // 函数预览（保留 phase + t）
   drawFunctionDisplay();
 
   if (isAnimating) t += animationSpeed;
 
-  // 输入框位置微调（仅在未聚焦时）
-  if (glyphInput && document.activeElement !== glyphInput.elt) {
-    placeGlyphInput();
-  }
+  // 仅在未聚焦时更新 input 位置（避免打字时光标抖）
+  if (glyphInput && document.activeElement !== glyphInput.elt) placeGlyphInput();
 }
 
 /* =================== 输入框定位（canvas 居中时需要 offset） =================== */
 function canvasOffsetX() {
   const c = document.querySelector("canvas");
-  if (!c) return 0;
-  return Math.round(c.getBoundingClientRect().left);
+  return c ? Math.round(c.getBoundingClientRect().left) : 0;
 }
 function canvasOffsetY() {
   const c = document.querySelector("canvas");
-  if (!c) return 0;
-  return Math.round(c.getBoundingClientRect().top);
+  return c ? Math.round(c.getBoundingClientRect().top) : 0;
 }
-
 function placeGlyphInput() {
   if (!glyphInput) return;
   const inputX = 20;
@@ -285,37 +278,125 @@ function drawGrid() {
   for (let y = 0; y <= height; y += step) line(cw, y, width, y);
 }
 
-/* =================== MathA（保留你原逻辑） =================== */
-function drawMathA() {
+/* =========================================================
+   ✅ 核心：把 glyph 变成轮廓点，并用“你的扰动公式”沿法线偏移
+   ========================================================= */
+function rebuildGlyphContours() {
+  glyphContours = [];
+  if (!fontObj || glyphChar === "") return;
+
+  // textToPoints 以 baseline 为参考，先取 bounds 再居中
+  const bounds = fontObj.textBounds(glyphChar, 0, 0, glyphBaseSize);
+
+  // ⚠️ bounds 可能 w/h 很小（比如空格），直接跳过
+  if (!bounds || bounds.w <= 1 || bounds.h <= 1) return;
+
+  const pts = fontObj.textToPoints(glyphChar, 0, 0, glyphBaseSize, {
+    sampleFactor,
+    simplifyThreshold
+  });
+
+  if (!pts || pts.length < 2) return;
+
+  // 居中：把字形中心移到 (0,0)
+  const cx = bounds.x + bounds.w / 2;
+  const cy = bounds.y + bounds.h / 2;
+
+  // 轮廓拆分：检测相邻点跳跃（不同 contour）
+  const jumpTh = max(bounds.w, bounds.h) * 0.22;
+
+  let contour = [];
+  for (let i = 0; i < pts.length; i++) {
+    const px = pts[i].x - cx;
+    const py = pts[i].y - cy;
+
+    if (contour.length > 0) {
+      const prev = contour[contour.length - 1];
+      const d = dist(prev.x, prev.y, px, py);
+      if (d > jumpTh) {
+        // 结束一个 contour：计算 s（沿路径累计长度）
+        pushContourWithS(contour);
+        contour = [];
+      }
+    }
+    contour.push({ x: px, y: py, s: 0 });
+  }
+  if (contour.length > 0) pushContourWithS(contour);
+}
+
+// 给 contour 每个点加 s（累计弧长），用于你的 dis 类似逻辑
+function pushContourWithS(contour) {
+  if (contour.length < 2) return;
+
+  let s = 0;
+  contour[0].s = 0;
+
+  for (let i = 1; i < contour.length; i++) {
+    s += dist(contour[i-1].x, contour[i-1].y, contour[i].x, contour[i].y);
+    contour[i].s = s;
+  }
+
+  // 如果首尾很近，视为闭合轮廓（会更像字体轮廓）
+  const closeD = dist(contour[0].x, contour[0].y, contour[contour.length-1].x, contour[contour.length-1].y);
+  contour._closed = (closeD < 8);
+
+  glyphContours.push(contour);
+}
+
+function drawGlyphContours() {
+  // 把字画在“右侧绘制区域中心”
+  const stageCenterX = (cw + width) / 2;
+  const stageCenterY = height / 2;
+
+  push();
+  translate(stageCenterX, stageCenterY);
+  scale(scaleVal);
+
   stroke(currentColor);
   strokeWeight(strokeW);
   noFill();
 
-  drawParametricCurve(-50, 100, 0, -100);
-  drawParametricCurve( 50, 100, 0, -100);
-  drawParametricCurve(-30,  30, 30,  30);
-}
+  for (const contour of glyphContours) {
+    const n = contour.length;
+    if (n < 2) continue;
 
-function drawParametricCurve(x1, y1, x2, y2) {
-  beginShape();
-  for (let i = 0; i <= 1.00001; i += 0.01) {
-    let x = lerp(x1, x2, i);
-    let y = lerp(y1, y2, i);
+    beginShape();
 
-    // ✅ 完全保留：frequency*dis*TWO_PI + phase + t
-    let dis = dist(x, y, x1, y1) * 0.01;
-    let offset = applyFunction(frequency * dis * TWO_PI + phase + t) * amplitude;
+    for (let i = 0; i < n; i++) {
+      // tangent 用前后点（闭合轮廓用环绕）
+      const prev = contour[(i - 1 + n) % n];
+      const next = contour[(i + 1) % n];
+      let tx = next.x - prev.x;
+      let ty = next.y - prev.y;
 
-    let baseLen = dist(x1, y1, x2, y2);
-    x += offset * (y2 - y1) / baseLen;
-    y -= offset * (x2 - x1) / baseLen;
+      const len = Math.hypot(tx, ty) || 1;
+      tx /= len; ty /= len;
 
-    if (currentFunction === 0 || currentFunction === 2) curveVertex(x, y);
-    else vertex(x, y);
+      // normal = (-ty, tx)
+      const nx = -ty;
+      const ny = tx;
+
+      // ✅ “不变味”的关键：仍然是 frequency*s*TWO_PI + phase + t
+      // s 用累计弧长，和你原来 dis 的“沿线距离”是一致的概念
+      const s = contour[i].s * 0.01; // 和你原来 dis*0.01 同尺度
+      const off = applyFunction(frequency * s * TWO_PI + phase + t) * amplitude;
+
+      const x = contour[i].x + nx * off;
+      const y = contour[i].y + ny * off;
+
+      if (currentFunction === 0 || currentFunction === 2) curveVertex(x, y);
+      else vertex(x, y);
+    }
+
+    // 闭合轮廓更像字体边界
+    if (contour._closed) endShape(CLOSE);
+    else endShape();
   }
-  endShape();
+
+  pop();
 }
 
+/* =================== 你的 applyFunction（不改） =================== */
 function applyFunction(tt) {
   switch (currentFunction) {
     case 0: return sin(tt);
@@ -326,7 +407,7 @@ function applyFunction(tt) {
   }
 }
 
-/* =================== 参数更新 =================== */
+/* =================== 参数更新（无 Phase 滑块） =================== */
 function updateParameters() {
   scaleVal = map(sliders[0].val, 0, 1, 0.5, 3);
   strokeW  = map(sliders[1].val, 0, 1, 0.5, 20);
@@ -380,14 +461,13 @@ function drawFunctionDisplay() {
   endShape();
 }
 
-/* =================== 颜色模块（完全 draw.html 做法） =================== */
+/* =================== 颜色模块（完全 draw.html 逻辑） =================== */
 function buildHueGraphic() {
   hueGraphic = createGraphics(COLOR_HUE.w, COLOR_HUE.h);
   hueGraphic.pixelDensity(1);
   hueGraphic.colorMode(HSB, 360, 100, 100);
   hueGraphic.noStroke();
   hueGraphic.loadPixels();
-
   for (let y = 0; y < COLOR_HUE.h; y++) {
     let h = map(y, 0, COLOR_HUE.h - 1, 0, 360);
     let c = hueGraphic.color(h, 100, 100);
@@ -408,7 +488,6 @@ function buildSBGraphic() {
   sbGraphic.colorMode(HSB, 360, 100, 100);
   sbGraphic.noStroke();
   sbGraphic.loadPixels();
-
   for (let y = 0; y < COLOR_MAIN.h; y++) {
     for (let x = 0; x < COLOR_MAIN.w; x++) {
       let sVal = map(x, 0, COLOR_MAIN.w - 1, 0, 100);
@@ -429,7 +508,6 @@ function drawColorPanel() {
   image(sbGraphic, COLOR_MAIN.x, COLOR_MAIN.y);
   image(hueGraphic, COLOR_HUE.x, COLOR_HUE.y);
 
-  // hue marker
   let huePosY = map(hue, 0, 360, 0, COLOR_HUE.h);
   stroke(255);
   strokeWeight(2);
@@ -460,7 +538,6 @@ function handleColorClick() {
   // SB
   if (mouseX >= COLOR_MAIN.x && mouseX <= COLOR_MAIN.x + COLOR_MAIN.w &&
       mouseY >= COLOR_MAIN.y && mouseY <= COLOR_MAIN.y + COLOR_MAIN.h) {
-
     let sx = constrain(mouseX, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w);
     let sy = constrain(mouseY, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h);
     sat = map(sx, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w, 0, 100);
@@ -472,7 +549,6 @@ function handleColorClick() {
   // Hue
   if (mouseX >= COLOR_HUE.x && mouseX <= COLOR_HUE.x + COLOR_HUE.w &&
       mouseY >= COLOR_HUE.y && mouseY <= COLOR_HUE.y + COLOR_HUE.h) {
-
     let hy = constrain(mouseY, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h);
     hue = map(hy, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h, 0, 360);
     buildSBGraphic();
@@ -517,21 +593,17 @@ function colorsEqual(c1, c2) {
          blue(c1) === blue(c2);
 }
 
-/* =================== 交互 =================== */
+/* =================== 鼠标交互 =================== */
 function mousePressed() {
-  // 左侧四按钮
   if (resetButton.hover()) { resetToDefaults(); return; }
   if (pauseButton.hover()) { isAnimating = !isAnimating; return; }
   if (gridButton.hover())  { showGrid = !showGrid; return; }
   if (saveButton.hover())  { saveCanvas("FontPath", "png"); return; }
 
-  // 颜色模块（含最近颜色）
   if (handleColorClick()) return;
 
-  // 5 滑块
   for (let s of sliders) s.click();
 
-  // 右侧波形按钮
   for (let i = 0; i < waveButtons.length; i++) {
     if (waveButtons[i].hover()) {
       setWaveSelected(i);
@@ -546,9 +618,7 @@ function mouseReleased() {
 
 function setWaveSelected(idx) {
   currentFunction = idx;
-  for (let i = 0; i < waveButtons.length; i++) {
-    waveButtons[i].state = (i === idx);
-  }
+  for (let i = 0; i < waveButtons.length; i++) waveButtons[i].state = (i === idx);
 }
 
 function resetToDefaults() {
@@ -556,10 +626,7 @@ function resetToDefaults() {
   t = 0;
   phase = 0;
 
-  for (let s of sliders) {
-    s.val = 0.5;
-    s.state = false;
-  }
+  for (let s of sliders) { s.val = 0.5; s.state = false; }
 
   hue = 220; sat = 100; bri = 80;
   buildSBGraphic();
@@ -567,12 +634,12 @@ function resetToDefaults() {
 
   setWaveSelected(0);
 
-  // 输入框恢复 A（你想要也可以不恢复）
   glyphChar = "A";
   if (glyphInput) glyphInput.value("A");
+  glyphDirty = true;
 }
 
-/* =================== UI：CapButton / Slider（按钮颜色对齐 draw.html） =================== */
+/* =================== UI：按钮/滑块（与 draw.html 风格一致） =================== */
 function rectToCapButton(rect, label) {
   const cx = rect.x + rect.w / 2;
   const cy = rect.y + rect.h / 2;
@@ -583,7 +650,7 @@ class CapButton {
   constructor(x, y, w, h, str, useDrawStyle=false) {
     this.x=x; this.y=y; this.w=w; this.h=h; this.str=str;
     this.state=false;
-    this.useDrawStyle = useDrawStyle; // 左侧四按钮用 draw.html 风格
+    this.useDrawStyle = useDrawStyle;
   }
   hover() {
     return (
@@ -598,23 +665,19 @@ class CapButton {
     translate(this.x, this.y);
     rectMode(CENTER);
 
-    // ✅ 左侧四按钮：完全 draw.html 色值
     if (this.useDrawStyle) {
       if (this.hover()) fill(90, 89, 93);
       else fill("#464548");
-      noStroke();
-      rect(0, 0, this.w, this.h, 40);
     } else {
-      // ✅ 右侧波形按钮：同风格但加选中态
       if (this.state) fill(110,109,113);
       else if (this.hover()) fill(90, 89, 93);
       else fill("#464548");
-      noStroke();
-      rect(0, 0, this.w, this.h, 40);
     }
 
+    noStroke();
+    rect(0, 0, this.w, this.h, 40);
+
     fill(255);
-    useUIFont();
     textAlign(CENTER, CENTER);
     textSize(this.h * 0.5);
     text(this.str, 0, 0);
@@ -652,25 +715,11 @@ class Slider {
     rect(-this.w/2 + vw/2, 0, vw, this.h, 999);
 
     fill(255);
-    useUIFont();
     textAlign(CENTER, CENTER);
     textSize(this.h * 0.45);
     text(this.label, 0, 0);
     pop();
   }
-}
-
-/* =================== 字体加载（失败不影响） =================== */
-function tryLoadUIFont() {
-  loadFont(
-    FONT_PATH,
-    (f) => { uiFont = f; fontLoaded = true; },
-    () => { uiFont = null; fontLoaded = false; }
-  );
-}
-function useUIFont() {
-  if (fontLoaded && uiFont) textFont(uiFont);
-  else textFont("system-ui");
 }
 </script>
 </body>
