@@ -5,11 +5,24 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Font Path Method</title>
   <style>
-    html, body { margin:0; padding:0; background:#0f1013; overflow:hidden; }
-    canvas { display:block; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #0f1013;
+      overflow: hidden;
+      height: 100%;
+      width: 100%;
+    }
+    canvas {
+      display: block;
+      position: fixed;
+      left: 0;
+      top: 0;
+    }
 
+    /* 输入框：固定在左侧栏里，不跟 canvas 居中算法走（避免抖动/偏移） */
     .glyphInput {
-      position: absolute;
+      position: fixed;
       background: #3A393D;
       color: #fff;
       border: 0;
@@ -21,16 +34,19 @@
       box-sizing: border-box;
     }
   </style>
+
   <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
 </head>
 <body>
 <script>
-/* =================== 设计稿尺寸（虚拟画布） =================== */
-const BASE_W = 1440;
-const BASE_H = 900;
+/* =================== 字体（仅用于 UI 文本） =================== */
+const FONT_PATH = "assets/fonts/ABCFavoritHebrewBoldVariable-Trial.ttf";
+let uiFont = null;
+let fontLoaded = false;
 
-/* =================== 左侧栏参数（按设计稿坐标） =================== */
-let cw = 240;
+/* =================== 左侧操作栏（与你 draw.html 对齐） =================== */
+const cw = 240;          // ✅ 左侧栏宽度
+const COLOR_PANEL_H = 190;
 let showGrid = true;
 
 /* =================== 你的参数（保留逻辑） =================== */
@@ -42,7 +58,7 @@ let strokeW = 2;
 let amplitude = 10;
 let frequency = 1;
 
-// phase 逻辑保留（不做滑块 UI）
+// ✅ phase 逻辑保留（不做滑块 UI）
 let phase = 0;
 
 let isAnimating = true;
@@ -51,25 +67,22 @@ let animationSpeed = 0.02;
 let currentFunction = 0;
 const functionNames = ["Sin", "Square", "Triangle", "Sawtooth"];
 
-/* =================== UI 字体（仅用于按钮文字） =================== */
-const FONT_PATH = "assets/fonts/ABCFavoritHebrewBoldVariable-Trial.ttf";
-let uiFont = null;
-let fontLoaded = false;
+/* =================== 字母输入（默认 X） =================== */
+let glyphInput;
+let glyphChar = "X"; // ✅ 默认 X
 
-/* =================== 颜色模块（同 draw.html） =================== */
-// ✅ 默认黑色
+/* =================== 颜色模块（按 draw.html 的结构） =================== */
 let hue = 0;
 let sat = 0;
-let bri = 0;
+let bri = 0; // ✅ 默认黑色（HSB 里 bri=0 就是黑）
 let currentColor;
 
-const COLOR_PANEL_H = 190;
-
-const COLOR_MAIN = { x: 0, y: 0, w: cw - 30, h: COLOR_PANEL_H };
-const COLOR_HUE  = { x: cw - 30, y: 0, w: 30, h: COLOR_PANEL_H };
+const COLOR_MAIN = { x: 10, y: 10, w: cw - 30 - 20, h: COLOR_PANEL_H - 20 }; // 留点 padding 更像 draw.html
+const COLOR_HUE  = { x: cw - 30, y: 10, w: 20, h: COLOR_PANEL_H - 20 };
 
 let sbGraphic, hueGraphic;
 
+// 最近颜色 5 格（位置对齐 draw.html 那块）
 const RECENT_RECTS = [
   { x: 16,  y: COLOR_PANEL_H + 25, w: 28, h: 28 },
   { x: 62,  y: COLOR_PANEL_H + 25, w: 28, h: 28 },
@@ -78,10 +91,16 @@ const RECENT_RECTS = [
   { x: 200, y: COLOR_PANEL_H + 25, w: 28, h: 28 }
 ];
 
-const defaultRecentHex = ["#482BCC","#FF04A5","#FFE900","#8CE255","#8EC8EC"];
+const defaultRecentHex = [
+  "#000000", // ✅ 黑色放第一
+  "#482BCC",
+  "#FF04A5",
+  "#FFE900",
+  "#8CE255"
+];
 let recentColors = [];
 
-/* =================== 左侧四按钮（位置同 draw.html） =================== */
+/* =================== 四个功能按钮（位置跟 draw.html 一样） =================== */
 const FUNC_RECTS = {
   reset: { x: 20,  y: COLOR_PANEL_H + 68,  w: 90, h: 32 },
   pause: { x: 130, y: COLOR_PANEL_H + 68,  w: 90, h: 32 },
@@ -91,100 +110,60 @@ const FUNC_RECTS = {
 
 let resetButton, pauseButton, gridButton, saveButton;
 
-/* =================== 输入框 & Randomize =================== */
-let glyphInput;
-let glyphChar = "X"; // 默认 X
+/* =================== Randomize 按钮（在输入框下面） =================== */
 let randomizeButton;
 
-/* =================== 5个滑块（下移） =================== */
+/* =================== 5个滑块（整体下移，给 Randomize 腾位置） =================== */
 const sliderName = ["Scale", "Stroke Weight", "Amplitude", "Frequency", "Animation Speed"];
 let sliders = [];
 
-/* =================== 波形按钮（右边） =================== */
+/* =================== 波形按钮（放右侧） =================== */
 let waveButtons = [];
-
-/* =================== 适配：窗口canvas + 保持比例缩放 =================== */
-let fitScale = 1;
-let fitOffX = 0;
-let fitOffY = 0;
-
-/* 坐标转换：屏幕(像素) -> 设计稿坐标 */
-function vMouseX() { return (mouseX - fitOffX) / fitScale; }
-function vMouseY() { return (mouseY - fitOffY) / fitScale; }
-function vInBounds() {
-  const mx = vMouseX(), my = vMouseY();
-  return mx >= 0 && mx <= BASE_W && my >= 0 && my <= BASE_H;
-}
-
-/* 设计稿坐标 -> 屏幕(像素) */
-function toScreenX(x) { return fitOffX + x * fitScale; }
-function toScreenY(y) { return fitOffY + y * fitScale; }
-
-/* =================== 单线骨架字库（X 就两条线段） =================== */
-const STICK_FONT = {
-  "X": [
-    [[-65,-110],[ 65,110]],   // ✅ 仅一条长线段
-    [[ 65,-110],[-65,110]]    // ✅ 仅一条长线段
-  ],
-  "Y": [
-    [[-60,-110],[0,0]],
-    [[ 60,-110],[0,0]],
-    [[ 0,  0],[0,110]]
-  ],
-  "O": [
-    [[  0,-110],[ 45,-100],[ 75,-70],[ 95,-25],[ 95, 25],[ 75, 70],[ 45,100],[  0,110],
-      [-45,100],[-75, 70],[-95, 25],[-95,-25],[-75,-70],[-45,-100],[  0,-110]]
-  ],
-  "A": [
-    [[-55,110],[0,-110]],
-    [[ 55,110],[0,-110]],
-    [[-35, 30],[35, 30]]
-  ],
-  "?": [
-    [[-20,-60],[0,-100],[20,-60],[0,-20]],
-    [[0,60],[0,80]]
-  ],
-  " ": []
-};
-
-function normalizeGlyphChar(ch) {
-  if (!ch || ch.length === 0) return " ";
-  const c = ch[0];
-  const up = c.toUpperCase();
-  if (STICK_FONT[up]) return up;
-  if (STICK_FONT[c]) return c;
-  return "?";
-}
 
 /* =================== setup =================== */
 function setup() {
   createCanvas(windowWidth, windowHeight);
   pixelDensity(1);
 
-  // 默认黑色
+  // ✅ 默认颜色黑
   currentColor = color(0);
 
+  // ✅ 最近颜色初始化
   recentColors = defaultRecentHex.map(h => color(h));
-  addRecentColor(currentColor);
 
   buildHueGraphic();
   buildSBGraphic();
 
+  // 四按钮（风格对齐 draw.html）
   resetButton = rectToCapButton(FUNC_RECTS.reset, "Reset");
   pauseButton = rectToCapButton(FUNC_RECTS.pause, "Pause");
   gridButton  = rectToCapButton(FUNC_RECTS.grid,  "Grid");
   saveButton  = rectToCapButton(FUNC_RECTS.save,  "Save");
 
-  // 输入框
+  // 输入框（固定在左侧栏）
   glyphInput = createInput("X");
   glyphInput.addClass("glyphInput");
-  glyphInput.attribute("maxlength", "1");
+  glyphInput.attribute("maxlength", "2"); // 允许 "XY" 这种快速输入（你提到常用 XY）
+  placeGlyphInput();
+
   glyphInput.input(() => {
     let v = glyphInput.value();
-    if (v.length === 0) { glyphChar = ""; return; }
-    if (v.length > 1) { v = v[0]; glyphInput.value(v); }
+
+    // 允许空（删的时候不强行回填）
+    if (v.length === 0) {
+      glyphChar = "";
+      return;
+    }
+
+    // 保留前 2 个字符（你提到 XY）
+    if (v.length > 2) {
+      v = v.slice(0, 2);
+      glyphInput.value(v);
+    }
     glyphChar = v;
   });
+
+  // 失焦：如果空就回到 X
   glyphInput.elt.addEventListener("blur", () => {
     if (!glyphInput.value() || glyphInput.value().length === 0) {
       glyphChar = "X";
@@ -192,89 +171,58 @@ function setup() {
     }
   });
 
-  // Randomize 按钮（放输入框下面）
-  // 输入框设计稿位置：x=20, y=COLOR_PANEL_H+160
-  const randRect = { x: 20, y: COLOR_PANEL_H + 210, w: 200, h: 32 };
-  randomizeButton = rectToCapButton(randRect, "Randomize");
+  // Randomize（位置在输入框下）
+  randomizeButton = new CapButton(cw/2, COLOR_PANEL_H + 160 + 40, 200, 36, "Randomize", true);
 
-  // ✅ 原 5 个滑块整体下移（从 randomize 下面开始）
-  const firstSliderY = randRect.y + 60;
+  // 滑块（从 Randomize 下方开始）
+  const firstSliderY = (COLOR_PANEL_H + 160 + 40) + 70;
   const gap = 54;
+  sliders = [];
   for (let i = 0; i < 5; i++) {
-    sliders.push(new Slider(120, firstSliderY + i * gap, 200, 34, sliderName[i], 0.5));
+    sliders.push(new Slider(cw/2, firstSliderY + i * gap, 200, 34, sliderName[i], 0.5));
   }
 
-  // 右侧波形按钮（设计稿坐标）
-  const bx = BASE_W - 120;
+  // 右侧波形按钮
+  const bx = width - 120;
   const by0 = 160;
   const bGap = 46;
   const names = ["Sin","Square","Triangle","Sawtooth"];
+  waveButtons = [];
   for (let i = 0; i < 4; i++) {
     waveButtons.push(new CapButton(bx, by0 + i*bGap, 150, 30, names[i]));
   }
   setWaveSelected(0);
-
-  calcFit();
-  placeGlyphInput();
 
   tryLoadUIFont();
 }
 
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
-  calcFit();
   placeGlyphInput();
 }
 
-/* 计算保持比例的缩放与偏移（居中适配） */
-function calcFit() {
-  fitScale = min(width / BASE_W, height / BASE_H);
-  const drawW = BASE_W * fitScale;
-  const drawH = BASE_H * fitScale;
-  fitOffX = (width  - drawW) / 2;
-  fitOffY = (height - drawH) / 2;
-}
-
-/* 输入框定位（设计稿坐标 -> 屏幕像素） */
-function placeGlyphInput() {
-  if (!glyphInput) return;
-  const inputX = 20;
-  const inputY = COLOR_PANEL_H + 160;
-  glyphInput.position(Math.round(toScreenX(inputX)), Math.round(toScreenY(inputY)));
-  glyphInput.size(Math.round(200 * fitScale), Math.round(36 * fitScale));
-  glyphInput.style("font-size", Math.max(12, Math.round(16 * fitScale)) + "px");
-  glyphInput.style("border-radius", Math.round(12 * fitScale) + "px");
-  glyphInput.style("padding", Math.round(8 * fitScale) + "px " + Math.round(10 * fitScale) + "px");
-}
-
+/* =================== draw =================== */
 function draw() {
-  background("#0f1013");
-
-  // 把所有绘制锁定在“设计稿坐标系”
-  push();
-  translate(fitOffX, fitOffY);
-  scale(fitScale);
-
-  // 设计稿背景
   background(240);
 
   updateParameters();
 
+  // 网格（只画左侧栏以外）
   if (showGrid) drawGrid();
 
-  // ✅ 字母永远在“设计稿中心”，最终就是屏幕中心
+  // ✅ 字母永远在整个窗口正中间（不管左右面板）
   push();
-  translate(BASE_W / 2, BASE_H / 2);
+  translate(width / 2, height / 2);
   scale(scaleVal);
   drawGlyph(glyphChar);
   pop();
 
-  // 左侧背景
+  // 左侧栏覆盖层（让左侧变暗，布局像 draw.html）
   noStroke();
   fill("#1F1E24");
-  rect(0, 0, cw, BASE_H);
+  rect(0, 0, cw, height);
 
-  // 颜色模块
+  // 颜色模块 + 最近颜色
   drawColorPanel();
   drawRecentColors();
 
@@ -285,7 +233,7 @@ function draw() {
   gridButton.display();
   saveButton.display();
 
-  // 输入框标题
+  // Glyph label
   fill(255);
   useUIFont();
   textAlign(LEFT, CENTER);
@@ -301,45 +249,94 @@ function draw() {
   // 右侧波形按钮
   for (let b of waveButtons) b.display();
 
-  // 函数预览
+  // 右下角函数预览
   drawFunctionDisplay();
 
-  pop(); // 结束设计稿坐标系
-
   if (isAnimating) t += animationSpeed;
-
-  // 输入框在缩放布局里：窗口变化/失焦时更新（打字时不抖）
-  if (glyphInput && document.activeElement !== glyphInput.elt) placeGlyphInput();
 }
 
-/* =================== 网格：只画右侧区域 =================== */
+/* =================== 输入框定位（固定定位，不依赖 canvas offset） =================== */
+function placeGlyphInput() {
+  if (!glyphInput) return;
+  glyphInput.position(20, COLOR_PANEL_H + 160);
+}
+
+/* =================== 网格 =================== */
 function drawGrid() {
   const step = 25;
   stroke(220);
   strokeWeight(1);
-  for (let x = cw; x <= BASE_W; x += step) line(x, 0, x, BASE_H);
-  for (let y = 0; y <= BASE_H; y += step) line(cw, y, BASE_W, y);
+  for (let x = cw; x <= width; x += step) line(x, 0, x, height);
+  for (let y = 0; y <= height; y += step) line(cw, y, width, y);
 }
 
-/* =================== 字形绘制：单线骨架 + 你的扰动逻辑 =================== */
-function drawGlyph(ch) {
-  const key = normalizeGlyphChar(ch);
-  const strokes = STICK_FONT[key] || STICK_FONT["?"];
-
+/* =================== 字母绘制：保持“骨架 + 沿线扰动”逻辑 =================== */
+function drawGlyph(str) {
   stroke(currentColor);
   strokeWeight(strokeW);
-  strokeCap(ROUND);
-  strokeJoin(ROUND);
   noFill();
 
-  for (const strokePts of strokes) {
-    if (!strokePts || strokePts.length < 2) continue;
-    for (let i = 0; i < strokePts.length - 1; i++) {
-      const [x1, y1] = strokePts[i];
-      const [x2, y2] = strokePts[i + 1];
-      drawParametricCurve(x1, y1, x2, y2);
-    }
+  if (!str || str.length === 0) return;
+
+  // 只画前 2 个字符（XY）并做轻微排版
+  const chars = str.slice(0,2).split("");
+  const spacing = 130;
+
+  if (chars.length === 1) {
+    drawOneGlyph(chars[0], 0);
+  } else {
+    drawOneGlyph(chars[0], -spacing/2);
+    drawOneGlyph(chars[1],  spacing/2);
   }
+}
+
+function drawOneGlyph(ch, offsetX) {
+  push();
+  translate(offsetX, 0);
+
+  // ✅ 你强调：X 的骨架是两条线段（不是字体轮廓/短线拼接）
+  if (ch.toUpperCase() === "X") {
+    drawParametricCurve(-70,  110,  70, -110);
+    drawParametricCurve( 70,  110, -70, -110);
+  }
+  else if (ch.toUpperCase() === "Y") {
+    drawParametricCurve(-70, -110, 0, 0);
+    drawParametricCurve( 70, -110, 0, 0);
+    drawParametricCurve(0, 0, 0, 120);
+  }
+  else if (ch.toUpperCase() === "O") {
+    // O 用一个“圆骨架”来做扰动（依然是骨架逻辑，不是字体轮廓）
+    drawParametricCircle(0, 0, 90);
+  }
+  else {
+    // 其他字母：暂时用一个“X式骨架”兜底（保证不变味、不黑屏）
+    drawParametricCurve(-70,  110,  70, -110);
+    drawParametricCurve( 70,  110, -70, -110);
+  }
+
+  pop();
+}
+
+function drawParametricCircle(cx, cy, r) {
+  beginShape();
+  for (let a = 0; a <= TWO_PI + 0.001; a += 0.03) {
+    let x = cx + cos(a) * r;
+    let y = cy + sin(a) * r;
+
+    // 用弧长近似 dis（保持“沿线扰动”的感觉）
+    let dis = (a * r) * 0.01;
+    let offset = applyFunction(frequency * dis * TWO_PI + phase + t) * amplitude;
+
+    // 沿法线方向偏移
+    let nx = cos(a);
+    let ny = sin(a);
+    x += nx * offset * 0.15;
+    y += ny * offset * 0.15;
+
+    if (currentFunction === 0 || currentFunction === 2) curveVertex(x, y);
+    else vertex(x, y);
+  }
+  endShape(CLOSE);
 }
 
 function drawParametricCurve(x1, y1, x2, y2) {
@@ -348,10 +345,11 @@ function drawParametricCurve(x1, y1, x2, y2) {
     let x = lerp(x1, x2, i);
     let y = lerp(y1, y2, i);
 
+    // ✅ 完全保留你的核心公式：frequency * dis * TWO_PI + phase + t
     let dis = dist(x, y, x1, y1) * 0.01;
     let offset = applyFunction(frequency * dis * TWO_PI + phase + t) * amplitude;
 
-    let baseLen = dist(x1, y1, x2, y2) || 1;
+    let baseLen = dist(x1, y1, x2, y2);
     x += offset * (y2 - y1) / baseLen;
     y -= offset * (x2 - x1) / baseLen;
 
@@ -371,16 +369,16 @@ function applyFunction(tt) {
   }
 }
 
-/* =================== 参数更新 =================== */
+/* =================== 参数更新（从滑块） =================== */
 function updateParameters() {
-  scaleVal = map(sliders[0].val, 0, 1, 0.5, 3);
-  strokeW  = map(sliders[1].val, 0, 1, 0.5, 20);
-  amplitude = map(sliders[2].val, 0, 1, 0, maxAmp);
-  frequency = map(sliders[3].val, 0, 1, 0.1, 5);
+  scaleVal       = map(sliders[0].val, 0, 1, 0.5, 3);
+  strokeW        = map(sliders[1].val, 0, 1, 0.5, 20);
+  amplitude      = map(sliders[2].val, 0, 1, 0, maxAmp);
+  frequency      = map(sliders[3].val, 0, 1, 0.1, 5);
   animationSpeed = map(sliders[4].val, 0, 1, 0, 0.1);
 }
 
-/* =================== 右下角函数预览（设计稿坐标） =================== */
+/* =================== 右下角函数预览 =================== */
 function drawFunctionDisplay() {
   const displayWidth = 250;
   const displayHeight = 250;
@@ -390,7 +388,7 @@ function drawFunctionDisplay() {
   strokeWeight(3);
 
   push();
-  translate(BASE_W - displayWidth / 2 - margin, BASE_H - displayHeight / 2 - margin);
+  translate(width - displayWidth / 2 - margin, height - displayHeight / 2 - margin);
 
   line(-displayWidth / 2, 0, displayWidth / 2, 0);
   line(0, -displayHeight / 2, 0, displayHeight / 2);
@@ -420,12 +418,12 @@ function drawFunctionDisplay() {
   for (let x = 0; x < displayWidth; x += 2) {
     let amp = map(amplitude, 0, maxAmp, 0, displayHeight / 2);
     let y = applyFunction(frequency * x * 0.02 + phase + t) * amp;
-    vertex(BASE_W - displayWidth - margin + x, BASE_H - displayHeight / 2 - margin - y);
+    vertex(width - displayWidth - margin + x, height - displayHeight / 2 - margin - y);
   }
   endShape();
 }
 
-/* =================== 颜色模块（同 draw.html） =================== */
+/* =================== 颜色模块（做成 draw.html 风格） =================== */
 function buildHueGraphic() {
   hueGraphic = createGraphics(COLOR_HUE.w, COLOR_HUE.h);
   hueGraphic.pixelDensity(1);
@@ -470,10 +468,16 @@ function buildSBGraphic() {
 }
 
 function drawColorPanel() {
+  // 外框（更像 draw.html）
+  noStroke();
+  fill(20,20,24);
+  rect(8, 8, cw-16, COLOR_PANEL_H, 18);
+
   imageMode(CORNER);
   image(sbGraphic, COLOR_MAIN.x, COLOR_MAIN.y);
   image(hueGraphic, COLOR_HUE.x, COLOR_HUE.y);
 
+  // hue marker
   let huePosY = map(hue, 0, 360, 0, COLOR_HUE.h);
   stroke(255);
   strokeWeight(2);
@@ -481,6 +485,14 @@ function drawColorPanel() {
   let hy = COLOR_HUE.y + huePosY;
   line(hx - 4, hy, hx, hy);
   line(hx + COLOR_HUE.w, hy, hx + COLOR_HUE.w + 4, hy);
+
+  // sb marker（白圈）
+  let sx = map(sat, 0, 100, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w);
+  let sy = map(bri, 100, 0, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h);
+  noFill();
+  stroke(255);
+  strokeWeight(2);
+  circle(sx, sy, 10);
 }
 
 function drawRecentColors() {
@@ -498,6 +510,46 @@ function drawRecentColors() {
       rect(r.x - 3, r.y - 3, r.w + 6, r.h + 6, 8);
     }
   }
+}
+
+function handleColorClick() {
+  // SB
+  if (mouseX >= COLOR_MAIN.x && mouseX <= COLOR_MAIN.x + COLOR_MAIN.w &&
+      mouseY >= COLOR_MAIN.y && mouseY <= COLOR_MAIN.y + COLOR_MAIN.h) {
+
+    let sx = constrain(mouseX, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w);
+    let sy = constrain(mouseY, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h);
+    sat = map(sx, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w, 0, 100);
+    bri = map(sy, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h, 100, 0);
+    updateCurrentColor();
+    return true;
+  }
+
+  // Hue
+  if (mouseX >= COLOR_HUE.x && mouseX <= COLOR_HUE.x + COLOR_HUE.w &&
+      mouseY >= COLOR_HUE.y && mouseY <= COLOR_HUE.y + COLOR_HUE.h) {
+
+    let hy = constrain(mouseY, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h);
+    hue = map(hy, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h, 0, 360);
+    buildSBGraphic();
+    updateCurrentColor();
+    return true;
+  }
+
+  // Recent
+  for (let i = 0; i < RECENT_RECTS.length; i++) {
+    const r = RECENT_RECTS[i];
+    if (mouseX >= r.x && mouseX <= r.x + r.w &&
+        mouseY >= r.y && mouseY <= r.y + r.h) {
+      if (recentColors[i]) {
+        currentColor = color(recentColors[i]);
+        addRecentColor(currentColor);
+      }
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function updateCurrentColor() {
@@ -521,65 +573,29 @@ function colorsEqual(c1, c2) {
          blue(c1) === blue(c2);
 }
 
-function handleColorClick() {
-  const mx = vMouseX();
-  const my = vMouseY();
-  if (!vInBounds()) return false;
-
-  // SB
-  if (mx >= COLOR_MAIN.x && mx <= COLOR_MAIN.x + COLOR_MAIN.w &&
-      my >= COLOR_MAIN.y && my <= COLOR_MAIN.y + COLOR_MAIN.h) {
-    let sx = constrain(mx, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w);
-    let sy = constrain(my, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h);
-    sat = map(sx, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w, 0, 100);
-    bri = map(sy, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h, 100, 0);
-    updateCurrentColor();
-    return true;
-  }
-
-  // Hue
-  if (mx >= COLOR_HUE.x && mx <= COLOR_HUE.x + COLOR_HUE.w &&
-      my >= COLOR_HUE.y && my <= COLOR_HUE.y + COLOR_HUE.h) {
-    let hy = constrain(my, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h);
-    hue = map(hy, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h, 0, 360);
-    buildSBGraphic();
-    updateCurrentColor();
-    return true;
-  }
-
-  // Recent
-  for (let i = 0; i < RECENT_RECTS.length; i++) {
-    const r = RECENT_RECTS[i];
-    if (mx >= r.x && mx <= r.x + r.w &&
-        my >= r.y && my <= r.y + r.h) {
-      if (recentColors[i]) {
-        currentColor = color(recentColors[i]);
-        addRecentColor(currentColor);
-      }
-      return true;
-    }
-  }
-
-  return false;
-}
-
 /* =================== 交互 =================== */
 function mousePressed() {
-  if (!vInBounds()) return;
-
+  // 左侧四按钮
   if (resetButton.hover()) { resetToDefaults(); return; }
   if (pauseButton.hover()) { isAnimating = !isAnimating; return; }
   if (gridButton.hover())  { showGrid = !showGrid; return; }
   if (saveButton.hover())  { saveCanvas("FontPath", "png"); return; }
 
-  if (handleColorClick()) return;
-
+  // Randomize
   if (randomizeButton.hover()) { randomizeParams(); return; }
 
+  // 颜色模块
+  if (handleColorClick()) return;
+
+  // 滑块
   for (let s of sliders) s.click();
 
+  // 右侧波形按钮
   for (let i = 0; i < waveButtons.length; i++) {
-    if (waveButtons[i].hover()) { setWaveSelected(i); return; }
+    if (waveButtons[i].hover()) {
+      setWaveSelected(i);
+      return;
+    }
   }
 }
 
@@ -589,7 +605,24 @@ function mouseReleased() {
 
 function setWaveSelected(idx) {
   currentFunction = idx;
-  for (let i = 0; i < waveButtons.length; i++) waveButtons[i].state = (i === idx);
+  for (let i = 0; i < waveButtons.length; i++) {
+    waveButtons[i].state = (i === idx);
+  }
+}
+
+function randomizeParams() {
+  // ✅ 随机一套“参数”（不随机颜色，保留你当前颜色）
+  sliders[0].val = random(0.35, 0.75); // scale
+  sliders[1].val = random(0.15, 0.85); // stroke
+  sliders[2].val = random(0.05, 0.95); // amp
+  sliders[3].val = random(0.10, 0.90); // freq
+  sliders[4].val = random(0.10, 0.80); // speed
+
+  phase = random(0, TWO_PI);           // ✅ phase 逻辑仍保留，但不显示滑块
+  setWaveSelected(floor(random(0, 4)));
+
+  // 稍微让动画回到“现在”
+  t = 0;
 }
 
 function resetToDefaults() {
@@ -597,37 +630,24 @@ function resetToDefaults() {
   t = 0;
   phase = 0;
 
-  for (let s of sliders) { s.val = 0.5; s.state = false; }
+  for (let s of sliders) {
+    s.val = 0.5;
+    s.state = false;
+  }
 
-  // 黑色
+  // ✅ 重置为黑色
   hue = 0; sat = 0; bri = 0;
   buildSBGraphic();
   updateCurrentColor();
 
   setWaveSelected(0);
 
+  // ✅ 输入框恢复 X
   glyphChar = "X";
   if (glyphInput) glyphInput.value("X");
 }
 
-/* Randomize：随机一套参数（不动颜色，保持你自己选色） */
-function randomizeParams() {
-  // Scale / Stroke / Amp / Freq / Speed
-  sliders[0].val = random(0.25, 0.85);   // scale
-  sliders[1].val = random(0.10, 0.70);   // strokeW
-  sliders[2].val = random(0.10, 0.95);   // amp
-  sliders[3].val = random(0.15, 0.85);   // freq
-  sliders[4].val = random(0.10, 0.70);   // speed
-  for (let s of sliders) s.state = false;
-
-  // 波形也随机
-  setWaveSelected(floor(random(0, 4)));
-
-  // 动起来更直观
-  isAnimating = true;
-}
-
-/* =================== UI：CapButton / Slider（按设计稿坐标） =================== */
+/* =================== UI：CapButton / Slider（按钮颜色对齐 draw.html） =================== */
 function rectToCapButton(rect, label) {
   const cx = rect.x + rect.w / 2;
   const cy = rect.y + rect.h / 2;
@@ -641,11 +661,11 @@ class CapButton {
     this.useDrawStyle = useDrawStyle;
   }
   hover() {
-    const mx = vMouseX();
-    const my = vMouseY();
     return (
-      mx >= this.x - this.w / 2 && mx <= this.x + this.w / 2 &&
-      my >= this.y - this.h / 2 && my <= this.y + this.h / 2
+      mouseX >= this.x - this.w / 2 &&
+      mouseX <= this.x + this.w / 2 &&
+      mouseY >= this.y - this.h / 2 &&
+      mouseY <= this.y + this.h / 2
     );
   }
   display() {
@@ -682,16 +702,11 @@ class Slider {
     this.val = val;
     this.state = false;
   }
-  hover() {
-    const mx = vMouseX();
-    const my = vMouseY();
-    return (abs(mx - this.x) < this.w/2 && abs(my - this.y) < this.h/2);
-  }
+  hover() { return (abs(mouseX - this.x) < this.w/2 && abs(mouseY - this.y) < this.h/2); }
   click() { this.state = this.hover(); }
   drag() {
     if (!this.state) return;
-    const mx = vMouseX();
-    let v = map(mx, this.x - this.w/2, this.x + this.w/2, 0, 1);
+    let v = map(mouseX, this.x - this.w/2, this.x + this.w/2, 0, 1);
     v = constrain(v, 0, 1);
     this.val = lerp(this.val, v, 0.12);
   }
