@@ -20,7 +20,6 @@
       top: 0;
     }
 
-    /* 输入框：固定在左侧栏里 */
     .glyphInput {
       position: fixed;
       background: #3A393D;
@@ -92,8 +91,8 @@ const defaultRecentHex = [
 ];
 let recentColors = [];
 
-/* =================== 四个功能按钮 =================== */
-let resetButton, pauseButton, gridButton, saveButton;
+/* =================== ✅ 只保留两个按钮：Pause / Save =================== */
+let pauseButton, saveButton;
 
 /* =================== Randomize 按钮 =================== */
 let randomizeButton;
@@ -102,9 +101,9 @@ let randomizeButton;
 const sliderName = ["Scale", "Stroke Weight", "Amplitude", "Frequency", "Animation Speed"];
 let sliders = [];
 
-/* =================== 波形按钮（✅ 移到左侧栏底部） =================== */
+/* =================== 波形按钮（左侧栏底部） =================== */
 let waveButtons = [];
-let WAVE_RECTS = []; // 2列布局
+let WAVE_RECTS = [];
 
 /* =================== ✅ sketch.js 布局函数 =================== */
 function clamp(v, lo, hi) { return max(lo, min(hi, v)); }
@@ -143,17 +142,18 @@ function computeLayout() {
     RECENT_RECTS.push({ x: pad + i * (rW + recentGap), y: recentY, w: rW, h: rW });
   }
 
+  // ✅ 这里仍然保留原来的按钮网格尺寸（2列）
   const btnGapX = 12;
   const btnW = (cw - pad * 2 - btnGapX) / 2;
   const btnH = clamp(height * 0.035, 30, 38);
   const funcY1 = recentY + rW + 18;
   const funcY2 = funcY1 + btnH + 12;
 
+  // ✅ 我们只用 funcY1 这一行：原 reset/pause 的位置
   FUNC_RECTS = {
-    reset: { x: pad, y: funcY1, w: btnW, h: btnH },
-    pause: { x: pad + btnW + btnGapX, y: funcY1, w: btnW, h: btnH },
-    grid:  { x: pad, y: funcY2, w: btnW, h: btnH },
-    save:  { x: pad + btnW + btnGapX, y: funcY2, w: btnW, h: btnH }
+    pause: { x: pad, y: funcY1, w: btnW, h: btnH },                    // 原 reset 位
+    save:  { x: pad + btnW + btnGapX, y: funcY1, w: btnW, h: btnH }     // 原 pause 位
+    // ✅ funcY2 那一行（原 grid/save）不再用
   };
 }
 
@@ -213,15 +213,13 @@ function layoutUI() {
   rebuildHueGraphic();
   rebuildSBGraphic();
 
-  resetButton = rectToCapButton(FUNC_RECTS.reset, "Reset");
   pauseButton = rectToCapButton(FUNC_RECTS.pause, "Pause");
-  gridButton  = rectToCapButton(FUNC_RECTS.grid,  "Grid");
   saveButton  = rectToCapButton(FUNC_RECTS.save,  "Save");
 
   placeGlyphInput();
 
   const pad = 16;
-  const inputY = FUNC_RECTS.save.y + FUNC_RECTS.save.h + 18;
+  const inputY = FUNC_RECTS.pause.y + FUNC_RECTS.pause.h + 18; // ✅ 按钮只有一行，用它的下面
   const randomizeY = inputY + 36 + 22;
 
   randomizeButton = new CapButton(cw/2, randomizeY, cw - pad*2, clamp(height * 0.035, 30, 38), "Randomize", true);
@@ -241,7 +239,7 @@ function layoutUI() {
     }
   }
 
-  // ✅ 波形按钮放左侧栏底部：2列网格
+  // 波形按钮：2列
   const waveTop = (sliders[4].y + 34/2) + 28;
   const colGap = 12;
   const rowGap = 12;
@@ -272,7 +270,6 @@ function layoutUI() {
     }
   }
 
-  // 保持当前选中态
   setWaveSelected(currentFunction);
 }
 
@@ -286,11 +283,11 @@ function setup() {
 
   recentColors = defaultRecentHex.map(h => color(h));
 
-  glyphInput = createInput(""); // ✅ 默认不要在框里显示 X
+  glyphInput = createInput("");
   glyphInput.addClass("glyphInput");
   glyphInput.attribute("maxlength", "2");
-  glyphInput.attribute("placeholder", "尝试输入一个字母"); // ✅ placeholder
-  glyphChar = "X"; // ✅ 实际绘制默认仍是 X（但输入框为空更“提示”）
+  glyphInput.attribute("placeholder", "Try a letter"); // ✅ 英文提示
+  glyphChar = "X";
 
   glyphInput.input(() => {
     let v = glyphInput.value();
@@ -300,7 +297,6 @@ function setup() {
   });
 
   glyphInput.elt.addEventListener("blur", () => {
-    // 失焦：如果空就回到 X（保证画面不空）
     if (!glyphInput.value() || glyphInput.value().length === 0) {
       glyphChar = "X";
     }
@@ -327,14 +323,12 @@ function draw() {
 
   if (showGrid) drawGrid();
 
-  // 字母居中（整窗）
   push();
   translate(width / 2, height / 2);
   scale(scaleVal);
-  drawGlyph(glyphChar || "X"); // ✅ 如果用户删空，就临时画 X（避免空白）
+  drawGlyph(glyphChar || "X");
   pop();
 
-  // 左侧栏覆盖
   noStroke();
   fill("#1F1E24");
   rect(0, 0, cw, height);
@@ -343,16 +337,12 @@ function draw() {
   drawRecentColors();
 
   pauseButton.str = isAnimating ? "Pause" : "Play";
-  resetButton.display();
   pauseButton.display();
-  gridButton.display();
   saveButton.display();
 
   randomizeButton.display();
 
   for (let s of sliders) s.run();
-
-  // ✅ 波形按钮现在在左侧栏底部
   for (let b of waveButtons) b.display();
 
   drawFunctionDisplay();
@@ -360,16 +350,16 @@ function draw() {
   if (isAnimating) t += animationSpeed;
 }
 
-/* =================== 输入框定位 + 宽度跟 cw 一致 =================== */
+/* =================== 输入框定位 =================== */
 function placeGlyphInput() {
   if (!glyphInput) return;
   const pad = 16;
-  const inputY = FUNC_RECTS.save.y + FUNC_RECTS.save.h + 18;
+  const inputY = FUNC_RECTS.pause.y + FUNC_RECTS.pause.h + 18;
   glyphInput.position(pad, inputY);
   glyphInput.size(cw - pad*2, 36);
 }
 
-/* =================== 网格（同 sketch.js：cellSize + 背景 245） =================== */
+/* =================== 网格 =================== */
 function drawGrid() {
   const w = width - cw;
   const h = height;
@@ -385,12 +375,11 @@ function drawGrid() {
   for (let y = 0; y <= h; y += cellSize) line(cw, y, width, y);
 }
 
-/* =================== 字母绘制：保持“骨架 + 沿线扰动”逻辑 =================== */
+/* =================== 字母绘制（骨架 + 沿线扰动） =================== */
 function drawGlyph(str) {
   stroke(currentColor);
   strokeWeight(strokeW);
   noFill();
-
   if (!str || str.length === 0) return;
 
   const chars = str.slice(0,2).split("");
@@ -477,7 +466,7 @@ function applyFunction(tt) {
   }
 }
 
-/* =================== 参数更新（滑块 -> 参数） =================== */
+/* =================== 参数更新 =================== */
 function updateParameters() {
   scaleVal       = map(sliders[0].val, 0, 1, 0.5, 3);
   strokeW        = map(sliders[1].val, 0, 1, 0.5, 20);
@@ -677,9 +666,7 @@ function updateColorByMouse() {
 /* =================== 交互 =================== */
 function mousePressed() {
   if (mouseX <= cw) {
-    if (resetButton.hover()) { resetToDefaults(); return; }
     if (pauseButton.hover()) { isAnimating = !isAnimating; return; }
-    if (gridButton.hover())  { showGrid = !showGrid; return; }
     if (saveButton.hover())  { saveCanvas("FontPath", "png"); return; }
 
     if (randomizeButton.hover()) { randomizeParams(); return; }
@@ -687,12 +674,9 @@ function mousePressed() {
     if (handleColorPress()) return;
 
     for (let s of sliders) s.click();
-
-    // ✅ 波形按钮在左侧栏
     for (let i = 0; i < waveButtons.length; i++) {
       if (waveButtons[i].hover()) { setWaveSelected(i); return; }
     }
-
     return;
   }
 }
@@ -728,26 +712,6 @@ function randomizeParams() {
   phase = random(0, TWO_PI);
   setWaveSelected(floor(random(0, 4)));
   t = 0;
-}
-
-function resetToDefaults() {
-  isAnimating = true;
-  t = 0;
-  phase = 0;
-
-  for (let s of sliders) {
-    s.val = 0.5;
-    s.state = false;
-  }
-
-  hue = 0; sat = 0; bri = 0;
-  rebuildSBGraphic();
-  updateCurrentColor(true);
-
-  setWaveSelected(0);
-
-  glyphChar = "X";
-  if (glyphInput) glyphInput.value("");
 }
 
 /* =================== UI 组件 =================== */
