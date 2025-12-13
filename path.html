@@ -13,11 +13,23 @@
 <body>
 <script>
 /* ===========================
-   1) 全局参数（保持原逻辑）
+   Canvas / Layout
    =========================== */
 const CANVAS_W = 1440;
 const CANVAS_H = 900;
 
+// 左侧创作面板宽 / 右侧系统面板宽
+let LW = 240;
+let RW = 220;
+
+// 中间绘制区域（作品区）
+function stageX0(){ return LW; }
+function stageX1(){ return width - RW; }
+function stageW(){ return stageX1() - stageX0(); }
+
+/* ===========================
+   Core parameters (keep original logic)
+   =========================== */
 let maxAmp = 50;
 let t = 0;
 
@@ -26,7 +38,7 @@ let strokeW = 2;
 let amplitude = 10;
 let frequency = 1;
 
-// ✅ phase 仍在逻辑里（没有滑块，但按钮会改它）
+// ✅ phase 仍在逻辑里（无滑块）
 let phase = 0;
 
 let isAnimating = true;
@@ -35,158 +47,166 @@ let animationSpeed = 0.02;
 let currentFunction = 0;
 const functionNames = ["Sin", "Square", "Triangle", "Sawtooth"];
 
-// 面板
-let cw = 200;
-let ch = 0;
-
-// 字体（仅用于 UI 文本显示；加载失败也不会影响绘制）
+/* ===========================
+   Font (UI text only; if fails, use system)
+   =========================== */
 const FONT_PATH = "assets/fonts/ABCFavoritHebrewBoldVariable-Trial.ttf";
 let uiFont = null;
 let fontLoaded = false;
 
 /* ===========================
-   2) 颜色模块：SB + Hue（draw.html 同款）
+   Color Panel (SB + Hue, like your draw.html)
    =========================== */
 let hueVal = 220;
 let satVal = 100;
 let briVal = 80;
 let currentColor;
 
+const PAD = 12;
 const COLOR_PANEL_H = 190;
-const COLOR_MAIN = { x: 10, y: 10, w: cw - 30 - 10, h: COLOR_PANEL_H };
-const COLOR_HUE  = { x: cw - 30, y: 10, w: 20, h: COLOR_PANEL_H };
+
+const COLOR_MAIN = { x: PAD, y: 52, w: LW - PAD*2 - 24, h: COLOR_PANEL_H }; // SB
+const COLOR_HUE  = { x: LW - PAD - 22, y: 52, w: 22, h: COLOR_PANEL_H };    // Hue strip
 
 let sbGraphic, hueGraphic;
 
 /* ===========================
-   3) UI：Sliders（删掉 Phase 滑块）
+   UI: Sliders / Buttons
    =========================== */
-// ✅ 只剩 5 个滑块（不包含 Phase）
+// ✅ 只剩 5 个滑块（没有 Phase）
 const sliderName = ["Scale", "Stroke Weight", "Amplitude", "Frequency", "Animation Speed"];
 let sliders = [];
 
-// ✅ 按钮新增 Randomize / Phase Step
-let capButtons = [];
+let waveButtons = [];     // 4个波形（左侧）
+let exploreButtons = [];  // Randomize / Phase Step（左侧）
+let systemButtons = [];   // Toggle / Reset / Save（右侧）
 
-// Phase Step 步长（你可以改大/改小）
-const PHASE_STEP = Math.PI / 6;
+const PHASE_STEP = Math.PI / 6; // Phase Step 步长（想更细就改小）
 
 /* ===========================
    setup / draw
    =========================== */
-function setup() {
+function setup(){
   createCanvas(CANVAS_W, CANVAS_H);
   pixelDensity(1);
 
-  // 初始颜色
+  // color init
   updateCurrentColorFromHSV(true);
 
-  // 颜色图形
+  // build color graphics
   buildHueGraphic();
   buildSBGraphic();
 
-  // Sliders 布局
-  const sliderStartY = 380;
-  const sliderEndY = 760;
+  // Sliders（DEFORM 区）
+  const deformTitleY = COLOR_MAIN.y + COLOR_MAIN.h + 48; // “DEFORM”标题下方开始
+  const sliderGap = 54;
   for (let i = 0; i < 5; i++) {
-    const y = map(i, 0, 4, sliderStartY, sliderEndY);
-    sliders.push(new Slider(100, y, 150, 40, sliderName[i], 0.5));
+    const y = deformTitleY + 28 + i * sliderGap;
+    sliders.push(new Slider(LW/2, y, LW - PAD*2, 34, sliderName[i], 0.5));
   }
 
-  // CapButtons（右侧）
-  // ✅ 加了 Randomize / Phase Step
-  const capNames = [
-    "Save",
-    "Toggle Animation",
-    "Reset",
-    "Randomize",
-    "Phase Step",
-    "Sin",
-    "Square",
-    "Triangle",
-    "Sawtooth"
+  // WAVE buttons（4个）
+  // 两列布局
+  const waveTop = sliders[sliders.length-1].y + 70;
+  const bw = (LW - PAD*2 - 10) / 2;
+  const bh = 34;
+
+  const waveNames = ["Sin", "Square", "Triangle", "Sawtooth"];
+  for (let i = 0; i < 4; i++) {
+    const col = i % 2;
+    const row = Math.floor(i / 2);
+    const x = PAD + bw/2 + col * (bw + 10);
+    const y = waveTop + 28 + row * (bh + 12);
+    const b = new CapButton(x, y, bw, bh, waveNames[i]);
+    waveButtons.push(b);
+  }
+  // default wave selected
+  setWaveSelected(0);
+
+  // EXPLORE buttons（Randomize 大 + Phase Step 小）
+  const exploreTop = waveTop + 28 + 2*(bh+12) + 36;
+  const randBtn = new CapButton(LW/2, exploreTop + 26, LW - PAD*2, 38, "Randomize");
+  const stepBtn = new CapButton(LW/2, exploreTop + 26 + 52, LW - PAD*2, 34, "Phase Step");
+  exploreButtons = [randBtn, stepBtn];
+
+  // SYSTEM buttons（右侧）
+  const sysX = width - RW/2;
+  const sysTop = 90;
+  systemButtons = [
+    new CapButton(sysX, sysTop + 0,  RW - PAD*2, 36, "Toggle Animation"),
+    new CapButton(sysX, sysTop + 54, RW - PAD*2, 36, "Reset"),
+    new CapButton(sysX, sysTop + 108, RW - PAD*2, 40, "Save")
   ];
 
-  for (let i = 0; i < capNames.length; i++) {
-    const y = map(i, 0, capNames.length - 1, 55, 620);
-    capButtons.push(new CapButton(width - 120, y, 150, 30, capNames[i]));
-  }
-
-  // ✅ 异步加载字体（避免 variable font 卡死）
   tryLoadUIFont();
 }
 
-function draw() {
+function draw(){
   background(240);
 
   updateParameters();
+
+  // ===== 中间作品区 =====
+  drawStageBackground();
   drawGrid();
 
-  // 中央 MathA（完全保持你原逻辑）
   push();
-  translate(width / 2, height / 2);
+  translate(stageX0() + stageW()/2, height/2);
   scale(scaleVal);
   drawMathA();
   pop();
 
-  // 左侧面板
-  noStroke();
-  fill(31, 30, 36);
-  rect(0, 0, cw, height);
+  // ===== 左侧创作面板 =====
+  drawLeftPanel();
 
-  // 颜色模块
-  drawColorPanel();
+  // ===== 右侧系统面板 =====
+  drawRightPanel();
 
-  // 右下角函数预览（保留 phase）
-  drawFunctionDisplay();
-
-  // 动画
+  // animation
   if (isAnimating) t += animationSpeed;
-
-  // Sliders
-  for (let s of sliders) s.run();
-
-  // Buttons
-  for (let b of capButtons) b.display();
 }
 
 /* ===========================
-   Grid（和原版一致）
+   Stage (center area)
    =========================== */
-function drawGrid() {
+function drawStageBackground(){
+  noStroke();
+  fill(245);
+  rect(stageX0(), 0, stageW(), height);
+}
+
+/* ===========================
+   Grid (only in stage)
+   =========================== */
+function drawGrid(){
   stroke(220);
   strokeWeight(1);
   const step = 25;
 
-  for (let x = cw; x <= width; x += step) line(x, ch, x, height);
-  for (let y = ch; y <= height; y += step) line(cw, y, width, y);
+  for (let x = stageX0(); x <= stageX1(); x += step) line(x, 0, x, height);
+  for (let y = 0; y <= height; y += step) line(stageX0(), y, stageX1(), y);
 }
 
 /* ===========================
-   MathA（保持 Processing 逻辑）
+   Original MathA logic (kept)
    =========================== */
-function drawMathA() {
+function drawMathA(){
   stroke(currentColor);
   strokeWeight(strokeW);
   noFill();
 
-  // Left leg
   drawParametricCurve(-50, 100, 0, -100);
-
-  // Right leg
-  drawParametricCurve(50, 100, 0, -100);
-
-  // Crossbar
-  drawParametricCurve(-30, 30, 30, 30);
+  drawParametricCurve( 50, 100, 0, -100);
+  drawParametricCurve(-30,  30, 30,  30);
 }
 
-function drawParametricCurve(x1, y1, x2, y2) {
+function drawParametricCurve(x1, y1, x2, y2){
   beginShape();
   for (let i = 0; i <= 1.00001; i += 0.01) {
     let x = lerp(x1, x2, i);
     let y = lerp(y1, y2, i);
 
-    // ✅ 完全照你的原逻辑：frequency*dis*TWO_PI + phase + t
+    // ✅ 完全保留：frequency*dis*TWO_PI + phase + t
     let dis = dist(x, y, x1, y1) * 0.01;
     let offset = applyFunction(frequency * dis * TWO_PI + phase + t) * amplitude;
 
@@ -200,8 +220,8 @@ function drawParametricCurve(x1, y1, x2, y2) {
   endShape();
 }
 
-function applyFunction(tt) {
-  switch (currentFunction) {
+function applyFunction(tt){
+  switch(currentFunction){
     case 0: return sin(tt);
     case 1: return (tt % TWO_PI < PI) ? 1 : -1;
     case 2: return asin(sin(tt)) * 2 / PI;
@@ -211,92 +231,194 @@ function applyFunction(tt) {
 }
 
 /* ===========================
-   Parameters（✅ 没有 Phase 滑块，但 phase 逻辑不动）
+   Parameters (no phase slider)
    =========================== */
-function updateParameters() {
+function updateParameters(){
   scaleVal = map(sliders[0].val, 0, 1, 0.5, 3);
   strokeW  = map(sliders[1].val, 0, 1, 0.5, 20);
-  amplitude = map(sliders[2].val, 0, 1, 0, maxAmp);
-  frequency = map(sliders[3].val, 0, 1, 0.1, 5);
+  amplitude= map(sliders[2].val, 0, 1, 0, maxAmp);
+  frequency= map(sliders[3].val, 0, 1, 0.1, 5);
   animationSpeed = map(sliders[4].val, 0, 1, 0, 0.1);
 }
 
 /* ===========================
-   Function Display（保留 phase + t）
+   Left Panel (COLOR / DEFORM / WAVE / EXPLORE)
    =========================== */
-function drawFunctionDisplay() {
-  const displayWidth = 250;
-  const displayHeight = 250;
-  const margin = 50;
-
-  stroke(0);
-  strokeWeight(3);
-
-  push();
-  translate(width - displayWidth / 2 - margin, height - displayHeight / 2 - margin);
-
-  line(-displayWidth / 2, 0, displayWidth / 2, 0);
-  line(0, -displayHeight / 2, 0, displayHeight / 2);
-
-  fill(0);
+function drawLeftPanel(){
+  // panel bg
   noStroke();
-  textSize(15);
+  fill(31, 30, 36);
+  rect(0, 0, LW, height);
 
-  triangle(-5, -displayHeight / 2, 5, -displayHeight / 2, 0, -displayHeight / 2 - 15);
-  triangle(displayWidth / 2 + 15, 0, displayWidth / 2, -5, displayWidth / 2, 5);
+  // Titles
+  fill(255);
+  useUIFont();
+  textAlign(LEFT, CENTER);
 
-  fill(0);
-  textAlign(LEFT, TOP);
-  text("y", 15, -displayHeight / 2);
-  text("x", displayWidth / 2, 25);
+  // COLOR
+  textSize(14);
+  text("COLOR", PAD, 26);
 
-  textSize(20);
-  textAlign(CENTER, BOTTOM);
-  text(functionNames[currentFunction] + " Function", 0, -displayHeight / 2 - 40);
-  pop();
+  // color panel itself
+  drawColorPanel();
 
-  const picCol = color(140);
-  stroke(picCol);
-  noFill();
-  strokeWeight(3);
+  // DEFORM
+  textSize(14);
+  text("DEFORM", PAD, COLOR_MAIN.y + COLOR_MAIN.h + 26);
 
-  beginShape();
-  for (let x = 0; x < displayWidth; x += 2) {
-    let amp = map(amplitude, 0, maxAmp, 0, displayHeight / 2);
-    let y = applyFunction(frequency * x * 0.02 + phase + t) * amp;
-    vertex(width - displayWidth - margin + x, height - displayHeight / 2 - margin - y);
-  }
-  endShape();
+  // sliders
+  for (let s of sliders) s.run();
+
+  // WAVE
+  textSize(14);
+  const waveTitleY = waveButtons[0].y - 42;
+  text("WAVE", PAD, waveTitleY);
+
+  for (let b of waveButtons) b.display();
+
+  // EXPLORE
+  textSize(14);
+  const exploreTitleY = exploreButtons[0].y - 42;
+  text("EXPLORE", PAD, exploreTitleY);
+
+  // Explore buttons
+  exploreButtons[0].display(); // Randomize
+  exploreButtons[1].display(); // Phase Step
+
+  // small hint (optional)
+  textSize(11);
+  fill(200, 200, 200, 180);
+  text("Tips: R=randomize, P=phase step", PAD, height - 18);
 }
 
 /* ===========================
-   Randomize / Phase Step
+   Right Panel (SYSTEM)
    =========================== */
-function randomizeParams() {
-  // 只随机“风格相关参数” + phase
-  // （不动颜色，避免你辛苦选的颜色被一键改掉）
+function drawRightPanel(){
+  noStroke();
+  fill(31, 30, 36);
+  rect(width - RW, 0, RW, height);
 
-  // sliders 的 val 都是 0..1
-  sliders[0].val = random(0.20, 0.75);  // Scale -> 0.5..3 之间偏中间
-  sliders[1].val = random(0.05, 0.55);  // Stroke -> 偏细更好看
-  sliders[2].val = random(0.10, 0.85);  // Amplitude
-  sliders[3].val = random(0.15, 0.70);  // Frequency
-  sliders[4].val = random(0.05, 0.55);  // Speed
+  // Title
+  fill(255);
+  useUIFont();
+  textAlign(LEFT, CENTER);
+  textSize(14);
+  text("SYSTEM", width - RW + PAD, 26);
 
-  // ✅ phase 保留在逻辑里：Randomize 只是在“起始纹理位置”抽一个
-  phase = random(0, TWO_PI);
+  // Toggle shows state
+  systemButtons[0].state = isAnimating;
 
-  // 让动画从当前时刻继续（不重置 t），更像生成器“换皮”
+  // Buttons
+  for (let b of systemButtons) b.display();
+
+  // Optional tiny status block
+  fill(200, 200, 200, 180);
+  textSize(12);
+  textAlign(LEFT, TOP);
+  const sx = width - RW + PAD;
+  const sy = systemButtons[2].y + 40;
+  const waveName = functionNames[currentFunction];
+  text(
+    "Wave: " + waveName + "\n" +
+    "Animating: " + (isAnimating ? "ON" : "OFF"),
+    sx, sy
+  );
 }
 
-function phaseStep() {
+/* ===========================
+   Randomize / Phase Step actions
+   =========================== */
+function randomizeParams(){
+  // 只随机“造型参数”+phase，不动颜色，避免你选色被打断
+  sliders[0].val = random(0.20, 0.75);  // scale
+  sliders[1].val = random(0.05, 0.55);  // stroke
+  sliders[2].val = random(0.10, 0.85);  // amplitude
+  sliders[3].val = random(0.15, 0.70);  // frequency
+  sliders[4].val = random(0.05, 0.55);  // speed
+  phase = random(0, TWO_PI);
+}
+
+function phaseStep(){
   phase = (phase + PHASE_STEP) % TWO_PI;
 }
 
 /* ===========================
-   颜色模块：SB + Hue（draw.html 同款）
+   Mouse interaction
    =========================== */
-function buildHueGraphic() {
+function mousePressed(){
+  // 1) Color panel
+  if (handleColorClick()) return;
+
+  // 2) Sliders (left)
+  for (let s of sliders) s.click();
+
+  // 3) Wave buttons
+  for (let i = 0; i < waveButtons.length; i++) {
+    if (waveButtons[i].hover()) {
+      setWaveSelected(i);
+      return;
+    }
+  }
+
+  // 4) Explore buttons
+  if (exploreButtons[0].hover()) { randomizeParams(); return; }
+  if (exploreButtons[1].hover()) { phaseStep(); return; }
+
+  // 5) System buttons (right)
+  if (systemButtons[0].hover()) { isAnimating = !isAnimating; return; }
+  if (systemButtons[1].hover()) { resetToDefaults(); return; }
+  if (systemButtons[2].hover()) { saveCanvas("MathA", "png"); return; }
+}
+
+function mouseReleased(){
+  for (let s of sliders) s.state = false;
+}
+
+function setWaveSelected(idx){
+  currentFunction = idx;
+  for (let i = 0; i < waveButtons.length; i++) waveButtons[i].state = (i === idx);
+}
+
+function resetToDefaults(){
+  currentFunction = 0;
+  setWaveSelected(0);
+
+  isAnimating = true;
+  t = 0;
+
+  for (let s of sliders) {
+    s.val = 0.5;
+    s.state = false;
+  }
+
+  hueVal = 220; satVal = 100; briVal = 80;
+  updateCurrentColorFromHSV(true);
+
+  phase = 0;
+}
+
+/* ===========================
+   Keyboard shortcuts
+   =========================== */
+function keyPressed(){
+  if (key === 'r' || key === 'R') randomizeParams();
+  if (key === 'p' || key === 'P') phaseStep();
+
+  if (key === ' ') isAnimating = !isAnimating;
+
+  if (key === '1') setWaveSelected(0);
+  if (key === '2') setWaveSelected(1);
+  if (key === '3') setWaveSelected(2);
+  if (key === '4') setWaveSelected(3);
+
+  if (key === 's' || key === 'S') saveCanvas("MathA", "png");
+}
+
+/* ===========================
+   Color panel rendering
+   =========================== */
+function buildHueGraphic(){
   hueGraphic = createGraphics(COLOR_HUE.w, COLOR_HUE.h);
   hueGraphic.colorMode(HSB, 360, 100, 100);
   hueGraphic.noStroke();
@@ -316,7 +438,7 @@ function buildHueGraphic() {
   hueGraphic.updatePixels();
 }
 
-function buildSBGraphic() {
+function buildSBGraphic(){
   sbGraphic = createGraphics(COLOR_MAIN.w, COLOR_MAIN.h);
   sbGraphic.colorMode(HSB, 360, 100, 100);
   sbGraphic.noStroke();
@@ -337,7 +459,7 @@ function buildSBGraphic() {
   sbGraphic.updatePixels();
 }
 
-function updateCurrentColorFromHSV(rebuildSB) {
+function updateCurrentColorFromHSV(rebuildSB){
   push();
   colorMode(HSB, 360, 100, 100);
   currentColor = color(hueVal, satVal, briVal);
@@ -345,25 +467,25 @@ function updateCurrentColorFromHSV(rebuildSB) {
   if (rebuildSB) buildSBGraphic();
 }
 
-function drawColorPanel() {
+function drawColorPanel(){
   imageMode(CORNER);
   image(sbGraphic, COLOR_MAIN.x, COLOR_MAIN.y);
   image(hueGraphic, COLOR_HUE.x, COLOR_HUE.y);
 
-  // Hue 标记
+  // Hue marker
   let hy = map(hueVal, 0, 360, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h);
   stroke(255);
   strokeWeight(2);
   line(COLOR_HUE.x - 4, hy, COLOR_HUE.x, hy);
   line(COLOR_HUE.x + COLOR_HUE.w, hy, COLOR_HUE.x + COLOR_HUE.w + 4, hy);
 
-  // 当前色块
+  // Current color swatch (under panel)
   noStroke();
   fill(currentColor);
-  rect(10, COLOR_MAIN.y + COLOR_MAIN.h + 10, cw - 20, 16, 8);
+  rect(PAD, COLOR_MAIN.y + COLOR_MAIN.h + 12, LW - PAD*2, 14, 8);
 }
 
-function handleColorClick() {
+function handleColorClick(){
   // SB
   if (mouseX >= COLOR_MAIN.x && mouseX <= COLOR_MAIN.x + COLOR_MAIN.w &&
       mouseY >= COLOR_MAIN.y && mouseY <= COLOR_MAIN.y + COLOR_MAIN.h) {
@@ -393,174 +515,87 @@ function handleColorClick() {
 }
 
 /* ===========================
-   Mouse Interaction
-   =========================== */
-function mousePressed() {
-  // 颜色优先
-  if (handleColorClick()) return;
-
-  // sliders
-  for (let s of sliders) s.click();
-
-  // buttons
-  for (let b of capButtons) {
-    if (b.hover()) {
-      handleButtonPress(b.str);
-      return;
-    }
-  }
-}
-
-function mouseReleased() {
-  for (let s of sliders) s.state = false;
-}
-
-function handleButtonPress(label) {
-  switch (label) {
-    case "Save":
-      saveCanvas("MathA", "png");
-      break;
-    case "Toggle Animation":
-      isAnimating = !isAnimating;
-      break;
-    case "Reset":
-      resetToDefaults();
-      break;
-
-    // ✅ 新增
-    case "Randomize":
-      randomizeParams();
-      break;
-    case "Phase Step":
-      phaseStep();
-      break;
-
-    default:
-      for (let i = 0; i < functionNames.length; i++) {
-        if (label === functionNames[i]) currentFunction = i;
-      }
-      break;
-  }
-}
-
-function resetToDefaults() {
-  currentFunction = 0;
-  isAnimating = true;
-  t = 0;
-
-  for (let s of sliders) {
-    s.val = 0.5;
-    s.state = false;
-  }
-
-  hueVal = 220; satVal = 100; briVal = 80;
-  updateCurrentColorFromHSV(true);
-
-  // phase 回到默认（仍保留在逻辑里）
-  phase = 0;
-}
-
-/* ===========================
-   键盘快捷键（可选）
-   =========================== */
-function keyPressed() {
-  // R = Randomize
-  if (key === 'r' || key === 'R') randomizeParams();
-
-  // P = Phase Step
-  if (key === 'p' || key === 'P') phaseStep();
-
-  // 1~4 切函数
-  if (key === '1') currentFunction = 0;
-  if (key === '2') currentFunction = 1;
-  if (key === '3') currentFunction = 2;
-  if (key === '4') currentFunction = 3;
-}
-
-/* ===========================
-   Slider / CapButton（保持你原来的手感）
+   UI components: CapButton / Slider
    =========================== */
 class CapButton {
-  constructor(x, y, w, h, str) {
-    this.x = x; this.y = y; this.w = w; this.h = h; this.str = str;
-    this.scl = 1;
-    this.gray = 150;
-    this.state = false;
+  constructor(x, y, w, h, str){
+    this.x=x; this.y=y; this.w=w; this.h=h; this.str=str;
+    this.scl=1;
+    this.gray=90;   // darker base
+    this.state=false;
   }
-  hover() {
-    return (abs(mouseX - this.x) < this.w / 2 && abs(mouseY - this.y) < this.h / 2);
+  hover(){
+    return (abs(mouseX - this.x) < this.w/2 && abs(mouseY - this.y) < this.h/2);
   }
-  display() {
+  display(){
     push();
     rectMode(CENTER);
-    fill(this.gray);
+    translate(this.x, this.y);
 
-    if (this.hover() || this.state) {
-      this.gray = lerp(this.gray, 200, 0.12);
-      this.scl = lerp(this.scl, 1.2, 0.12);
-    } else {
-      this.gray = lerp(this.gray, 150, 0.12);
-      this.scl = lerp(this.scl, 1.0, 0.12);
-    }
+    // base color
+    let target = this.state ? 190 : (this.hover() ? 150 : 110);
+    this.gray = lerp(this.gray, target, 0.18);
+    this.scl  = lerp(this.scl, (this.hover() ? 1.04 : 1.0), 0.18);
 
     noStroke();
-    translate(this.x, this.y);
+    fill(this.gray);
 
     push();
     scale(this.scl);
-    rect(0, 0, this.w, this.h, 40);
+    rect(0, 0, this.w, this.h, 999);
     pop();
 
     fill(255);
-    textSize(this.h * 0.5);
-    textAlign(CENTER, CENTER);
     useUIFont();
+    textAlign(CENTER, CENTER);
+    textSize(this.h * 0.45);
     text(this.str, 0, 0);
-
     pop();
   }
 }
 
 class Slider {
-  constructor(x, y, w, h, str, val) {
-    this.x = x; this.y = y; this.w = w; this.h = h;
-    this.str = str;
-    this.val = val;
-    this.state = false;
+  constructor(x, y, w, h, str, val){
+    this.x=x; this.y=y; this.w=w; this.h=h; this.str=str;
+    this.val=val;
+    this.state=false;
   }
-  hover() {
-    return (abs(mouseX - this.x) < this.w / 2 && abs(mouseY - this.y) < this.h / 2);
+  hover(){
+    return (abs(mouseX - this.x) < this.w/2 && abs(mouseY - this.y) < this.h/2);
   }
-  click() {
+  click(){
     this.state = this.hover();
   }
-  drag() {
+  drag(){
     if (!this.state) return;
-    let v = map(mouseX, this.x - this.w / 2, this.x + this.w / 2, 0, 1);
+    let v = map(mouseX, this.x - this.w/2, this.x + this.w/2, 0, 1);
     v = constrain(v, 0, 1);
-    this.val = lerp(this.val, v, 0.12);
+    this.val = lerp(this.val, v, 0.18);
   }
-  run() {
+  run(){
     this.drag();
     this.display();
   }
-  display() {
+  display(){
     push();
-    translate(this.x, this.y);
     rectMode(CENTER);
+    translate(this.x, this.y);
+
+    // track
     noStroke();
+    fill(this.hover()? 120 : 90);
+    rect(0, 0, this.w, this.h, 999);
 
-    fill(this.hover() ? 110 : 85);
-    rect(0, 0, this.w, this.h, 100);
-
+    // fill
     let vw = map(this.val, 0, 1, 0, this.w);
-    fill(this.hover() ? 160 : 120);
-    rect(-this.w / 2 + vw / 2, 0, vw, this.h, 100);
+    fill(this.hover()? 170 : 140);
+    rect(-this.w/2 + vw/2, 0, vw, this.h, 999);
 
+    // label
     fill(255);
-    textSize(this.h * 0.4);
-    textAlign(CENTER, CENTER);
     useUIFont();
+    textAlign(CENTER, CENTER);
+    textSize(this.h * 0.42);
     text(this.str, 0, 0);
 
     pop();
@@ -568,16 +603,17 @@ class Slider {
 }
 
 /* ===========================
-   Font helper：异步加载，失败就系统字体
+   Font helper (safe)
    =========================== */
-function tryLoadUIFont() {
+function tryLoadUIFont(){
   loadFont(
     FONT_PATH,
     (f) => { uiFont = f; fontLoaded = true; },
     () => { uiFont = null; fontLoaded = false; }
   );
 }
-function useUIFont() {
+
+function useUIFont(){
   if (fontLoaded && uiFont) textFont(uiFont);
   else textFont("system-ui");
 }
