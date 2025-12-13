@@ -10,15 +10,167 @@
     <h1>纹理绘制</h1>
 
     <script>
-      // 简单的 p5.js 测试代码
+      let a = -2;
+      let da = 0.02;
+      let xMin = -5, xMax = 5;
+      let yMin = -5, yMax = 5;
+      let lineThickness = 4;
+
+      // 滑块的值
+      let rangeSliderValue = 5;
+      let thicknessSliderValue = 4;
+      let letterSizeSliderValue = 0.8;
+      let animationSpeedSliderValue = 0.02;
+      let cw = 200;
+
+      // 画布和图形相关
+      let functionLayer;
+      let letterMask;
+      let isPlaying = true;
+      let currentColor;
+
       function setup() {
-        createCanvas(1440, 900);  // 创建画布
-        background(240);  // 设置背景颜色
+        createCanvas(1440, 900);
+        functionLayer = createGraphics(width, height);
+        letterMask = createGraphics(width, height);
+        background(240);
+
+        // 创建一个颜色选择器
+        currentColor = color(40, 240, 40);
+
+        // 创建滑块
+        rangeSlider = createSlider(2, 10, 5, 0.1);
+        rangeSlider.position(20, height - 100);
+
+        thicknessSlider = createSlider(1, 10, 4, 0.1);
+        thicknessSlider.position(20, height - 150);
+
+        letterSizeSlider = createSlider(0.5, 1.5, 0.8, 0.1);
+        letterSizeSlider.position(20, height - 200);
+
+        animationSpeedSlider = createSlider(0.01, 0.1, 0.02, 0.01);
+        animationSpeedSlider.position(20, height - 250);
       }
 
       function draw() {
-        fill(255, 0, 0);  // 填充红色
-        ellipse(width / 2, height / 2, 200, 200);  // 画一个红色圆形
+        background(240);
+
+        // 更新参数
+        rangeSliderValue = rangeSlider.value();
+        thicknessSliderValue = thicknessSlider.value();
+        letterSizeSliderValue = letterSizeSlider.value();
+        animationSpeedSliderValue = animationSpeedSlider.value();
+
+        updateVisualization();
+
+        drawGrid();
+        drawFunctionLayer();
+        drawLetterMask();
+        displayFunctionWithAxis();
+      }
+
+      function updateVisualization() {
+        xMin = yMin = -rangeSliderValue;
+        xMax = yMax = rangeSliderValue;
+        lineThickness = thicknessSliderValue;
+
+        // 控制动画
+        if (isPlaying) {
+          da = animationSpeedSliderValue * (da < 0 ? -1 : 1);
+        } else {
+          da = 0;
+        }
+      }
+
+      function drawGrid() {
+        stroke(200);
+        strokeWeight(1);
+        let gridSize = 20;
+        for (let x = 0; x < width; x += gridSize) {
+          line(x, 0, x, height);
+        }
+        for (let y = 0; y < height; y += gridSize) {
+          line(0, y, width, y);
+        }
+      }
+
+      function drawFunctionLayer() {
+        functionLayer.beginDraw();
+        functionLayer.clear();
+        functionLayer.loadPixels();
+
+        let lt = lineThickness / 10.0;
+        for (let screenX = 0; screenX < width; screenX++) {
+          for (let screenY = 0; screenY < height; screenY++) {
+            let x = map(screenX, 0, width, xMin, xMax);
+            let y = map(screenY, height, 0, yMin, yMax);
+            let difference = calculateDifference(x, y);
+            let pixelIndex = screenY * width + screenX;
+            if (abs(difference) < lt) {
+              functionLayer.pixels[pixelIndex] = currentColor.levels[0];
+            }
+          }
+        }
+        functionLayer.updatePixels();
+        image(functionLayer, 0, 0);
+      }
+
+      function drawLetterMask() {
+        letterMask.beginDraw();
+        letterMask.clear();
+        letterMask.fill(255);
+        letterMask.noStroke();
+        let centerX = width / 2;
+        let centerY = height / 2;
+        let letterSize = 200 * letterSizeSliderValue;
+
+        // 绘制字母X
+        letterMask.pushMatrix();
+        letterMask.translate(centerX, centerY);
+
+        letterMask.beginShape();
+        let xVertices = [
+          createVector(-letterSize / 2, -letterSize / 2),
+          createVector(letterSize / 2, letterSize / 2),
+          createVector(letterSize / 3, letterSize / 2),
+          createVector(0, letterSize / 6),
+          createVector(-letterSize / 3, letterSize / 2),
+          createVector(-letterSize / 2, letterSize / 3),
+          createVector(-letterSize / 6, 0),
+          createVector(-letterSize / 2, -letterSize / 3)
+        ];
+        for (let v of xVertices) {
+          letterMask.vertex(v.x, v.y);
+        }
+        letterMask.endShape(CLOSE);
+
+        letterMask.popMatrix();
+        letterMask.endDraw();
+      }
+
+      function calculateDifference(x, y) {
+        let leftSide = sin(x * x + y * y);
+        let rightSide = a * cos(x * y);
+        return leftSide - rightSide;
+      }
+
+      function displayFunctionWithAxis() {
+        let axisSize = 250;
+        let margin = 50;
+        let axisX = width - axisSize - margin;
+        let axisY = height - axisSize - margin;
+
+        stroke(0);
+        strokeWeight(3);
+        line(axisX - axisSize / 2, axisY, axisX + axisSize / 2, axisY);  // X轴
+        line(axisX, axisY - axisSize / 2, axisX, axisY + axisSize / 2);  // Y轴
+      }
+
+      function mousePressed() {
+        // 切换播放和暂停
+        if (mouseX > 20 && mouseX < 120 && mouseY > height - 300 && mouseY < height - 250) {
+          isPlaying = !isPlaying;
+        }
       }
     </script>
   </body>
