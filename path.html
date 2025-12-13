@@ -7,17 +7,18 @@
   <style>
     html, body { margin:0; padding:0; background:#0f1013; overflow:hidden; }
     canvas { display:block; margin:0 auto; }
-    .glyphInput{
-      position:absolute;
-      background:#3A393D;
-      color:#fff;
-      border:0;
-      outline:none;
-      border-radius:12px;
-      padding:8px 10px;
-      font-size:16px;
-      width:200px;
-      box-sizing:border-box;
+
+    .glyphInput {
+      position: absolute;
+      background: #3A393D;
+      color: #fff;
+      border: 0;
+      outline: none;
+      border-radius: 12px;
+      padding: 8px 10px;
+      font-size: 16px;
+      width: 200px;
+      box-sizing: border-box;
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
@@ -28,12 +29,12 @@
 const CANVAS_W = 1440;
 const CANVAS_H = 900;
 
-/* =================== 左侧操作栏（与 draw.html 一致） =================== */
+/* =================== 左侧操作栏（完全对齐 draw.html） =================== */
 let cw = 240;
 let ch = 0;
 let showGrid = true;
 
-/* =================== 你的参数（保留原味逻辑） =================== */
+/* =================== 你的参数（保留逻辑） =================== */
 let maxAmp = 50;
 let t = 0;
 
@@ -42,7 +43,7 @@ let strokeW = 2;
 let amplitude = 10;
 let frequency = 1;
 
-// ✅ phase 逻辑保留（不做滑块）
+// ✅ phase 逻辑保留（不做滑块 UI）
 let phase = 0;
 
 let isAnimating = true;
@@ -51,42 +52,25 @@ let animationSpeed = 0.02;
 let currentFunction = 0;
 const functionNames = ["Sin", "Square", "Triangle", "Sawtooth"];
 
-/* =================== 字体（用于骨架生成） =================== */
+/* =================== 字体（仅用于 UI 文本） =================== */
 const FONT_PATH = "assets/fonts/ABCFavoritHebrewBoldVariable-Trial.ttf";
-let fontObj = null;
+let uiFont = null;
 let fontLoaded = false;
 
-/* =================== glyph 输入框 =================== */
-let glyphInput;
-let glyphChar = "A";
-let glyphDirty = true;
-
-/* =================== 骨架生成（关键：不是轮廓，是 skeleton） =================== */
-const SKEL_W = 256;
-const SKEL_H = 256;
-let skelPaths = [];          // Array< {pts:[{x,y,s}], closed:boolean} >
-let skelBaseScale = 1.0;     // 把骨架像素坐标映射到画布空间的比例
-let skelCenter = {x:0,y:0};  // 居中偏移
-let skelReady = false;
-
-// 这两个你可以后续微调：
-// 字越“粗”，骨架越稳定；太细容易断
-let rasterTextSize = 200;    // 离屏渲染字体大小
-let rasterPad = 10;          // padding
-let binThreshold = 80;       // 二值化阈值
-
-/* =================== 颜色模块（完全对齐 draw.html） =================== */
+/* =================== 颜色模块（完全复制 draw.html 结构） =================== */
 let hue = 220;
 let sat = 100;
 let bri = 80;
 let currentColor;
 
 const COLOR_PANEL_H = 190;
+
 const COLOR_MAIN = { x: 0, y: 0, w: cw - 30, h: COLOR_PANEL_H };
 const COLOR_HUE  = { x: cw - 30, y: 0, w: 30, h: COLOR_PANEL_H };
 
 let sbGraphic, hueGraphic;
 
+// 最近颜色 5 格（对齐 draw.html）
 const RECENT_RECTS = [
   { x: 16,  y: COLOR_PANEL_H + 25, w: 28, h: 28 },
   { x: 62,  y: COLOR_PANEL_H + 25, w: 28, h: 28 },
@@ -94,27 +78,187 @@ const RECENT_RECTS = [
   { x: 154, y: COLOR_PANEL_H + 25, w: 28, h: 28 },
   { x: 200, y: COLOR_PANEL_H + 25, w: 28, h: 28 }
 ];
+
 const defaultRecentHex = ["#482BCC","#FF04A5","#FFE900","#8CE255","#8EC8EC"];
 let recentColors = [];
 
-/* =================== 四按钮（位置与 draw.html 一致） =================== */
+/* =================== 四个功能按钮（位置完全对齐 draw.html） =================== */
 const FUNC_RECTS = {
   reset: { x: 20,  y: COLOR_PANEL_H + 68,  w: 90, h: 32 },
   pause: { x: 130, y: COLOR_PANEL_H + 68,  w: 90, h: 32 },
   grid:  { x: 20,  y: COLOR_PANEL_H + 112, w: 90, h: 32 },
   save:  { x: 130, y: COLOR_PANEL_H + 112, w: 90, h: 32 }
 };
+
 let resetButton, pauseButton, gridButton, saveButton;
 
-/* =================== 5个滑块（无 Phase） =================== */
+/* =================== 输入框（放在按钮下方） =================== */
+let glyphInput;
+let glyphChar = "A";
+
+/* =================== 5个滑块（你的顺序） =================== */
 const sliderName = ["Scale", "Stroke Weight", "Amplitude", "Frequency", "Animation Speed"];
 let sliders = [];
 
-/* =================== 右侧波形按钮 =================== */
+/* =================== 波形按钮（放右边） =================== */
 let waveButtons = [];
 
+/* ============================================================
+   ✅ 单骨架“线段字体”：每个字符 = 多条折线（points list）
+   - 你可以随时扩展/改形
+   - 坐标范围大致：x [-60..60], y [-100..100]
+   ============================================================ */
+const STICK_FONT = {
+  "A": [
+    [[-50, 100],[  0,-100]],
+    [[ 50, 100],[  0,-100]],
+    [[-30,  30],[ 30,  30]]
+  ],
+  "B": [
+    [[-50,-100],[-50, 100]],
+    [[-50,-100],[ 30,-70],[ 30,-10],[-50,  0]],
+    [[-50,   0],[ 30, 10],[ 30, 70],[-50,100]]
+  ],
+  "C": [
+    [[ 40,-80],[  0,-100],[-50,-60],[-50,60],[0,100],[40,80]]
+  ],
+  "D": [
+    [[-50,-100],[-50,100]],
+    [[-50,-100],[ 30,-60],[30,60],[-50,100]]
+  ],
+  "E": [
+    [[-50,-100],[-50,100]],
+    [[-50,-100],[ 50,-100]],
+    [[-50,   0],[ 30,   0]],
+    [[-50, 100],[ 50, 100]]
+  ],
+  "F": [
+    [[-50,-100],[-50,100]],
+    [[-50,-100],[ 50,-100]],
+    [[-50,   0],[ 30,   0]]
+  ],
+  "G": [
+    [[ 40,-80],[  0,-100],[-50,-60],[-50,60],[0,100],[40,80]],
+    [[ 10, 20],[ 50, 20],[50,60]]
+  ],
+  "H": [
+    [[-50,-100],[-50,100]],
+    [[ 50,-100],[ 50,100]],
+    [[-50,   0],[ 50,  0]]
+  ],
+  "I": [
+    [[-30,-100],[ 30,-100]],
+    [[  0,-100],[  0, 100]],
+    [[-30, 100],[ 30, 100]]
+  ],
+  "J": [
+    [[-30,-100],[ 30,-100]],
+    [[ 30,-100],[ 30, 60],[  0,100],[-30,60]]
+  ],
+  "K": [
+    [[-50,-100],[-50,100]],
+    [[-50,   0],[ 50,-100]],
+    [[-50,   0],[ 50, 100]]
+  ],
+  "L": [
+    [[-50,-100],[-50,100]],
+    [[-50, 100],[ 50,100]]
+  ],
+  "M": [
+    [[-50,100],[-50,-100],[0,0],[50,-100],[50,100]]
+  ],
+  "N": [
+    [[-50,100],[-50,-100],[50,100],[50,-100]]
+  ],
+  "O": [
+    [[  0,-100],[ 40,-80],[ 50,  0],[40,80],[0,100],[-40,80],[-50,0],[-40,-80],[0,-100]]
+  ],
+  "P": [
+    [[-50,100],[-50,-100]],
+    [[-50,-100],[ 40,-70],[40,-10],[-50,  0]]
+  ],
+  "Q": [
+    [[  0,-100],[ 40,-80],[ 50,  0],[40,80],[0,100],[-40,80],[-50,0],[-40,-80],[0,-100]],
+    [[ 10, 60],[ 50,100]]
+  ],
+  "R": [
+    [[-50,100],[-50,-100]],
+    [[-50,-100],[ 40,-70],[40,-10],[-50,  0]],
+    [[-50,  0],[ 50,100]]
+  ],
+  "S": [
+    [[ 50,-80],[  0,-100],[-50,-60],[  0,  0],[ 50, 60],[0,100],[-50,80]]
+  ],
+  "T": [
+    [[-50,-100],[ 50,-100]],
+    [[  0,-100],[  0, 100]]
+  ],
+  "U": [
+    [[-50,-100],[-50,60],[0,100],[50,60],[50,-100]]
+  ],
+  "V": [
+    [[-50,-100],[0,100],[50,-100]]
+  ],
+  "W": [
+    [[-60,-100],[-30,100],[0,-20],[30,100],[60,-100]]
+  ],
+  "X": [
+    [[-50,-100],[50,100]],
+    [[ 50,-100],[-50,100]]
+  ],
+  "Y": [
+    [[-50,-100],[0,0],[50,-100]],
+    [[  0,  0],[0,100]]
+  ],
+  "Z": [
+    [[-50,-100],[50,-100]],
+    [[ 50,-100],[-50,100]],
+    [[-50, 100],[50,100]]
+  ],
+  "0": [
+    [[  0,-100],[ 40,-80],[ 50,  0],[40,80],[0,100],[-40,80],[-50,0],[-40,-80],[0,-100]]
+  ],
+  "1": [
+    [[  0,-100],[  0,100]],
+    [[-20,-80],[0,-100],[20,-80]],
+    [[-20,100],[20,100]]
+  ],
+  "2": [
+    [[-50,-60],[  0,-100],[50,-60],[-50,100],[50,100]]
+  ],
+  "3": [
+    [[-40,-80],[0,-100],[50,-80],[0,0],[50,80],[0,100],[-40,80]]
+  ],
+  "4": [
+    [[ 50,-100],[ 50,100]],
+    [[-50, 20],[ 50, 20]],
+    [[-50, 20],[ 50,-100]]
+  ],
+  "5": [
+    [[ 50,-100],[-50,-100],[-50,0],[30,0],[50,20],[30,100],[-50,100]]
+  ],
+  "6": [
+    [[ 40,-80],[0,-100],[-50,-60],[-50,60],[0,100],[40,60],[0,0],[-50,0]]
+  ],
+  "7": [
+    [[-50,-100],[50,-100],[-10,100]]
+  ],
+  "8": [
+    [[  0,-100],[ 40,-80],[  0,  0],[40,80],[0,100],[-40,80],[0,0],[-40,-80],[0,-100]]
+  ],
+  "9": [
+    [[-40,-60],[0,-100],[40,-60],[40,0],[0,20],[-40,0],[-40,-60]],
+    [[40,0],[40,100]]
+  ],
+  "?": [
+    [[-20,-60],[0,-100],[20,-60],[0,-20]],
+    [[0,60],[0,80]]
+  ],
+  " ": []
+};
+
 /* =================== setup =================== */
-function setup(){
+function setup() {
   createCanvas(CANVAS_W, CANVAS_H);
   pixelDensity(1);
 
@@ -131,80 +275,67 @@ function setup(){
 
   glyphInput = createInput("A");
   glyphInput.addClass("glyphInput");
-  glyphInput.attribute("maxlength","1");
+  glyphInput.attribute("maxlength", "1");
   placeGlyphInput();
 
+  // ✅ 允许删除、允许输入任意字符
   glyphInput.input(() => {
     let v = glyphInput.value();
-    if (v.length === 0) { glyphChar = ""; glyphDirty = true; return; }
+    if (v.length === 0) { glyphChar = ""; return; }
     if (v.length > 1) { v = v[0]; glyphInput.value(v); }
     glyphChar = v;
-    glyphDirty = true;
   });
 
+  // 失焦：空则回到 A
   glyphInput.elt.addEventListener("blur", () => {
     if (!glyphInput.value() || glyphInput.value().length === 0) {
       glyphChar = "A";
       glyphInput.value("A");
-      glyphDirty = true;
     }
   });
 
-  const firstSliderY = (COLOR_PANEL_H + 160) + 70;
+  // sliders
+  const firstSliderY = COLOR_PANEL_H + 160 + 70;
   const gap = 54;
-  for (let i=0;i<5;i++){
-    sliders.push(new Slider(120, firstSliderY + i*gap, 200, 34, sliderName[i], 0.5));
+  for (let i = 0; i < 5; i++) {
+    sliders.push(new Slider(120, firstSliderY + i * gap, 200, 34, sliderName[i], 0.5));
   }
 
-  // 右侧波形按钮
+  // right wave buttons
   const bx = width - 120;
   const by0 = 160;
   const bGap = 46;
   const names = ["Sin","Square","Triangle","Sawtooth"];
-  for (let i=0;i<4;i++){
-    waveButtons.push(new CapButton(bx, by0 + i*bGap, 150, 30, names[i], false));
+  for (let i = 0; i < 4; i++) {
+    waveButtons.push(new CapButton(bx, by0 + i*bGap, 150, 30, names[i]));
   }
   setWaveSelected(0);
 
-  // 加载字体
-  loadFont(
-    FONT_PATH,
-    (f)=>{ fontObj = f; fontLoaded = true; glyphDirty = true; },
-    ()=>{ fontObj = null; fontLoaded = false; glyphDirty = false; }
-  );
+  tryLoadUIFont();
 }
 
-function windowResized(){ placeGlyphInput(); }
+function windowResized() {
+  placeGlyphInput();
+}
 
-/* =================== draw =================== */
-function draw(){
+function draw() {
   background(240);
-  updateParameters();
 
-  if (fontLoaded && glyphDirty){
-    rebuildSkeletonFromGlyph();
-    glyphDirty = false;
-  }
+  updateParameters();
 
   if (showGrid) drawGrid();
 
-  // ✅ 画骨架扰动字形（单线骨架，不是空心轮廓）
-  if (fontLoaded && glyphChar !== "" && skelReady){
-    drawSkeletonGlyph();
-  } else {
-    push();
-    fill(60);
-    noStroke();
-    textAlign(CENTER,CENTER);
-    textSize(18);
-    text(fontLoaded ? "Type a glyph on the left" : "Loading font…", (cw+width)/2, height/2);
-    pop();
-  }
+  // ✅ 用输入字符绘制“单骨架扰动字体”
+  push();
+  translate(width / 2, height / 2);
+  scale(scaleVal);
+  drawGlyph(glyphChar);
+  pop();
 
-  // 左侧栏背景
+  // left panel bg
   noStroke();
   fill("#1F1E24");
-  rect(0,0,cw,height);
+  rect(0, 0, cw, height);
 
   drawColorPanel();
   drawRecentColors();
@@ -216,7 +347,8 @@ function draw(){
   saveButton.display();
 
   fill(255);
-  textAlign(LEFT,CENTER);
+  useUIFont();
+  textAlign(LEFT, CENTER);
   textSize(12);
   text("Glyph", 20, COLOR_PANEL_H + 145);
 
@@ -231,338 +363,48 @@ function draw(){
 }
 
 /* =================== 输入框定位 =================== */
-function canvasOffsetX(){
+function canvasOffsetX() {
   const c = document.querySelector("canvas");
-  return c ? Math.round(c.getBoundingClientRect().left) : 0;
+  if (!c) return 0;
+  return Math.round(c.getBoundingClientRect().left);
 }
-function canvasOffsetY(){
+function canvasOffsetY() {
   const c = document.querySelector("canvas");
-  return c ? Math.round(c.getBoundingClientRect().top) : 0;
+  if (!c) return 0;
+  return Math.round(c.getBoundingClientRect().top);
 }
-function placeGlyphInput(){
+function placeGlyphInput() {
   if (!glyphInput) return;
   const inputX = 20;
   const inputY = COLOR_PANEL_H + 160;
-  glyphInput.position(canvasOffsetX()+inputX, canvasOffsetY()+inputY);
+  glyphInput.position(canvasOffsetX() + inputX, canvasOffsetY() + inputY);
 }
 
 /* =================== 网格：只画右侧区域 =================== */
-function drawGrid(){
+function drawGrid() {
   const step = 25;
   stroke(220);
   strokeWeight(1);
-  for (let x=cw; x<=width; x+=step) line(x,0,x,height);
-  for (let y=0; y<=height; y+=step) line(cw,y,width,y);
+  for (let x = cw; x <= width; x += step) line(x, 0, x, height);
+  for (let y = 0; y <= height; y += step) line(cw, y, width, y);
 }
 
-/* =========================================================
-   ✅ 核心：离屏渲染→二值化→骨架化→追踪成路径（单线骨架）
-   ========================================================= */
-function rebuildSkeletonFromGlyph(){
-  skelReady = false;
-  skelPaths = [];
-
-  if (!fontObj || glyphChar==="") return;
-
-  const pg = createGraphics(SKEL_W, SKEL_H);
-  pg.pixelDensity(1);
-  pg.background(0);
-  pg.fill(255);
-  pg.noStroke();
-  pg.textFont(fontObj);
-  pg.textAlign(CENTER, CENTER);
-  pg.textSize(rasterTextSize);
-
-  // 用 textBounds 精确居中
-  const b = fontObj.textBounds(glyphChar, 0, 0, rasterTextSize);
-  if (!b || b.w < 2 || b.h < 2) { pg.remove(); return; }
-
-  const tx = SKEL_W/2 - (b.x + b.w/2);
-  const ty = SKEL_H/2 - (b.y + b.h/2);
-
-  pg.push();
-  pg.translate(tx, ty);
-  pg.text(glyphChar, 0, 0);  // 因为 translate 后，(0,0) 是居中修正位置
-  pg.pop();
-
-  pg.loadPixels();
-
-  // 二值化
-  let bin = new Uint8Array(SKEL_W * SKEL_H);
-  for (let y=0;y<SKEL_H;y++){
-    for (let x=0;x<SKEL_W;x++){
-      const idx = (y*SKEL_W + x)*4;
-      const r = pg.pixels[idx];
-      // 灰度阈值
-      bin[y*SKEL_W + x] = (r > binThreshold) ? 1 : 0;
-    }
-  }
-
-  // 骨架化（Zhang-Suen）
-  zhangSuenThin(bin, SKEL_W, SKEL_H);
-
-  // 追踪骨架像素为路径
-  skelPaths = traceSkeletonToPaths(bin, SKEL_W, SKEL_H);
-
-  // 映射到画布空间：计算 bounds，设置 baseScale + center
-  if (skelPaths.length === 0) { pg.remove(); return; }
-
-  let minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
-  for (const p of skelPaths){
-    for (const v of p.pts){
-      if (v.x < minX) minX=v.x;
-      if (v.y < minY) minY=v.y;
-      if (v.x > maxX) maxX=v.x;
-      if (v.y > maxY) maxY=v.y;
-    }
-  }
-  const bw = maxX - minX + 1;
-  const bh = maxY - minY + 1;
-
-  // 让骨架在未 scaleVal 前，适配一个“基准字高”
-  const target = 420; // 基准大小（再由 Scale slider 控制）
-  skelBaseScale = target / max(bw, bh);
-
-  // 居中
-  const cx = minX + bw/2;
-  const cy = minY + bh/2;
-  skelCenter = { x: cx, y: cy };
-
-  // 给每条路径补 s（沿弧长累计）以保持你的 dis 概念
-  for (const p of skelPaths) addArcS(p.pts);
-
-  skelReady = true;
-  pg.remove();
+/* ============================================================
+   ✅ 关键：按“你喜欢的逻辑”画字
+   - 字 = 多条折线，每一段都走 drawParametricCurve()
+   - 完全保留你的 dis/offset 公式，味道不变
+   ============================================================ */
+function normalizeGlyphChar(ch) {
+  if (!ch || ch.length === 0) return " ";
+  // 把小写映射到大写（骨架字库用大写）
+  const c = ch[0];
+  const up = c.toUpperCase();
+  return STICK_FONT[up] ? up : (STICK_FONT[c] ? c : "?");
 }
 
-/* Zhang-Suen thinning */
-function zhangSuenThin(img, w, h){
-  let changed = true;
-  const idx = (x,y)=> y*w + x;
-
-  function neighbors(x,y){
-    const p2 = img[idx(x, y-1)];
-    const p3 = img[idx(x+1, y-1)];
-    const p4 = img[idx(x+1, y)];
-    const p5 = img[idx(x+1, y+1)];
-    const p6 = img[idx(x, y+1)];
-    const p7 = img[idx(x-1, y+1)];
-    const p8 = img[idx(x-1, y)];
-    const p9 = img[idx(x-1, y-1)];
-    return [p2,p3,p4,p5,p6,p7,p8,p9];
-  }
-
-  function A(p){
-    // transitions 0->1 in ordered neighbors
-    let a=0;
-    for (let i=0;i<8;i++){
-      const curr = p[i];
-      const next = p[(i+1)%8];
-      if (curr===0 && next===1) a++;
-    }
-    return a;
-  }
-  function B(p){
-    let s=0; for (let i=0;i<8;i++) s+=p[i]; return s;
-  }
-
-  while (changed){
-    changed = false;
-    let toDel = [];
-
-    // step 1
-    for (let y=1;y<h-1;y++){
-      for (let x=1;x<w-1;x++){
-        if (img[idx(x,y)] !== 1) continue;
-        const p = neighbors(x,y);
-        const b = B(p);
-        const a = A(p);
-        const p2=p[0], p4=p[2], p6=p[4], p8=p[6];
-        if (b>=2 && b<=6 && a===1 && (p2*p4*p6===0) && (p4*p6*p8===0)){
-          toDel.push(idx(x,y));
-        }
-      }
-    }
-    if (toDel.length){
-      for (const i of toDel) img[i]=0;
-      changed = true;
-    }
-
-    toDel = [];
-
-    // step 2
-    for (let y=1;y<h-1;y++){
-      for (let x=1;x<w-1;x++){
-        if (img[idx(x,y)] !== 1) continue;
-        const p = neighbors(x,y);
-        const b = B(p);
-        const a = A(p);
-        const p2=p[0], p4=p[2], p6=p[4], p8=p[6];
-        if (b>=2 && b<=6 && a===1 && (p2*p4*p8===0) && (p2*p6*p8===0)){
-          toDel.push(idx(x,y));
-        }
-      }
-    }
-    if (toDel.length){
-      for (const i of toDel) img[i]=0;
-      changed = true;
-    }
-  }
-}
-
-/* skeleton pixels -> polylines (edge-visited) */
-function traceSkeletonToPaths(img, w, h){
-  const idx = (x,y)=> y*w + x;
-  const has = (x,y)=> (x>=0 && x<w && y>=0 && y<h && img[idx(x,y)]===1);
-
-  const dirs = [
-    [-1,-1],[0,-1],[1,-1],
-    [-1, 0],       [1, 0],
-    [-1, 1],[0, 1],[1, 1]
-  ];
-
-  function neigh(x,y){
-    const out=[];
-    for (const d of dirs){
-      const nx=x+d[0], ny=y+d[1];
-      if (has(nx,ny)) out.push([nx,ny]);
-    }
-    return out;
-  }
-
-  function degree(x,y){ return neigh(x,y).length; }
-
-  // visited edges
-  const visited = new Set();
-  const edgeKey = (x,y,nx,ny)=> `${x},${y}->${nx},${ny}`;
-  const markEdge = (x,y,nx,ny)=>{
-    visited.add(edgeKey(x,y,nx,ny));
-    visited.add(edgeKey(nx,ny,x,y));
-  };
-  const edgeVisited = (x,y,nx,ny)=> visited.has(edgeKey(x,y,nx,ny));
-
-  // collect endpoints
-  const endpoints=[];
-  for (let y=1;y<h-1;y++){
-    for (let x=1;x<w-1;x++){
-      if (!has(x,y)) continue;
-      if (degree(x,y)===1) endpoints.push([x,y]);
-    }
-  }
-
-  const paths=[];
-
-  function walkPath(startX,startY){
-    let x=startX, y=startY;
-    let prev=null;
-    const pts=[[x,y]];
-
-    while (true){
-      const nbs = neigh(x,y).filter(([nx,ny])=>{
-        if (prev && nx===prev[0] && ny===prev[1]) return false;
-        return !edgeVisited(x,y,nx,ny);
-      });
-
-      if (nbs.length===0) break;
-
-      // choose first neighbor
-      const [nx,ny]=nbs[0];
-      markEdge(x,y,nx,ny);
-
-      prev=[x,y];
-      x=nx; y=ny;
-      pts.push([x,y]);
-
-      // stop at junction/end
-      const deg = degree(x,y);
-      if (deg!==2) break;
-    }
-
-    if (pts.length>=3){
-      paths.push({
-        pts: pts.map(p=>({x:p[0],y:p[1],s:0})),
-        closed: false
-      });
-    }
-  }
-
-  // walk from endpoints
-  for (const [sx,sy] of endpoints){
-    walkPath(sx,sy);
-  }
-
-  // handle loops / remaining edges
-  for (let y=1;y<h-1;y++){
-    for (let x=1;x<w-1;x++){
-      if (!has(x,y)) continue;
-
-      // if this pixel still has an unvisited edge, start a loop walk
-      const nbs = neigh(x,y);
-      let hasUnvisited = false;
-      for (const [nx,ny] of nbs){
-        if (!edgeVisited(x,y,nx,ny)){ hasUnvisited=true; break; }
-      }
-      if (!hasUnvisited) continue;
-
-      // loop walk
-      let start=[x,y];
-      let curr=[x,y];
-      let prev=null;
-      const pts=[[x,y]];
-
-      while (true){
-        const [cx,cy]=curr;
-        const nbs2 = neigh(cx,cy).filter(([nx,ny])=>{
-          if (prev && nx===prev[0] && ny===prev[1]) return false;
-          return !edgeVisited(cx,cy,nx,ny);
-        });
-        if (nbs2.length===0) break;
-
-        const [nx,ny]=nbs2[0];
-        markEdge(cx,cy,nx,ny);
-
-        prev=curr;
-        curr=[nx,ny];
-        pts.push([nx,ny]);
-
-        if (nx===start[0] && ny===start[1]) {
-          // closed loop
-          break;
-        }
-      }
-
-      if (pts.length>=4){
-        const closed = (pts[pts.length-1][0]===pts[0][0] && pts[pts.length-1][1]===pts[0][1]);
-        paths.push({
-          pts: pts.map(p=>({x:p[0],y:p[1],s:0})),
-          closed
-        });
-      }
-    }
-  }
-
-  return paths;
-}
-
-/* add arc-length s */
-function addArcS(pts){
-  let s=0;
-  pts[0].s=0;
-  for (let i=1;i<pts.length;i++){
-    s += dist(pts[i-1].x,pts[i-1].y,pts[i].x,pts[i].y);
-    pts[i].s=s;
-  }
-}
-
-/* draw skeleton glyph with your “沿路径扰动” */
-function drawSkeletonGlyph(){
-  const stageCenterX = (cw + width)/2;
-  const stageCenterY = height/2;
-
-  push();
-  translate(stageCenterX, stageCenterY);
-  // base scale from skeleton bounds + user scale slider
-  scale(skelBaseScale * scaleVal);
+function drawGlyph(ch) {
+  const key = normalizeGlyphChar(ch);
+  const strokes = STICK_FONT[key] || STICK_FONT["?"];
 
   stroke(currentColor);
   strokeWeight(strokeW);
@@ -570,98 +412,86 @@ function drawSkeletonGlyph(){
   strokeJoin(ROUND);
   noFill();
 
-  for (const path of skelPaths){
-    const pts = path.pts;
-    if (pts.length < 3) continue;
-
-    beginShape();
-
-    for (let i=0;i<pts.length;i++){
-      // center
-      const px = (pts[i].x - skelCenter.x);
-      const py = (pts[i].y - skelCenter.y);
-
-      // tangent from prev/next (wrap for closed)
-      const i0 = (i===0) ? (path.closed ? pts.length-2 : 0) : i-1;
-      const i1 = (i===pts.length-1) ? (path.closed ? 1 : pts.length-1) : i+1;
-
-      const p0x = (pts[i0].x - skelCenter.x);
-      const p0y = (pts[i0].y - skelCenter.y);
-      const p1x = (pts[i1].x - skelCenter.x);
-      const p1y = (pts[i1].y - skelCenter.y);
-
-      let tx = p1x - p0x;
-      let ty = p1y - p0y;
-      const len = Math.hypot(tx,ty) || 1;
-      tx/=len; ty/=len;
-
-      // normal
-      const nx = -ty;
-      const ny = tx;
-
-      // ✅ 原味公式（s 是弧长，等价你原来的 dis 概念）
-      const s = pts[i].s * 0.01;
-      const off = applyFunction(frequency * s * TWO_PI + phase + t) * amplitude;
-
-      const x = px + nx * off;
-      const y = py + ny * off;
-
-      if (currentFunction===0 || currentFunction===2) curveVertex(x,y);
-      else vertex(x,y);
+  // 每条 stroke = 折线 points
+  for (const strokePts of strokes) {
+    if (!strokePts || strokePts.length < 2) continue;
+    for (let i = 0; i < strokePts.length - 1; i++) {
+      const [x1,y1] = strokePts[i];
+      const [x2,y2] = strokePts[i+1];
+      drawParametricCurve(x1, y1, x2, y2);
     }
-
-    if (path.closed) endShape(CLOSE);
-    else endShape();
   }
-
-  pop();
 }
 
-/* =================== 你的 applyFunction（不改） =================== */
-function applyFunction(tt){
-  switch(currentFunction){
+/* =================== 你原来的 parametric 扰动（完全保留） =================== */
+function drawParametricCurve(x1, y1, x2, y2) {
+  beginShape();
+  for (let i = 0; i <= 1.00001; i += 0.01) {
+    let x = lerp(x1, x2, i);
+    let y = lerp(y1, y2, i);
+
+    let dis = dist(x, y, x1, y1) * 0.01;
+    let offset = applyFunction(frequency * dis * TWO_PI + phase + t) * amplitude;
+
+    let baseLen = dist(x1, y1, x2, y2) || 1;
+    x += offset * (y2 - y1) / baseLen;
+    y -= offset * (x2 - x1) / baseLen;
+
+    if (currentFunction === 0 || currentFunction === 2) curveVertex(x, y);
+    else vertex(x, y);
+  }
+  endShape();
+}
+
+function applyFunction(tt) {
+  switch (currentFunction) {
     case 0: return sin(tt);
     case 1: return (tt % TWO_PI < PI) ? 1 : -1;
     case 2: return asin(sin(tt)) * 2 / PI;
     case 3: return (tt % TWO_PI) / PI - 1;
-    default:return sin(tt);
+    default: return sin(tt);
   }
 }
 
-/* =================== 参数更新（无 Phase 滑块） =================== */
-function updateParameters(){
+/* =================== 参数更新 =================== */
+function updateParameters() {
   scaleVal = map(sliders[0].val, 0, 1, 0.5, 3);
   strokeW  = map(sliders[1].val, 0, 1, 0.5, 20);
-  amplitude= map(sliders[2].val, 0, 1, 0, maxAmp);
-  frequency= map(sliders[3].val, 0, 1, 0.1, 5);
+  amplitude = map(sliders[2].val, 0, 1, 0, maxAmp);
+  frequency = map(sliders[3].val, 0, 1, 0.1, 5);
   animationSpeed = map(sliders[4].val, 0, 1, 0, 0.1);
 }
 
-/* =================== 右下角函数预览（保留 phase + t） =================== */
-function drawFunctionDisplay(){
-  const displayWidth=250, displayHeight=250, margin=50;
+/* =================== 右下角函数预览 =================== */
+function drawFunctionDisplay() {
+  const displayWidth = 250;
+  const displayHeight = 250;
+  const margin = 50;
 
   stroke(0);
   strokeWeight(3);
 
   push();
-  translate(width - displayWidth/2 - margin, height - displayHeight/2 - margin);
+  translate(width - displayWidth / 2 - margin, height - displayHeight / 2 - margin);
 
-  line(-displayWidth/2,0, displayWidth/2,0);
-  line(0,-displayHeight/2, 0,displayHeight/2);
-
-  fill(0); noStroke(); textSize(15);
-  triangle(-5,-displayHeight/2, 5,-displayHeight/2, 0,-displayHeight/2-15);
-  triangle(displayWidth/2+15,0, displayWidth/2,-5, displayWidth/2,5);
+  line(-displayWidth / 2, 0, displayWidth / 2, 0);
+  line(0, -displayHeight / 2, 0, displayHeight / 2);
 
   fill(0);
-  textAlign(LEFT,TOP);
-  text("y",15,-displayHeight/2);
-  text("x",displayWidth/2,25);
+  noStroke();
+  textSize(15);
+
+  triangle(-5, -displayHeight / 2, 5, -displayHeight / 2, 0, -displayHeight / 2 - 15);
+  triangle(displayWidth / 2 + 15, 0, displayWidth / 2, -5, displayWidth / 2, 5);
+
+  fill(0);
+  textAlign(LEFT, TOP);
+  text("y", 15, -displayHeight / 2);
+  text("x", displayWidth / 2, 25);
 
   textSize(20);
-  textAlign(CENTER,BOTTOM);
-  text(functionNames[currentFunction]+" Function",0,-displayHeight/2-40);
+  textAlign(CENTER, BOTTOM);
+  text(functionNames[currentFunction] + " Function", 0, -displayHeight / 2 - 40);
   pop();
 
   stroke(color(140));
@@ -669,258 +499,293 @@ function drawFunctionDisplay(){
   strokeWeight(3);
 
   beginShape();
-  for (let x=0; x<displayWidth; x+=2){
-    let amp = map(amplitude,0,maxAmp,0,displayHeight/2);
-    let y = applyFunction(frequency*x*0.02 + phase + t)*amp;
-    vertex(width-displayWidth-margin+x, height-displayHeight/2-margin-y);
+  for (let x = 0; x < displayWidth; x += 2) {
+    let amp = map(amplitude, 0, maxAmp, 0, displayHeight / 2);
+    let y = applyFunction(frequency * x * 0.02 + phase + t) * amp;
+    vertex(width - displayWidth - margin + x, height - displayHeight / 2 - margin - y);
   }
   endShape();
 }
 
-/* =================== 颜色模块（完全 draw.html 逻辑） =================== */
-function buildHueGraphic(){
+/* =================== 颜色模块（完全 draw.html 做法） =================== */
+function buildHueGraphic() {
   hueGraphic = createGraphics(COLOR_HUE.w, COLOR_HUE.h);
   hueGraphic.pixelDensity(1);
-  hueGraphic.colorMode(HSB,360,100,100);
+  hueGraphic.colorMode(HSB, 360, 100, 100);
   hueGraphic.noStroke();
   hueGraphic.loadPixels();
-  for (let y=0;y<COLOR_HUE.h;y++){
-    let h = map(y,0,COLOR_HUE.h-1,0,360);
-    let c = hueGraphic.color(h,100,100);
-    for (let x=0;x<COLOR_HUE.w;x++){
-      let id = (y*COLOR_HUE.w + x)*4;
-      hueGraphic.pixels[id]=red(c);
-      hueGraphic.pixels[id+1]=green(c);
-      hueGraphic.pixels[id+2]=blue(c);
-      hueGraphic.pixels[id+3]=255;
+
+  for (let y = 0; y < COLOR_HUE.h; y++) {
+    let h = map(y, 0, COLOR_HUE.h - 1, 0, 360);
+    let c = hueGraphic.color(h, 100, 100);
+    for (let x = 0; x < COLOR_HUE.w; x++) {
+      let idx = (y * COLOR_HUE.w + x) * 4;
+      hueGraphic.pixels[idx]     = red(c);
+      hueGraphic.pixels[idx + 1] = green(c);
+      hueGraphic.pixels[idx + 2] = blue(c);
+      hueGraphic.pixels[idx + 3] = 255;
     }
   }
   hueGraphic.updatePixels();
 }
 
-function buildSBGraphic(){
+function buildSBGraphic() {
   sbGraphic = createGraphics(COLOR_MAIN.w, COLOR_MAIN.h);
   sbGraphic.pixelDensity(1);
-  sbGraphic.colorMode(HSB,360,100,100);
+  sbGraphic.colorMode(HSB, 360, 100, 100);
   sbGraphic.noStroke();
   sbGraphic.loadPixels();
-  for (let y=0;y<COLOR_MAIN.h;y++){
-    for (let x=0;x<COLOR_MAIN.w;x++){
-      let sVal = map(x,0,COLOR_MAIN.w-1,0,100);
-      let bVal = map(y,0,COLOR_MAIN.h-1,100,0);
-      let c = sbGraphic.color(hue,sVal,bVal);
-      let id = (y*COLOR_MAIN.w + x)*4;
-      sbGraphic.pixels[id]=red(c);
-      sbGraphic.pixels[id+1]=green(c);
-      sbGraphic.pixels[id+2]=blue(c);
-      sbGraphic.pixels[id+3]=255;
+
+  for (let y = 0; y < COLOR_MAIN.h; y++) {
+    for (let x = 0; x < COLOR_MAIN.w; x++) {
+      let sVal = map(x, 0, COLOR_MAIN.w - 1, 0, 100);
+      let bVal = map(y, 0, COLOR_MAIN.h - 1, 100, 0);
+      let c = sbGraphic.color(hue, sVal, bVal);
+      let idx = (y * COLOR_MAIN.w + x) * 4;
+      sbGraphic.pixels[idx]     = red(c);
+      sbGraphic.pixels[idx + 1] = green(c);
+      sbGraphic.pixels[idx + 2] = blue(c);
+      sbGraphic.pixels[idx + 3] = 255;
     }
   }
   sbGraphic.updatePixels();
 }
 
-function drawColorPanel(){
+function drawColorPanel() {
   imageMode(CORNER);
   image(sbGraphic, COLOR_MAIN.x, COLOR_MAIN.y);
   image(hueGraphic, COLOR_HUE.x, COLOR_HUE.y);
 
-  let huePosY = map(hue,0,360,0,COLOR_HUE.h);
+  let huePosY = map(hue, 0, 360, 0, COLOR_HUE.h);
   stroke(255);
   strokeWeight(2);
   let hx = COLOR_HUE.x;
   let hy = COLOR_HUE.y + huePosY;
-  line(hx-4,hy,hx,hy);
-  line(hx+COLOR_HUE.w,hy,hx+COLOR_HUE.w+4,hy);
+  line(hx - 4, hy, hx, hy);
+  line(hx + COLOR_HUE.w, hy, hx + COLOR_HUE.w + 4, hy);
 }
 
-function drawRecentColors(){
-  for (let i=0;i<RECENT_RECTS.length;i++){
+function drawRecentColors() {
+  for (let i = 0; i < RECENT_RECTS.length; i++) {
     const r = RECENT_RECTS[i];
-    stroke(40); strokeWeight(1);
+    stroke(40);
+    strokeWeight(1);
     fill(recentColors[i] || color(0));
-    rect(r.x,r.y,r.w,r.h,6);
+    rect(r.x, r.y, r.w, r.h, 6);
 
-    if (recentColors[i] && colorsEqual(recentColors[i], currentColor)){
+    if (recentColors[i] && colorsEqual(recentColors[i], currentColor)) {
       noFill();
-      stroke(255); strokeWeight(2);
-      rect(r.x-3,r.y-3,r.w+6,r.h+6,8);
+      stroke(255);
+      strokeWeight(2);
+      rect(r.x - 3, r.y - 3, r.w + 6, r.h + 6, 8);
     }
   }
 }
 
-function handleColorClick(){
-  // SB
-  if (mouseX>=COLOR_MAIN.x && mouseX<=COLOR_MAIN.x+COLOR_MAIN.w &&
-      mouseY>=COLOR_MAIN.y && mouseY<=COLOR_MAIN.y+COLOR_MAIN.h){
-    let sx=constrain(mouseX,COLOR_MAIN.x,COLOR_MAIN.x+COLOR_MAIN.w);
-    let sy=constrain(mouseY,COLOR_MAIN.y,COLOR_MAIN.y+COLOR_MAIN.h);
-    sat = map(sx,COLOR_MAIN.x,COLOR_MAIN.x+COLOR_MAIN.w,0,100);
-    bri = map(sy,COLOR_MAIN.y,COLOR_MAIN.y+COLOR_MAIN.h,100,0);
+function handleColorClick() {
+  if (mouseX >= COLOR_MAIN.x && mouseX <= COLOR_MAIN.x + COLOR_MAIN.w &&
+      mouseY >= COLOR_MAIN.y && mouseY <= COLOR_MAIN.y + COLOR_MAIN.h) {
+
+    let sx = constrain(mouseX, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w);
+    let sy = constrain(mouseY, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h);
+    sat = map(sx, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w, 0, 100);
+    bri = map(sy, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h, 100, 0);
     updateCurrentColor();
     return true;
   }
 
-  // Hue
-  if (mouseX>=COLOR_HUE.x && mouseX<=COLOR_HUE.x+COLOR_HUE.w &&
-      mouseY>=COLOR_HUE.y && mouseY<=COLOR_HUE.y+COLOR_HUE.h){
-    let hy=constrain(mouseY,COLOR_HUE.y,COLOR_HUE.y+COLOR_HUE.h);
-    hue = map(hy,COLOR_HUE.y,COLOR_HUE.y+COLOR_HUE.h,0,360);
+  if (mouseX >= COLOR_HUE.x && mouseX <= COLOR_HUE.x + COLOR_HUE.w &&
+      mouseY >= COLOR_HUE.y && mouseY <= COLOR_HUE.y + COLOR_HUE.h) {
+
+    let hy = constrain(mouseY, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h);
+    hue = map(hy, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h, 0, 360);
     buildSBGraphic();
     updateCurrentColor();
     return true;
   }
 
-  // Recent
-  for (let i=0;i<RECENT_RECTS.length;i++){
-    const r=RECENT_RECTS[i];
-    if (mouseX>=r.x && mouseX<=r.x+r.w && mouseY>=r.y && mouseY<=r.y+r.h){
-      if (recentColors[i]){
+  for (let i = 0; i < RECENT_RECTS.length; i++) {
+    const r = RECENT_RECTS[i];
+    if (mouseX >= r.x && mouseX <= r.x + r.w &&
+        mouseY >= r.y && mouseY <= r.y + r.h) {
+      if (recentColors[i]) {
         currentColor = color(recentColors[i]);
         addRecentColor(currentColor);
       }
       return true;
     }
   }
-
   return false;
 }
 
-function updateCurrentColor(){
+function updateCurrentColor() {
   push();
-  colorMode(HSB,360,100,100);
-  currentColor = color(hue,sat,bri);
+  colorMode(HSB, 360, 100, 100);
+  currentColor = color(hue, sat, bri);
   pop();
   addRecentColor(currentColor);
 }
 
-function addRecentColor(c){
+function addRecentColor(c) {
   let nc = color(c);
-  recentColors = recentColors.filter(rc => !colorsEqual(rc,nc));
+  recentColors = recentColors.filter(rc => !colorsEqual(rc, nc));
   recentColors.unshift(nc);
-  if (recentColors.length>5) recentColors.length=5;
+  if (recentColors.length > 5) recentColors.length = 5;
 }
 
-function colorsEqual(c1,c2){
-  return red(c1)===red(c2) && green(c1)===green(c2) && blue(c1)===blue(c2);
+function colorsEqual(c1, c2) {
+  return red(c1) === red(c2) &&
+         green(c1) === green(c2) &&
+         blue(c1) === blue(c2);
 }
 
 /* =================== 交互 =================== */
-function mousePressed(){
-  if (resetButton.hover()){ resetToDefaults(); return; }
-  if (pauseButton.hover()){ isAnimating=!isAnimating; return; }
-  if (gridButton.hover()){ showGrid=!showGrid; return; }
-  if (saveButton.hover()){ saveCanvas("FontPath","png"); return; }
+function mousePressed() {
+  if (resetButton.hover()) { resetToDefaults(); return; }
+  if (pauseButton.hover()) { isAnimating = !isAnimating; return; }
+  if (gridButton.hover())  { showGrid = !showGrid; return; }
+  if (saveButton.hover())  { saveCanvas("FontPath", "png"); return; }
 
   if (handleColorClick()) return;
 
   for (let s of sliders) s.click();
 
-  for (let i=0;i<waveButtons.length;i++){
-    if (waveButtons[i].hover()){ setWaveSelected(i); return; }
+  for (let i = 0; i < waveButtons.length; i++) {
+    if (waveButtons[i].hover()) {
+      setWaveSelected(i);
+      return;
+    }
   }
 }
 
-function mouseReleased(){
-  for (let s of sliders) s.state=false;
+function mouseReleased() {
+  for (let s of sliders) s.state = false;
 }
 
-function setWaveSelected(idx){
+function setWaveSelected(idx) {
   currentFunction = idx;
-  for (let i=0;i<waveButtons.length;i++) waveButtons[i].state = (i===idx);
+  for (let i = 0; i < waveButtons.length; i++) {
+    waveButtons[i].state = (i === idx);
+  }
 }
 
-function resetToDefaults(){
-  isAnimating=true; t=0; phase=0;
-  for (let s of sliders){ s.val=0.5; s.state=false; }
+function resetToDefaults() {
+  isAnimating = true;
+  t = 0;
+  phase = 0;
 
-  hue=220; sat=100; bri=80;
+  for (let s of sliders) {
+    s.val = 0.5;
+    s.state = false;
+  }
+
+  hue = 220; sat = 100; bri = 80;
   buildSBGraphic();
   updateCurrentColor();
 
   setWaveSelected(0);
 
-  glyphChar="A";
+  glyphChar = "A";
   if (glyphInput) glyphInput.value("A");
-  glyphDirty=true;
 }
 
-/* =================== UI：按钮/滑块（draw.html 风格） =================== */
-function rectToCapButton(rect,label){
-  const cx = rect.x + rect.w/2;
-  const cy = rect.y + rect.h/2;
-  return new CapButton(cx,cy,rect.w,rect.h,label,true);
+/* =================== UI：CapButton / Slider =================== */
+function rectToCapButton(rect, label) {
+  const cx = rect.x + rect.w / 2;
+  const cy = rect.y + rect.h / 2;
+  return new CapButton(cx, cy, rect.w, rect.h, label, true);
 }
 
-class CapButton{
-  constructor(x,y,w,h,str,useDrawStyle=false){
+class CapButton {
+  constructor(x, y, w, h, str, useDrawStyle=false) {
     this.x=x; this.y=y; this.w=w; this.h=h; this.str=str;
     this.state=false;
     this.useDrawStyle = useDrawStyle;
   }
-  hover(){
-    return (mouseX>=this.x-this.w/2 && mouseX<=this.x+this.w/2 &&
-            mouseY>=this.y-this.h/2 && mouseY<=this.y+this.h/2);
+  hover() {
+    return (
+      mouseX >= this.x - this.w / 2 &&
+      mouseX <= this.x + this.w / 2 &&
+      mouseY >= this.y - this.h / 2 &&
+      mouseY <= this.y + this.h / 2
+    );
   }
-  display(){
+  display() {
     push();
-    translate(this.x,this.y);
+    translate(this.x, this.y);
     rectMode(CENTER);
 
-    if (this.useDrawStyle){
-      if (this.hover()) fill(90,89,93);
+    if (this.useDrawStyle) {
+      if (this.hover()) fill(90, 89, 93);
       else fill("#464548");
+      noStroke();
+      rect(0, 0, this.w, this.h, 40);
     } else {
       if (this.state) fill(110,109,113);
-      else if (this.hover()) fill(90,89,93);
+      else if (this.hover()) fill(90, 89, 93);
       else fill("#464548");
+      noStroke();
+      rect(0, 0, this.w, this.h, 40);
     }
 
-    noStroke();
-    rect(0,0,this.w,this.h,40);
-
     fill(255);
-    textAlign(CENTER,CENTER);
-    textSize(this.h*0.5);
-    text(this.str,0,0);
+    useUIFont();
+    textAlign(CENTER, CENTER);
+    textSize(this.h * 0.5);
+    text(this.str, 0, 0);
     pop();
   }
 }
 
-class Slider{
-  constructor(cx,cy,w,h,label,val){
-    this.x=cx; this.y=cy; this.w=w; this.h=h;
-    this.label=label;
-    this.val=val;
-    this.state=false;
+class Slider {
+  constructor(cx, cy, w, h, label, val) {
+    this.x = cx; this.y = cy; this.w = w; this.h = h;
+    this.label = label;
+    this.val = val;
+    this.state = false;
   }
-  hover(){ return (abs(mouseX-this.x)<this.w/2 && abs(mouseY-this.y)<this.h/2); }
-  click(){ this.state = this.hover(); }
-  drag(){
+  hover() { return (abs(mouseX - this.x) < this.w/2 && abs(mouseY - this.y) < this.h/2); }
+  click() { this.state = this.hover(); }
+  drag() {
     if (!this.state) return;
-    let v = map(mouseX,this.x-this.w/2,this.x+this.w/2,0,1);
-    v = constrain(v,0,1);
-    this.val = lerp(this.val,v,0.12);
+    let v = map(mouseX, this.x - this.w/2, this.x + this.w/2, 0, 1);
+    v = constrain(v, 0, 1);
+    this.val = lerp(this.val, v, 0.12);
   }
-  run(){ this.drag(); this.display(); }
-  display(){
+  run() { this.drag(); this.display(); }
+  display() {
     push();
-    translate(this.x,this.y);
+    translate(this.x, this.y);
     rectMode(CENTER);
     noStroke();
 
-    fill(this.hover()?110:85);
-    rect(0,0,this.w,this.h,999);
+    fill(this.hover() ? 110 : 85);
+    rect(0, 0, this.w, this.h, 999);
 
-    let vw = map(this.val,0,1,0,this.w);
-    fill(this.hover()?160:120);
-    rect(-this.w/2+vw/2,0,vw,this.h,999);
+    let vw = map(this.val, 0, 1, 0, this.w);
+    fill(this.hover() ? 160 : 120);
+    rect(-this.w/2 + vw/2, 0, vw, this.h, 999);
 
     fill(255);
-    textAlign(CENTER,CENTER);
-    textSize(this.h*0.45);
-    text(this.label,0,0);
+    useUIFont();
+    textAlign(CENTER, CENTER);
+    textSize(this.h * 0.45);
+    text(this.label, 0, 0);
     pop();
   }
+}
+
+/* =================== 字体加载（失败不影响） =================== */
+function tryLoadUIFont() {
+  loadFont(
+    FONT_PATH,
+    (f) => { uiFont = f; fontLoaded = true; },
+    () => { uiFont = null; fontLoaded = false; }
+  );
+}
+function useUIFont() {
+  if (fontLoaded && uiFont) textFont(uiFont);
+  else textFont("system-ui");
 }
 </script>
 </body>
