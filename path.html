@@ -49,7 +49,7 @@ let uiFont = null;
 let fontLoaded = false;
 
 /* =================== 左侧操作栏（响应式） =================== */
-let cw = 240;                // computeLayout() 会动态更新
+let cw = 240;                // 会在 computeLayout() 里动态更新
 const COLOR_PANEL_H = 190;
 let showGrid = true;
 
@@ -71,9 +71,9 @@ let animationSpeed = 0.02;
 let currentFunction = 0;
 const functionNames = ["Sin", "Square", "Triangle", "Sawtooth"];
 
-/* =================== 字母输入（默认显示 X，但输入框显示 placeholder） =================== */
+/* =================== 字母输入（默认 X） =================== */
 let glyphInput;
-let glyphChar = "X";   // ✅ 默认画面显示 X
+let glyphChar = "X";   // ✅ 默认 X
 
 /* =================== 颜色模块（按 draw.html 结构） =================== */
 let hue = 0;
@@ -91,7 +91,7 @@ let RECENT_RECTS = [];
 const defaultRecentHex = ["#000000", "#482BCC", "#FF04A5", "#FFE900", "#8CE255"];
 let recentColors = [];
 
-// ✅ 往右一点点（4~10）
+// ✅ 你要“往右一点点”：调这个（4~10）
 const RECENT_BIAS_X = 6;
 
 /* =================== 功能按钮（只保留 Pause / Save） =================== */
@@ -108,14 +108,14 @@ let sliders = [];
 /* =================== 波形按钮（放左侧下方，2×2） =================== */
 let waveButtons = [];
 
-/* =================== 你要的：整体下移 + 底部留白（更大一点点） + 短窗口不裁切 =================== */
-const CONTROLS_SHIFT_Y = 18;
-const BOTTOM_PAD = 34;        // ✅ 比之前多一点点点点
+/* =================== 你要的：整体下移 + 底部留白 + 短窗口不裁切 =================== */
+const CONTROLS_SHIFT_Y = 18;  // 想下移多少（窗口足够高时生效）
+const BOTTOM_PAD = 22;        // 底部留白
 
 /* =================== 小工具 =================== */
 function clamp(v, lo, hi) { return max(lo, min(hi, v)); }
 
-/* =================== 布局计算（关键：高度不够时自动压缩间距） =================== */
+/* =================== 布局计算（关键修复：高度不够时自动压缩间距） =================== */
 let layout = null;
 
 function computeLayout() {
@@ -125,7 +125,7 @@ function computeLayout() {
   const pad = 16;
   const gap = 10;
 
-  // 色盘：永远塞得进 COLOR_PANEL_H
+  // ✅ 色盘：保证永远塞得进 COLOR_PANEL_H（避免溢出）
   const hueW = clamp(cw * 0.10, 18, 30);
   const sbW = cw - pad * 2 - hueW - gap;
   const sbMaxByPanel = COLOR_PANEL_H - pad * 2;
@@ -134,6 +134,7 @@ function computeLayout() {
   COLOR_MAIN = { x: pad, y: pad, w: sbSize, h: sbSize };
   COLOR_HUE  = { x: pad + sbSize + gap, y: pad, w: floor(hueW), h: sbSize };
 
+  // recent：居中 + 轻微右移
   rebuildRecentRects();
 
   // 按钮尺寸
@@ -141,23 +142,26 @@ function computeLayout() {
   const btnH = clamp(height * 0.035, 26, 38);
   const btnW = (cw - pad * 2 - btnGapX) / 2;
 
-  // ====== 防裁切：默认间距（你要求 slider 间距更小） ======
+  // =========================
+  // ✅ 下面这一段是“防裁切核心”：先用默认间距算一遍
+  // 如果超出底部，就按比例压缩间距/sliderGap/waveRowGap
+  // =========================
   const INPUT_H = 36;
-  const RANDOM_H = 42;         // ✅ Randomize 更显眼：更高
+  const RANDOM_H = btnH;
   const SLIDER_H = 34;
   const SLIDER_COUNT = 5;
   const WAVE_ROWS = 2;
 
   // 默认间距（会被压缩）
   let g_recent_to_btn = 18;
-  let g_btn_to_input = 16;
-  let g_input_to_rand = 16;
-  let g_rand_to_sliders = 16;
-
-  let sliderGap = 30;          // ✅ 之前太大：改小（更接近其它模块间距）
-  let g_sliders_to_wave = 18;
+  let g_btn_to_input = 18;
+  let g_input_to_rand = 22;
+  let g_rand_to_sliders = 24;
+  let sliderGap = 54;
+  let g_sliders_to_wave = 28;
   let waveRowGap = 12;
 
+  // 先计算 content bottom
   const recentBottom = (RECENT_RECTS[0].y + RECENT_RECTS[0].h);
   const btnRowY = recentBottom + g_recent_to_btn;
 
@@ -171,19 +175,22 @@ function computeLayout() {
   const waveH = btnH;
   const waveBottom_base = waveTop_base + WAVE_ROWS * waveH + (WAVE_ROWS - 1) * waveRowGap;
 
-  // 尝试整体下移
+  // 先尝试整体下移
   const desiredShift = CONTROLS_SHIFT_Y;
   let shiftY = desiredShift;
 
+  // 如果下移后会裁切：先把 shiftY 限制住
   const maxShiftAllowed = (height - BOTTOM_PAD) - waveBottom_base;
   shiftY = max(0, min(shiftY, maxShiftAllowed));
 
+  // 如果即使 shift=0 也会裁切：就压缩间距
   let waveBottom = waveBottom_base + shiftY;
-
-  // 高度不够：压缩间距
   if (waveBottom > height - BOTTOM_PAD) {
+    // 计算可压缩空间
     const fixed =
+      // 从顶部到 recentBottom 都是“固定”的（色盘 + recent 自己）
       (recentBottom)
+      // 固定控件高度
       + btnH + INPUT_H + RANDOM_H
       + SLIDER_COUNT * SLIDER_H
       + WAVE_ROWS * waveH
@@ -197,8 +204,8 @@ function computeLayout() {
 
     const availableVar = height - fixed;
 
-    // 最低压缩到 0.58
-    const s = clamp(availableVar / neededVar, 0.58, 1);
+    // 比例压缩（最低压到 0.55，避免太挤）
+    const s = clamp(availableVar / neededVar, 0.55, 1);
 
     g_recent_to_btn *= s;
     g_btn_to_input *= s;
@@ -208,6 +215,7 @@ function computeLayout() {
     g_sliders_to_wave *= s;
     waveRowGap *= s;
 
+    // 重新计算一遍（shiftY 此时只能是 0 或很小）
     const btnRowY2 = recentBottom + g_recent_to_btn;
 
     const inputY2 = btnRowY2 + btnH + g_btn_to_input;
@@ -218,6 +226,7 @@ function computeLayout() {
 
     const waveBottom2 = waveTop2 + WAVE_ROWS * waveH + (WAVE_ROWS - 1) * waveRowGap;
 
+    // 再给一点 shift（如果还有空间）
     const maxShift2 = (height - BOTTOM_PAD) - waveBottom2;
     shiftY = max(0, min(desiredShift, maxShift2));
 
@@ -241,6 +250,7 @@ function computeLayout() {
       waveTop: waveTop2 + shiftY
     };
   } else {
+    // 不裁切：用默认间距 + shiftY
     layout = {
       pad, btnH, btnW, btnGapX,
       INPUT_H,
@@ -262,7 +272,7 @@ function computeLayout() {
     };
   }
 
-  // Pause/Save：放在原 reset/pause 那一行位置
+  // Pause/Save：放在一行
   FUNC_RECTS = {
     pause: { x: pad, y: layout.btnRowY, w: btnW, h: btnH },
     save:  { x: pad + btnW + btnGapX, y: layout.btnRowY, w: btnW, h: btnH }
@@ -304,44 +314,35 @@ function setup() {
   pauseButton = rectToCapButton(FUNC_RECTS.pause, "Pause");
   saveButton  = rectToCapButton(FUNC_RECTS.save,  "Save");
 
-  // ✅ 输入框：默认空，让它显示 placeholder；但画面默认 glyph 仍是 X
+  // ✅ 输入框：默认值就是 X（placeholder 只是提示，不会覆盖 value）
   glyphChar = "X";
-  glyphInput = createInput("");
+  glyphInput = createInput("X");
   glyphInput.addClass("glyphInput");
   glyphInput.attribute("maxlength", "2");
   glyphInput.attribute("placeholder", "Try a letter");
+  glyphInput.value("X"); // ✅ 强制写入，避免显示 placeholder
   placeGlyphInput();
 
   glyphInput.input(() => {
     let v = glyphInput.value();
-
-    // ✅ 空：恢复默认 X（画面不会消失）
-    if (v.length === 0) {
-      glyphChar = "X";
-      return;
-    }
-
-    // 最多 2 个字符（XY）
-    if (v.length > 2) {
-      v = v.slice(0, 2);
-      glyphInput.value(v);
-    }
+    if (v.length === 0) { glyphChar = ""; return; }
+    if (v.length > 2) { v = v.slice(0, 2); glyphInput.value(v); }
     glyphChar = v;
   });
 
-  // 失焦：如果空，就保持默认 X（不往输入框里写 X，让 placeholder 继续显示）
   glyphInput.elt.addEventListener("blur", () => {
     if (!glyphInput.value() || glyphInput.value().length === 0) {
       glyphChar = "X";
+      glyphInput.value("X");
     }
   });
 
-  // ✅ Randomize：更显眼（满宽 + 更高）
+  // Randomize
   randomizeButton = new CapButton(
     cw/2,
     layout.randomY + layout.randomH/2,
-    cw - layout.pad*2,        // 已经是面板内最大宽度
-    layout.randomH,           // 更高
+    cw - layout.pad*2,
+    layout.randomH,
     "Randomize",
     true
   );
@@ -353,7 +354,7 @@ function setup() {
     sliders.push(new Slider(cw/2, y + layout.sliderH/2, 200, layout.sliderH, sliderName[i], 0.5));
   }
 
-  // Wave buttons 2×2
+  // Wave buttons 2×2（在滑块下面）
   waveButtons = [];
   const names = ["Sin","Square","Triangle","Sawtooth"];
   for (let r = 0; r < 2; r++) {
@@ -378,8 +379,10 @@ function windowResized() {
   pauseButton = rectToCapButton(FUNC_RECTS.pause, isAnimating ? "Pause" : "Play");
   saveButton  = rectToCapButton(FUNC_RECTS.save,  "Save");
 
+  // 重新定位输入框
   placeGlyphInput();
 
+  // 重新生成 Randomize / sliders / waves（简单稳定）
   randomizeButton = new CapButton(
     cw/2,
     layout.randomY + layout.randomH/2,
@@ -836,9 +839,7 @@ class CapButton {
     fill(255);
     useUIFont();
     textAlign(CENTER, CENTER);
-    // ✅ Randomize 更显眼：字号略大一点
-    const fs = (this.str === "Randomize") ? this.h * 0.55 : this.h * 0.5;
-    textSize(fs);
+    textSize(this.h * 0.5);
     text(this.str, 0, 0);
     pop();
   }
