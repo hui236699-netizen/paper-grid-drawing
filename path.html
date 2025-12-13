@@ -3,132 +3,103 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Font Path Method</title>
+  <title>MathA Generator</title>
   <style>
     html, body { margin:0; padding:0; background:#0f1013; overflow:hidden; }
     canvas { display:block; margin:0 auto; }
-
-    /* 左侧输入框（HTML，不依赖 p5.dom） */
-    #glyphInput {
-      position: fixed;
-      left: 20px;
-      top: 240px;          /* 在颜色面板下面 */
-      width: 200px;
-      height: 36px;
-      border-radius: 10px;
-      border: 1px solid rgba(255,255,255,.12);
-      background: rgba(255,255,255,.06);
-      color: #fff;
-      padding: 0 10px;
-      box-sizing: border-box;
-      outline: none;
-      font-size: 14px;
-      z-index: 10;
-    }
-    #glyphHint {
-      position: fixed;
-      left: 20px;
-      top: 280px;
-      width: 200px;
-      color: rgba(255,255,255,.65);
-      font-size: 12px;
-      line-height: 1.3;
-      z-index: 10;
-      pointer-events: none;
-    }
   </style>
-
   <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
 </head>
 <body>
-
-<input id="glyphInput" value="A" maxlength="12" />
-<div id="glyphHint">Input a letter / word</div>
-
 <script>
-/* =================== 基础设置 =================== */
+/* ===========================
+   1) 全局参数（保持原逻辑）
+   =========================== */
 const CANVAS_W = 1440;
 const CANVAS_H = 900;
-
-let cw = 200;      // 左侧栏宽
-let ch = 0;
 
 let maxAmp = 50;
 let t = 0;
 
-// ✅ Phase 已删除
 let scaleVal = 1.0;
 let strokeW = 2;
 let amplitude = 10;
 let frequency = 1;
+
+// ✅ phase 还在逻辑里，但不提供滑块（默认 0）
+let phase = 0;
+
 let isAnimating = true;
 let animationSpeed = 0.02;
 
 let currentFunction = 0;
 const functionNames = ["Sin", "Square", "Triangle", "Sawtooth"];
 
-// 字体
-const FONT_PATH = "assets/fonts/ABCFavoritHebrewBoldVariable-Trial.ttf";
-let fontObj = null;
-let fontOK = false;
+// 面板
+let cw = 200;
+let ch = 0;
 
-// 颜色（用你之前 draw.html 的：SB 方块 + Hue 条）
+// 字体（仅用于 UI 文本显示；加载失败也不会影响绘制）
+const FONT_PATH = "assets/fonts/ABCFavoritHebrewBoldVariable-Trial.ttf";
+let uiFont = null;
+let fontLoaded = false;
+
+/* ===========================
+   2) 颜色模块：用你 draw.html 那套 SB + Hue
+   =========================== */
 let hueVal = 220;
 let satVal = 100;
 let briVal = 80;
 let currentColor;
 
-// 颜色面板布局
 const COLOR_PANEL_H = 190;
-const COLOR_MAIN = { x: 10, y: 10, w: cw - 30 - 10, h: COLOR_PANEL_H }; // 左边大块
-const COLOR_HUE  = { x: cw - 30, y: 10, w: 20, h: COLOR_PANEL_H };      // 右边色条
+const COLOR_MAIN = { x: 10, y: 10, w: cw - 30 - 10, h: COLOR_PANEL_H }; // 左边 SB 方块
+const COLOR_HUE  = { x: cw - 30, y: 10, w: 20, h: COLOR_PANEL_H };      // 右边 Hue 条
 
 let sbGraphic, hueGraphic;
 
-/* =================== UI：Sliders / Buttons =================== */
-// ✅ Phase Slider 已删除 -> 只剩 5 个
+/* ===========================
+   3) UI：Sliders（删掉 Phase 滑块）
+   =========================== */
+// ✅ 只剩 5 个滑块（不包含 Phase）
 const sliderName = ["Scale", "Stroke Weight", "Amplitude", "Frequency", "Animation Speed"];
 let sliders = [];
+
+// 按钮
 let capButtons = [];
 
-function preload() {
-  // 尝试加载字体（变量字体可能失败）
-  fontObj = loadFont(
-    FONT_PATH,
-    () => { fontOK = true; },
-    () => { fontOK = false; fontObj = null; }
-  );
-}
-
+/* ===========================
+   setup / draw
+   =========================== */
 function setup() {
   createCanvas(CANVAS_W, CANVAS_H);
   pixelDensity(1);
 
   // 初始颜色
-  currentColor = color("#ffffff");
+  updateCurrentColorFromHSV(true);
 
-  // 构建颜色面板图形
+  // 颜色图形
   buildHueGraphic();
   buildSBGraphic();
-  updateCurrentColorFromHSV(false);
 
-  // Sliders：从 360 到 760 垂直排布（原来你是 400..750，这里更均匀）
-  const sliderStartY = 360;
-  const sliderEndY   = 760;
-  for (let i = 0; i < slidersCount(); i++) {
-    const y = map(i, 0, slidersCount() - 1, sliderStartY, sliderEndY);
+  // Sliders 布局（类似你原来 400..750，但更均匀）
+  const sliderStartY = 380;
+  const sliderEndY = 760;
+  for (let i = 0; i < 5; i++) {
+    const y = map(i, 0, 4, sliderStartY, sliderEndY);
     sliders.push(new Slider(100, y, 150, 40, sliderName[i], 0.5));
   }
 
-  // Buttons（右侧）
+  // CapButtons（右侧）
   const capNames = ["Save", "Toggle Animation", "Reset", "Sin", "Square", "Triangle", "Sawtooth"];
   for (let i = 0; i < capNames.length; i++) {
     const y = map(i, 0, capNames.length - 1, 55, 500);
     capButtons.push(new CapButton(width - 120, y, 150, 30, capNames[i]));
   }
-}
 
-function slidersCount() { return 5; }
+  // ✅ 异步加载字体（避免 variable font 卡死）
+  tryLoadUIFont();
+}
 
 function draw() {
   background(240);
@@ -136,28 +107,25 @@ function draw() {
   updateParameters();
   drawGrid();
 
-  // 绘制字形（如果字体失败，给提示）
-  if (!fontOK || !fontObj) {
-    drawFontFailHint();
-  } else {
-    push();
-    translate(width / 2, height / 2);
-    scale(scaleVal);
-    drawGlyphFromInput();   // ✅ 用输入框的内容绘制
-    pop();
-  }
+  // 中央 MathA（完全保持你原逻辑）
+  push();
+  translate(width / 2, height / 2);
+  scale(scaleVal);
+  drawMathA();
+  pop();
 
-  // 左侧面板底色
+  // 左侧面板
   noStroke();
   fill(31, 30, 36);
   rect(0, 0, cw, height);
 
-  // 颜色模块（旧版 draw.html 风格）
+  // 颜色模块
   drawColorPanel();
 
-  // 右下角函数预览
+  // 右下角函数预览（保留 phase）
   drawFunctionDisplay();
 
+  // 动画
   if (isAnimating) t += animationSpeed;
 
   // Sliders
@@ -167,100 +135,60 @@ function draw() {
   for (let b of capButtons) b.display();
 }
 
-/* =================== 网格 =================== */
+/* ===========================
+   Grid（和原版一致）
+   =========================== */
 function drawGrid() {
   stroke(220);
   strokeWeight(1);
-
   const step = 25;
-  for (let x = cw; x <= width; x += step) line(x, ch, x, height);
-  for (let y = ch; y <= height; y += step) line(cw, y, width, y);
+
+  for (let x = cw; x <= width; x += step) {
+    line(x, ch, x, height);
+  }
+  for (let y = ch; y <= height; y += step) {
+    line(cw, y, width, y);
+  }
 }
 
-/* =================== 关键：把 Processing 的“曲线扰动理念”用于字形 ===================
-   思路：textToPoints 得到轮廓点序列
-   对每个点沿“局部法线方向”偏移：offset = applyFunction(frequency*dis*TWO_PI + t) * amplitude
-   这样仍然是“路径被数学函数扰动”的理念，而不是我之前那种径向随机点云。
-*/
-function drawGlyphFromInput() {
-  const txt = (document.getElementById("glyphInput").value || "A").trim();
-  if (!txt) return;
-
+/* ===========================
+   MathA（保持 Processing 逻辑）
+   =========================== */
+function drawMathA() {
   stroke(currentColor);
   strokeWeight(strokeW);
   noFill();
 
-  // 字号（跟 scaleVal 配合）
-  const fontSize = 240;
+  // Left leg
+  drawParametricCurve(-50, 100, 0, -100);
 
-  // 先做 bounds，让文字居中在(0,0)
-  const b = fontObj.textBounds(txt, 0, 0, fontSize);
+  // Right leg
+  drawParametricCurve(50, 100, 0, -100);
 
-  // textToPoints（点密度可调）
-  const pts = fontObj.textToPoints(txt, -b.x - b.w/2, -b.y + b.h/2, fontSize, {
-    sampleFactor: 0.12,
-    simplifyThreshold: 0
-  });
-
-  if (!pts || pts.length < 2) return;
-
-  // 断开不同轮廓：距离太大就断开
-  const breakDist = max(10, fontSize * 0.07);
-
-  // 画线段（按点序列连接），每个点沿法线偏移
-  let started = false;
-  let prev = null;
-  let disAcc = 0;
-
-  for (let i = 0; i < pts.length; i++) {
-    const p = pts[i];
-
-    if (prev) {
-      const d = dist(prev.x, prev.y, p.x, p.y);
-      if (d > breakDist) {
-        if (started) endShape();
-        started = false;
-        prev = null;
-        disAcc = 0;
-      } else {
-        disAcc += d * 0.01; // 类似你 Processing 里 dis*0.01 的尺度
-      }
-    }
-
-    // 求“局部切线方向”（用前后点）
-    const p0 = pts[max(0, i - 1)];
-    const p1 = pts[min(pts.length - 1, i + 1)];
-    let tx = p1.x - p0.x;
-    let ty = p1.y - p0.y;
-    const tl = max(1e-6, sqrt(tx*tx + ty*ty));
-    tx /= tl; ty /= tl;
-
-    // 法线 = (-ty, tx)
-    const nx = -ty;
-    const ny = tx;
-
-    // ✅ Phase 已删除：输入只剩 frequency * dis * TWO_PI + t
-    const offset = applyFunction(frequency * disAcc * TWO_PI + t) * amplitude;
-
-    const x = p.x + nx * offset;
-    const y = p.y + ny * offset;
-
-    if (!started) {
-      beginShape();
-      started = true;
-    }
-
-    // Sin / Triangle 用 curveVertex 更像你原来
-    if (currentFunction === 0 || currentFunction === 2) curveVertex(x, y);
-    else vertex(x, y);
-
-    prev = p;
-  }
-
-  if (started) endShape();
+  // Crossbar
+  drawParametricCurve(-30, 30, 30, 30);
 }
 
-/* =================== 函数 =================== */
+function drawParametricCurve(x1, y1, x2, y2) {
+  beginShape();
+  for (let i = 0; i <= 1.00001; i += 0.01) {
+    let x = lerp(x1, x2, i);
+    let y = lerp(y1, y2, i);
+
+    // ✅ 这里完全照你的原逻辑：frequency*dis*TWO_PI + phase + t
+    let dis = dist(x, y, x1, y1) * 0.01;
+    let offset = applyFunction(frequency * dis * TWO_PI + phase + t) * amplitude;
+
+    let baseLen = dist(x1, y1, x2, y2);
+    x += offset * (y2 - y1) / baseLen;
+    y -= offset * (x2 - x1) / baseLen;
+
+    if (currentFunction === 0 || currentFunction === 2) curveVertex(x, y);
+    else vertex(x, y);
+  }
+  endShape();
+}
+
 function applyFunction(tt) {
   switch (currentFunction) {
     case 0: return sin(tt);
@@ -271,16 +199,21 @@ function applyFunction(tt) {
   }
 }
 
-/* =================== 参数更新（Phase 已删） =================== */
+/* ===========================
+   Parameters（删掉 Phase 滑块，但 phase 逻辑不动）
+   =========================== */
 function updateParameters() {
   scaleVal = map(sliders[0].val, 0, 1, 0.5, 3);
-  strokeW = map(sliders[1].val, 0, 1, 0.5, 20);
+  strokeW  = map(sliders[1].val, 0, 1, 0.5, 20);
   amplitude = map(sliders[2].val, 0, 1, 0, maxAmp);
   frequency = map(sliders[3].val, 0, 1, 0.1, 5);
   animationSpeed = map(sliders[4].val, 0, 1, 0, 0.1);
+  // ✅ phase 不再由滑块更新，但仍参与公式
 }
 
-/* =================== 右下角函数预览（Phase 已删） =================== */
+/* ===========================
+   Function Display（保留 phase + t）
+   =========================== */
 function drawFunctionDisplay() {
   const displayWidth = 250;
   const displayHeight = 250;
@@ -290,25 +223,26 @@ function drawFunctionDisplay() {
   strokeWeight(3);
 
   push();
-  translate(width - displayWidth/2 - margin, height - displayHeight/2 - margin);
-  line(-displayWidth/2, 0, displayWidth/2, 0);
-  line(0, -displayHeight/2, 0, displayHeight/2);
+  translate(width - displayWidth / 2 - margin, height - displayHeight / 2 - margin);
+
+  line(-displayWidth / 2, 0, displayWidth / 2, 0);
+  line(0, -displayHeight / 2, 0, displayHeight / 2);
 
   fill(0);
   noStroke();
   textSize(15);
-  triangle(-5, -displayHeight/2, 5, -displayHeight/2, 0, -displayHeight/2-15);
-  triangle(displayWidth/2+15, 0, displayWidth/2, -5, displayWidth/2, 5);
+
+  triangle(-5, -displayHeight / 2, 5, -displayHeight / 2, 0, -displayHeight / 2 - 15);
+  triangle(displayWidth / 2 + 15, 0, displayWidth / 2, -5, displayWidth / 2, 5);
 
   fill(0);
-  textSize(15);
   textAlign(LEFT, TOP);
-  text("y", 15, -displayHeight/2);
-  text("x", displayWidth/2, 25);
+  text("y", 15, -displayHeight / 2);
+  text("x", displayWidth / 2, 25);
 
   textSize(20);
   textAlign(CENTER, BOTTOM);
-  text(functionNames[currentFunction] + " Function", 0, -displayHeight/2-40);
+  text(functionNames[currentFunction] + " Function", 0, -displayHeight / 2 - 40);
   pop();
 
   const picCol = color(140);
@@ -318,14 +252,17 @@ function drawFunctionDisplay() {
 
   beginShape();
   for (let x = 0; x < displayWidth; x += 2) {
-    const amp = map(amplitude, 0, maxAmp, 0, displayHeight / 2);
-    const y = applyFunction(frequency * x * 0.02 + t) * amp; // ✅ 无 phase
-    vertex(width - displayWidth - margin + x, height - displayHeight/2 - margin - y);
+    let amp = map(amplitude, 0, maxAmp, 0, displayHeight / 2);
+    // ✅ 保留 phase + t（跟你的 Processing 一样）
+    let y = applyFunction(frequency * x * 0.02 + phase + t) * amp;
+    vertex(width - displayWidth - margin + x, height - displayHeight / 2 - margin - y);
   }
   endShape();
 }
 
-/* =================== 颜色模块（复用你之前 draw.html 的逻辑） =================== */
+/* ===========================
+   颜色模块：SB + Hue（draw.html 同款）
+   =========================== */
 function buildHueGraphic() {
   hueGraphic = createGraphics(COLOR_HUE.w, COLOR_HUE.h);
   hueGraphic.colorMode(HSB, 360, 100, 100);
@@ -333,10 +270,10 @@ function buildHueGraphic() {
   hueGraphic.loadPixels();
 
   for (let y = 0; y < COLOR_HUE.h; y++) {
-    const h = map(y, 0, COLOR_HUE.h - 1, 0, 360);
-    const c = hueGraphic.color(h, 100, 100);
+    let h = map(y, 0, COLOR_HUE.h - 1, 0, 360);
+    let c = hueGraphic.color(h, 100, 100);
     for (let x = 0; x < COLOR_HUE.w; x++) {
-      const idx = (y * COLOR_HUE.w + x) * 4;
+      let idx = (y * COLOR_HUE.w + x) * 4;
       hueGraphic.pixels[idx]     = red(c);
       hueGraphic.pixels[idx + 1] = green(c);
       hueGraphic.pixels[idx + 2] = blue(c);
@@ -354,10 +291,10 @@ function buildSBGraphic() {
 
   for (let y = 0; y < COLOR_MAIN.h; y++) {
     for (let x = 0; x < COLOR_MAIN.w; x++) {
-      const s = map(x, 0, COLOR_MAIN.w - 1, 0, 100);
-      const b = map(y, 0, COLOR_MAIN.h - 1, 100, 0);
-      const c = sbGraphic.color(hueVal, s, b);
-      const idx = (y * COLOR_MAIN.w + x) * 4;
+      let sVal = map(x, 0, COLOR_MAIN.w - 1, 0, 100);
+      let bVal = map(y, 0, COLOR_MAIN.h - 1, 100, 0);
+      let c = sbGraphic.color(hueVal, sVal, bVal);
+      let idx = (y * COLOR_MAIN.w + x) * 4;
       sbGraphic.pixels[idx]     = red(c);
       sbGraphic.pixels[idx + 1] = green(c);
       sbGraphic.pixels[idx + 2] = blue(c);
@@ -381,13 +318,13 @@ function drawColorPanel() {
   image(hueGraphic, COLOR_HUE.x, COLOR_HUE.y);
 
   // Hue 标记
-  const hy = map(hueVal, 0, 360, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h);
+  let hy = map(hueVal, 0, 360, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h);
   stroke(255);
   strokeWeight(2);
   line(COLOR_HUE.x - 4, hy, COLOR_HUE.x, hy);
   line(COLOR_HUE.x + COLOR_HUE.w, hy, COLOR_HUE.x + COLOR_HUE.w + 4, hy);
 
-  // 当前色块（在下面画一个小条）
+  // 当前色块
   noStroke();
   fill(currentColor);
   rect(10, COLOR_MAIN.y + COLOR_MAIN.h + 10, cw - 20, 16, 8);
@@ -398,8 +335,8 @@ function handleColorClick() {
   if (mouseX >= COLOR_MAIN.x && mouseX <= COLOR_MAIN.x + COLOR_MAIN.w &&
       mouseY >= COLOR_MAIN.y && mouseY <= COLOR_MAIN.y + COLOR_MAIN.h) {
 
-    const sx = constrain(mouseX, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w);
-    const sy = constrain(mouseY, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h);
+    let sx = constrain(mouseX, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w);
+    let sy = constrain(mouseY, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h);
 
     satVal = map(sx, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w, 0, 100);
     briVal = map(sy, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h, 100, 0);
@@ -412,7 +349,7 @@ function handleColorClick() {
   if (mouseX >= COLOR_HUE.x && mouseX <= COLOR_HUE.x + COLOR_HUE.w &&
       mouseY >= COLOR_HUE.y && mouseY <= COLOR_HUE.y + COLOR_HUE.h) {
 
-    const yy = constrain(mouseY, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h);
+    let yy = constrain(mouseY, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h);
     hueVal = map(yy, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h, 0, 360);
 
     updateCurrentColorFromHSV(true);
@@ -422,9 +359,11 @@ function handleColorClick() {
   return false;
 }
 
-/* =================== 鼠标交互 =================== */
+/* ===========================
+   Mouse Interaction
+   =========================== */
 function mousePressed() {
-  // 颜色面板优先
+  // 颜色优先
   if (handleColorClick()) return;
 
   // sliders
@@ -446,7 +385,7 @@ function mouseReleased() {
 function handleButtonPress(label) {
   switch (label) {
     case "Save":
-      saveCanvas("FontPath", "png");
+      saveCanvas("MathA", "png");
       break;
     case "Toggle Animation":
       isAnimating = !isAnimating;
@@ -466,26 +405,32 @@ function resetToDefaults() {
   currentFunction = 0;
   isAnimating = true;
   t = 0;
+
+  // sliders 全回 0.5
   for (let s of sliders) {
     s.val = 0.5;
     s.state = false;
   }
-  // 颜色回到一个偏蓝的默认
+
+  // 颜色回默认
   hueVal = 220; satVal = 100; briVal = 80;
   updateCurrentColorFromHSV(true);
 
-  // 输入框也回到 A
-  document.getElementById("glyphInput").value = "A";
+  // ✅ phase 不变（仍保留逻辑里，默认就是 0）
 }
 
-/* =================== Slider / CapButton =================== */
+/* ===========================
+   Slider / CapButton（复刻你原来的感觉）
+   =========================== */
 class CapButton {
   constructor(x, y, w, h, str) {
-    this.x=x; this.y=y; this.w=w; this.h=h; this.str=str;
-    this.scl=1; this.gray=150; this.state=false;
+    this.x = x; this.y = y; this.w = w; this.h = h; this.str = str;
+    this.scl = 1;
+    this.gray = 150;
+    this.state = false;
   }
   hover() {
-    return (abs(mouseX-this.x)<this.w/2 && abs(mouseY-this.y)<this.h/2);
+    return (abs(mouseX - this.x) < this.w / 2 && abs(mouseY - this.y) < this.h / 2);
   }
   display() {
     push();
@@ -502,6 +447,7 @@ class CapButton {
 
     noStroke();
     translate(this.x, this.y);
+
     push();
     scale(this.scl);
     rect(0, 0, this.w, this.h, 40);
@@ -510,25 +456,29 @@ class CapButton {
     fill(255);
     textSize(this.h * 0.5);
     textAlign(CENTER, CENTER);
+    useUIFont();
     text(this.str, 0, 0);
+
     pop();
   }
 }
 
 class Slider {
   constructor(x, y, w, h, str, val) {
-    this.x=x; this.y=y; this.w=w; this.h=h; this.str=str; this.val=val;
-    this.state=false;
+    this.x = x; this.y = y; this.w = w; this.h = h;
+    this.str = str;
+    this.val = val;
+    this.state = false;
   }
   hover() {
-    return (abs(mouseX-this.x)<this.w/2 && abs(mouseY-this.y)<this.h/2);
+    return (abs(mouseX - this.x) < this.w / 2 && abs(mouseY - this.y) < this.h / 2);
   }
   click() {
     this.state = this.hover();
   }
   drag() {
     if (!this.state) return;
-    let v = map(mouseX, this.x-this.w/2, this.x+this.w/2, 0, 1);
+    let v = map(mouseX, this.x - this.w / 2, this.x + this.w / 2, 0, 1);
     v = constrain(v, 0, 1);
     this.val = lerp(this.val, v, 0.12);
   }
@@ -542,41 +492,37 @@ class Slider {
     rectMode(CENTER);
     noStroke();
 
-    fill(this.hover()?110:85);
+    fill(this.hover() ? 110 : 85);
     rect(0, 0, this.w, this.h, 100);
 
-    const vw = map(this.val, 0, 1, 0, this.w);
-    fill(this.hover()?160:120);
-    rect(-this.w/2 + vw/2, 0, vw, this.h, 100);
+    let vw = map(this.val, 0, 1, 0, this.w);
+    fill(this.hover() ? 160 : 120);
+    rect(-this.w / 2 + vw / 2, 0, vw, this.h, 100);
 
     fill(255);
     textSize(this.h * 0.4);
     textAlign(CENTER, CENTER);
+    useUIFont();
     text(this.str, 0, 0);
+
     pop();
   }
 }
 
-/* =================== 字体失败提示 =================== */
-function drawFontFailHint() {
-  push();
-  fill(0, 0, 0, 60);
-  noStroke();
-  rect(cw + 40, 60, width - cw - 80, 180, 18);
-
-  fill(255);
-  textAlign(LEFT, TOP);
-  textSize(16);
-  text("Font load failed (or Variable font unsupported)", cw + 70, 90);
-
-  textSize(12);
-  fill(230);
-  text(
-    "你的字形绘制依赖 textToPoints()，必须成功加载字体。\n\n请确认字体能被浏览器直接打开：\n" +
-    location.origin + "/" + FONT_PATH + "\n\n如果能打开但仍失败：说明变量字体不兼容，\n请换一个普通 TTF/OTF（非 Variable）。",
-    cw + 70, 120
+/* ===========================
+   Font helper：异步加载，失败就系统字体
+   =========================== */
+function tryLoadUIFont() {
+  loadFont(
+    FONT_PATH,
+    (f) => { uiFont = f; fontLoaded = true; },
+    () => { uiFont = null; fontLoaded = false; }
   );
-  pop();
+}
+
+function useUIFont() {
+  if (fontLoaded && uiFont) textFont(uiFont);
+  else textFont("system-ui");
 }
 </script>
 </body>
