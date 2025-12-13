@@ -31,7 +31,6 @@
       padding: 8px 10px;
       font-size: 14px;
       width: 200px;
-      height: 36px;
       box-sizing: border-box;
     }
     .glyphInput::placeholder{
@@ -48,7 +47,7 @@ const FONT_PATH = "assets/fonts/ABCFavoritHebrewBoldVariable-Trial.ttf";
 let uiFont = null;
 let fontLoaded = false;
 
-/* =================== 左侧操作栏（响应式） =================== */
+/* =================== 左侧操作栏（响应式，但与你 draw.html 的风格一致） =================== */
 let cw = 240;                // 会在 computeLayout() 里动态更新
 const COLOR_PANEL_H = 190;
 let showGrid = true;
@@ -73,7 +72,7 @@ const functionNames = ["Sin", "Square", "Triangle", "Sawtooth"];
 
 /* =================== 字母输入（默认 X） =================== */
 let glyphInput;
-let glyphChar = "X";   // ✅ 默认 X
+let glyphChar = "X";
 
 /* =================== 颜色模块（按 draw.html 结构） =================== */
 let hue = 0;
@@ -91,202 +90,120 @@ let RECENT_RECTS = [];
 const defaultRecentHex = ["#000000", "#482BCC", "#FF04A5", "#FFE900", "#8CE255"];
 let recentColors = [];
 
-// ✅ 你要“往右一点点”：调这个（4~10）
+// ✅ 你要“往右一点点”：调这个（4~8）
 const RECENT_BIAS_X = 6;
 
 /* =================== 功能按钮（只保留 Pause / Save） =================== */
 let pauseButton, saveButton;
 let FUNC_RECTS = {};
 
-/* =================== Randomize 按钮 =================== */
+/* =================== Randomize 按钮（在输入框下面） =================== */
 let randomizeButton;
 
 /* =================== 5个滑块 =================== */
 const sliderName = ["Scale", "Stroke Weight", "Amplitude", "Frequency", "Animation Speed"];
 let sliders = [];
 
-/* =================== 波形按钮（放左侧下方，2×2） =================== */
-let waveButtons = [];
+/* =================== 波形按钮（挪到左边下方，2×2） =================== */
+let waveButtons = []; // 4个：Sin/Square/Triangle/Sawtooth
 
-/* =================== 你要的：整体下移 + 底部留白 + 短窗口不裁切 =================== */
-const CONTROLS_SHIFT_Y = 18;  // 想下移多少（窗口足够高时生效）
-const BOTTOM_PAD = 22;        // 底部留白
+/* =================== 你要的整体下移 + 底部留白（自动不溢出） =================== */
+const CONTROLS_SHIFT_Y = 18;  // ✅ 整体下移量（可调 12~28）
+const BOTTOM_PAD = 22;        // ✅ 底部留白（可调 18~32）
 
 /* =================== 小工具 =================== */
 function clamp(v, lo, hi) { return max(lo, min(hi, v)); }
 
-/* =================== 布局计算（关键修复：高度不够时自动压缩间距） =================== */
+/* =================== 布局计算：响应式 cw + 颜色区 + recent居中 + 控件安全下移 =================== */
 let layout = null;
 
 function computeLayout() {
-  // 左侧栏宽度：响应式
+  // 左侧栏宽度：响应式（不固定死值）
   cw = clamp(width * 0.18, 200, 320);
 
   const pad = 16;
   const gap = 10;
 
-  // ✅ 色盘：保证永远塞得进 COLOR_PANEL_H（避免溢出）
+  // 色盘尺寸：尽量像 draw.html（方形 SB + 细 Hue）
   const hueW = clamp(cw * 0.10, 18, 30);
+  const sbMaxH = clamp(height * 0.28, 170, 260);
   const sbW = cw - pad * 2 - hueW - gap;
-  const sbMaxByPanel = COLOR_PANEL_H - pad * 2;
-  const sbSize = max(1, floor(min(sbW, sbMaxByPanel)));
+  const sbSize = floor(clamp(min(sbW, sbMaxH), 150, sbMaxH));
 
   COLOR_MAIN = { x: pad, y: pad, w: sbSize, h: sbSize };
   COLOR_HUE  = { x: pad + sbSize + gap, y: pad, w: floor(hueW), h: sbSize };
 
   // recent：居中 + 轻微右移
-  rebuildRecentRects();
+  rebuildRecentRects(pad);
 
-  // 按钮尺寸
+  // Pause/Save：放在原 Reset/Pause 那一行的位置
   const btnGapX = 12;
-  const btnH = clamp(height * 0.035, 26, 38);
+  const btnH = clamp(height * 0.035, 30, 38);
   const btnW = (cw - pad * 2 - btnGapX) / 2;
 
-  // =========================
-  // ✅ 下面这一段是“防裁切核心”：先用默认间距算一遍
-  // 如果超出底部，就按比例压缩间距/sliderGap/waveRowGap
-  // =========================
-  const INPUT_H = 36;
-  const RANDOM_H = btnH;
-  const SLIDER_H = 34;
-  const SLIDER_COUNT = 5;
-  const WAVE_ROWS = 2;
+  const recentBottom = RECENT_RECTS.length ? (RECENT_RECTS[0].y + RECENT_RECTS[0].h) : (COLOR_MAIN.y + COLOR_MAIN.h + 28);
+  const btnRowY = recentBottom + 18;
 
-  // 默认间距（会被压缩）
-  let g_recent_to_btn = 18;
-  let g_btn_to_input = 18;
-  let g_input_to_rand = 22;
-  let g_rand_to_sliders = 24;
-  let sliderGap = 54;
-  let g_sliders_to_wave = 28;
-  let waveRowGap = 12;
-
-  // 先计算 content bottom
-  const recentBottom = (RECENT_RECTS[0].y + RECENT_RECTS[0].h);
-  const btnRowY = recentBottom + g_recent_to_btn;
-
-  const inputY = btnRowY + btnH + g_btn_to_input;
-  const randomY = inputY + INPUT_H + g_input_to_rand;
-
-  const firstSliderY_base = randomY + RANDOM_H + g_rand_to_sliders;
-  const waveTop_base = firstSliderY_base + SLIDER_COUNT * SLIDER_H + (SLIDER_COUNT - 1) * sliderGap + g_sliders_to_wave;
-
-  const waveW = (cw - pad * 2 - 12) / 2;
-  const waveH = btnH;
-  const waveBottom_base = waveTop_base + WAVE_ROWS * waveH + (WAVE_ROWS - 1) * waveRowGap;
-
-  // 先尝试整体下移
-  const desiredShift = CONTROLS_SHIFT_Y;
-  let shiftY = desiredShift;
-
-  // 如果下移后会裁切：先把 shiftY 限制住
-  const maxShiftAllowed = (height - BOTTOM_PAD) - waveBottom_base;
-  shiftY = max(0, min(shiftY, maxShiftAllowed));
-
-  // 如果即使 shift=0 也会裁切：就压缩间距
-  let waveBottom = waveBottom_base + shiftY;
-  if (waveBottom > height - BOTTOM_PAD) {
-    // 计算可压缩空间
-    const fixed =
-      // 从顶部到 recentBottom 都是“固定”的（色盘 + recent 自己）
-      (recentBottom)
-      // 固定控件高度
-      + btnH + INPUT_H + RANDOM_H
-      + SLIDER_COUNT * SLIDER_H
-      + WAVE_ROWS * waveH
-      + BOTTOM_PAD;
-
-    const neededVar =
-      g_recent_to_btn + g_btn_to_input + g_input_to_rand + g_rand_to_sliders
-      + (SLIDER_COUNT - 1) * sliderGap
-      + g_sliders_to_wave
-      + (WAVE_ROWS - 1) * waveRowGap;
-
-    const availableVar = height - fixed;
-
-    // 比例压缩（最低压到 0.55，避免太挤）
-    const s = clamp(availableVar / neededVar, 0.55, 1);
-
-    g_recent_to_btn *= s;
-    g_btn_to_input *= s;
-    g_input_to_rand *= s;
-    g_rand_to_sliders *= s;
-    sliderGap *= s;
-    g_sliders_to_wave *= s;
-    waveRowGap *= s;
-
-    // 重新计算一遍（shiftY 此时只能是 0 或很小）
-    const btnRowY2 = recentBottom + g_recent_to_btn;
-
-    const inputY2 = btnRowY2 + btnH + g_btn_to_input;
-    const randomY2 = inputY2 + INPUT_H + g_input_to_rand;
-
-    const firstSliderY2 = randomY2 + RANDOM_H + g_rand_to_sliders;
-    const waveTop2 = firstSliderY2 + SLIDER_COUNT * SLIDER_H + (SLIDER_COUNT - 1) * sliderGap + g_sliders_to_wave;
-
-    const waveBottom2 = waveTop2 + WAVE_ROWS * waveH + (WAVE_ROWS - 1) * waveRowGap;
-
-    // 再给一点 shift（如果还有空间）
-    const maxShift2 = (height - BOTTOM_PAD) - waveBottom2;
-    shiftY = max(0, min(desiredShift, maxShift2));
-
-    layout = {
-      pad, btnH, btnW, btnGapX,
-      INPUT_H,
-      randomH: RANDOM_H,
-      sliderH: SLIDER_H,
-      sliderGap,
-      waveW, waveH, waveRowGap,
-      g_recent_to_btn,
-      g_btn_to_input,
-      g_input_to_rand,
-      g_rand_to_sliders,
-      g_sliders_to_wave,
-      recentBottom,
-      btnRowY: btnRowY2 + shiftY,
-      inputY: inputY2 + shiftY,
-      randomY: randomY2 + shiftY,
-      firstSliderY: firstSliderY2 + shiftY,
-      waveTop: waveTop2 + shiftY
-    };
-  } else {
-    // 不裁切：用默认间距 + shiftY
-    layout = {
-      pad, btnH, btnW, btnGapX,
-      INPUT_H,
-      randomH: RANDOM_H,
-      sliderH: SLIDER_H,
-      sliderGap,
-      waveW, waveH, waveRowGap,
-      g_recent_to_btn,
-      g_btn_to_input,
-      g_input_to_rand,
-      g_rand_to_sliders,
-      g_sliders_to_wave,
-      recentBottom,
-      btnRowY: btnRowY + shiftY,
-      inputY: inputY + shiftY,
-      randomY: randomY + shiftY,
-      firstSliderY: firstSliderY_base + shiftY,
-      waveTop: waveTop_base + shiftY
-    };
-  }
-
-  // Pause/Save：放在一行
   FUNC_RECTS = {
-    pause: { x: pad, y: layout.btnRowY, w: btnW, h: btnH },
-    save:  { x: pad + btnW + btnGapX, y: layout.btnRowY, w: btnW, h: btnH }
+    pause: { x: pad, y: btnRowY, w: btnW, h: btnH },                // ✅ 放在原 Reset 的位置
+    save:  { x: pad + btnW + btnGapX, y: btnRowY, w: btnW, h: btnH } // ✅ 放在原 Pause 的位置
+  };
+
+  // 输入框位置（按钮下方）
+  const inputY = btnRowY + btnH + 18;
+
+  // Randomize 按钮位置（输入框下方）
+  const randomY = inputY + 36 + 22;
+  const randomRect = { x: pad, y: randomY, w: cw - pad * 2, h: btnH };
+
+  // sliders 起点（Randomize 下方）
+  const firstSliderY_base = randomY + btnH + 24;
+  const sliderGap = 54;
+
+  // wave buttons（2×2）放在 sliders 下方
+  const waveTop_base = firstSliderY_base + 5 * sliderGap + 28;
+  const waveColGap = 12;
+  const waveRowGap = 12;
+  const waveW = (cw - pad * 2 - waveColGap) / 2;
+  const waveH = btnH;
+
+  const waveLastBottom_base = waveTop_base + (2 * waveH + waveRowGap);
+
+  // ✅ 安全下移：想下移 CONTROLS_SHIFT_Y，但绝不贴底/溢出
+  const maxShiftAllowed = (height - BOTTOM_PAD) - waveLastBottom_base;
+  const shiftY = max(0, min(CONTROLS_SHIFT_Y, maxShiftAllowed));
+
+  // 应用 shiftY
+  const firstSliderY = firstSliderY_base + shiftY;
+  const waveTop = waveTop_base + shiftY;
+
+  // 输出布局包
+  layout = {
+    pad,
+    btnH, btnW,
+    inputX: pad,
+    inputY,
+    inputW: 200,
+    inputH: 36,
+    randomRect,
+    firstSliderY,
+    sliderGap,
+    waveTop,
+    waveW,
+    waveH,
+    waveColGap,
+    waveRowGap
   };
 }
 
-function rebuildRecentRects() {
+function rebuildRecentRects(pad) {
   const RECENT_COUNT = 5;
   const RECENT_GAP = 10;
   const RECENT_SIZE = 28;
 
   const totalW = RECENT_COUNT * RECENT_SIZE + (RECENT_COUNT - 1) * RECENT_GAP;
   const startX = (cw - totalW) / 2 + RECENT_BIAS_X;
-  const y = (COLOR_MAIN.y + COLOR_MAIN.h + 18);
+  const y = COLOR_MAIN.y + COLOR_MAIN.h + 18;
 
   RECENT_RECTS = [];
   for (let i = 0; i < RECENT_COUNT; i++) {
@@ -304,6 +221,7 @@ function setup() {
   createCanvas(windowWidth, windowHeight);
   pixelDensity(1);
 
+  // 默认颜色黑
   currentColor = color(0);
   recentColors = defaultRecentHex.map(h => color(h));
 
@@ -311,16 +229,15 @@ function setup() {
   buildHueGraphic();
   buildSBGraphic();
 
+  // Pause/Save 按钮
   pauseButton = rectToCapButton(FUNC_RECTS.pause, "Pause");
   saveButton  = rectToCapButton(FUNC_RECTS.save,  "Save");
 
-  // ✅ 输入框：默认值就是 X（placeholder 只是提示，不会覆盖 value）
-  glyphChar = "X";
+  // 输入框（placeholder + 无 Glyph 标题）
   glyphInput = createInput("X");
   glyphInput.addClass("glyphInput");
-  glyphInput.attribute("maxlength", "2");
+  glyphInput.attribute("maxlength", "2"); // 支持 XY
   glyphInput.attribute("placeholder", "Try a letter");
-  glyphInput.value("X"); // ✅ 强制写入，避免显示 placeholder
   placeGlyphInput();
 
   glyphInput.input(() => {
@@ -339,28 +256,28 @@ function setup() {
 
   // Randomize
   randomizeButton = new CapButton(
-    cw/2,
-    layout.randomY + layout.randomH/2,
-    cw - layout.pad*2,
-    layout.randomH,
+    layout.randomRect.x + layout.randomRect.w/2,
+    layout.randomRect.y + layout.randomRect.h/2,
+    layout.randomRect.w,
+    layout.randomRect.h,
     "Randomize",
     true
   );
 
-  // Sliders
+  // Sliders（从 firstSliderY 开始）
   sliders = [];
   for (let i = 0; i < 5; i++) {
-    const y = layout.firstSliderY + i * (layout.sliderH + layout.sliderGap);
-    sliders.push(new Slider(cw/2, y + layout.sliderH/2, 200, layout.sliderH, sliderName[i], 0.5));
+    const y = layout.firstSliderY + i * layout.sliderGap;
+    sliders.push(new Slider(cw/2, y + 17, 200, 34, sliderName[i], 0.5));
   }
 
-  // Wave buttons 2×2（在滑块下面）
+  // Wave buttons：2×2（左侧下方）
   waveButtons = [];
   const names = ["Sin","Square","Triangle","Sawtooth"];
   for (let r = 0; r < 2; r++) {
     for (let c = 0; c < 2; c++) {
       const idx = r*2 + c;
-      const x = layout.pad + c * (layout.waveW + 12) + layout.waveW/2;
+      const x = layout.pad + c * (layout.waveW + layout.waveColGap) + layout.waveW/2;
       const y = layout.waveTop + r * (layout.waveH + layout.waveRowGap) + layout.waveH/2;
       waveButtons.push(new CapButton(x, y, layout.waveW, layout.waveH, names[idx], false));
     }
@@ -376,34 +293,32 @@ function windowResized() {
   buildHueGraphic();
   buildSBGraphic();
 
+  // 更新按钮位置
   pauseButton = rectToCapButton(FUNC_RECTS.pause, isAnimating ? "Pause" : "Play");
   saveButton  = rectToCapButton(FUNC_RECTS.save,  "Save");
 
-  // 重新定位输入框
-  placeGlyphInput();
-
-  // 重新生成 Randomize / sliders / waves（简单稳定）
+  // 更新 Randomize / slider / wave 位置
   randomizeButton = new CapButton(
-    cw/2,
-    layout.randomY + layout.randomH/2,
-    cw - layout.pad*2,
-    layout.randomH,
+    layout.randomRect.x + layout.randomRect.w/2,
+    layout.randomRect.y + layout.randomRect.h/2,
+    layout.randomRect.w,
+    layout.randomRect.h,
     "Randomize",
     true
   );
 
   for (let i = 0; i < sliders.length; i++) {
-    const y = layout.firstSliderY + i * (layout.sliderH + layout.sliderGap);
+    const y = layout.firstSliderY + i * layout.sliderGap;
     sliders[i].x = cw/2;
-    sliders[i].y = y + layout.sliderH/2;
-    sliders[i].h = layout.sliderH;
+    sliders[i].y = y + 17;
   }
 
+  // wave 2×2
   const names = ["Sin","Square","Triangle","Sawtooth"];
   for (let r = 0; r < 2; r++) {
     for (let c = 0; c < 2; c++) {
       const idx = r*2 + c;
-      const x = layout.pad + c * (layout.waveW + 12) + layout.waveW/2;
+      const x = layout.pad + c * (layout.waveW + layout.waveColGap) + layout.waveW/2;
       const y = layout.waveTop + r * (layout.waveH + layout.waveRowGap) + layout.waveH/2;
       waveButtons[idx].x = x;
       waveButtons[idx].y = y;
@@ -412,6 +327,8 @@ function windowResized() {
       waveButtons[idx].str = names[idx];
     }
   }
+
+  placeGlyphInput();
 }
 
 /* =================== draw =================== */
@@ -419,9 +336,10 @@ function draw() {
   background(240);
   updateParameters();
 
+  // 网格（只画左侧栏以外）
   if (showGrid) drawGrid();
 
-  // 字母永远在窗口正中间
+  // 字母永远在整个窗口正中间
   push();
   translate(width / 2, height / 2);
   scale(scaleVal);
@@ -433,18 +351,25 @@ function draw() {
   fill("#1F1E24");
   rect(0, 0, cw, height);
 
+  // 颜色模块 + 最近颜色
   drawColorPanel();
   drawRecentColors();
 
+  // Pause/Save 两按钮（只保留这两个）
   pauseButton.str = isAnimating ? "Pause" : "Play";
   pauseButton.display();
   saveButton.display();
 
+  // Randomize
   randomizeButton.display();
 
+  // Sliders
   for (let s of sliders) s.run();
+
+  // Wave buttons（左下 2×2）
   for (let b of waveButtons) b.display();
 
+  // 右下角函数预览
   drawFunctionDisplay();
 
   if (isAnimating) t += animationSpeed;
@@ -453,11 +378,11 @@ function draw() {
 /* =================== 输入框定位 =================== */
 function placeGlyphInput() {
   if (!glyphInput) return;
-  glyphInput.position(layout.pad, layout.inputY);
-  glyphInput.size(200, 36);
+  glyphInput.position(layout.inputX, layout.inputY);
+  glyphInput.size(layout.inputW, layout.inputH);
 }
 
-/* =================== 网格 =================== */
+/* =================== 网格（与你之前一致） =================== */
 function drawGrid() {
   const step = 25;
   stroke(220);
@@ -490,6 +415,7 @@ function drawOneGlyph(ch, offsetX) {
   translate(offsetX, 0);
 
   if (ch.toUpperCase() === "X") {
+    // X：两条骨架线
     drawParametricCurve(-70,  110,  70, -110);
     drawParametricCurve( 70,  110, -70, -110);
   }
@@ -502,6 +428,7 @@ function drawOneGlyph(ch, offsetX) {
     drawParametricCircle(0, 0, 90);
   }
   else {
+    // 兜底：仍用 X 骨架风格（不变味）
     drawParametricCurve(-70,  110,  70, -110);
     drawParametricCurve( 70,  110, -70, -110);
   }
@@ -701,6 +628,7 @@ function drawRecentColors() {
 }
 
 function handleColorClick() {
+  // SB
   if (mouseX >= COLOR_MAIN.x && mouseX <= COLOR_MAIN.x + COLOR_MAIN.w &&
       mouseY >= COLOR_MAIN.y && mouseY <= COLOR_MAIN.y + COLOR_MAIN.h) {
     let sx = constrain(mouseX, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w);
@@ -711,6 +639,7 @@ function handleColorClick() {
     return true;
   }
 
+  // Hue
   if (mouseX >= COLOR_HUE.x && mouseX <= COLOR_HUE.x + COLOR_HUE.w &&
       mouseY >= COLOR_HUE.y && mouseY <= COLOR_HUE.y + COLOR_HUE.h) {
     let hy = constrain(mouseY, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h);
@@ -720,6 +649,7 @@ function handleColorClick() {
     return true;
   }
 
+  // Recent
   for (let i = 0; i < RECENT_RECTS.length; i++) {
     const r = RECENT_RECTS[i];
     if (mouseX >= r.x && mouseX <= r.x + r.w &&
@@ -731,7 +661,6 @@ function handleColorClick() {
       return true;
     }
   }
-
   return false;
 }
 
@@ -769,15 +698,20 @@ function randomizeParams() {
 
 /* =================== 交互 =================== */
 function mousePressed() {
+  // Pause / Save
   if (pauseButton.hover()) { isAnimating = !isAnimating; return; }
   if (saveButton.hover())  { saveCanvas("FontPath", "png"); return; }
 
+  // Randomize
   if (randomizeButton.hover()) { randomizeParams(); return; }
 
+  // 颜色模块
   if (handleColorClick()) return;
 
+  // 滑块
   for (let s of sliders) s.click();
 
+  // 波形按钮（左侧下方）
   for (let i = 0; i < waveButtons.length; i++) {
     if (waveButtons[i].hover()) {
       setWaveSelected(i);
