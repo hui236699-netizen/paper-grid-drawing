@@ -3,23 +3,282 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Font Texture Method</title>
+  <title>Font Texture</title>
   <style>
-    body{margin:0;font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",Arial,sans-serif;background:#0b0c10;color:#fff;}
-    .wrap{width:min(900px,calc(100% - 40px));margin:0 auto;padding:80px 0;}
-    a{color:#7c5cff;text-decoration:none;font-weight:700;}
-    .card{border:1px solid rgba(255,255,255,.12);border-radius:24px;padding:26px;background:rgba(255,255,255,.04);}
-    h1{margin:0 0 10px;}
-    p{color:rgba(255,255,255,.68);line-height:1.7;margin:0;}
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #0f1013;
+      overflow: hidden;
+      height: 100%;
+      width: 100%;
+    }
+    canvas {
+      display: block;
+      position: fixed;
+      left: 0;
+      top: 0;
+    }
+
+    .control-panel {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.7);
+      color: #fff;
+      padding: 20px;
+      border-radius: 10px;
+    }
+
+    .slider {
+      margin: 10px 0;
+    }
+
+    .slider label {
+      margin-right: 10px;
+    }
+
+    .button {
+      margin: 10px 0;
+      padding: 10px 20px;
+      background-color: #3a3a3a;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    .button:hover {
+      background-color: #666;
+    }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="card">
-      <h1>Font Texture Method</h1>
-      <p>这里是占位页。我们后面会做“纹理/笔刷/图案生成”的字形方法。</p>
-      <p style="margin-top:14px;"><a href="index.html">← Back to Home</a></p>
-    </div>
+  <div class="control-panel">
+    <label>Function Range:</label>
+    <input id="rangeSlider" type="range" min="2" max="10" value="5" step="0.1" class="slider">
+    <br>
+    <label>Line Thickness:</label>
+    <input id="thicknessSlider" type="range" min="1" max="10" value="4" step="0.1" class="slider">
+    <br>
+    <label>Letter Size:</label>
+    <input id="letterSizeSlider" type="range" min="0.5" max="1.5" value="0.8" step="0.01" class="slider">
+    <br>
+    <label>Animation Speed:</label>
+    <input id="speedSlider" type="range" min="0.01" max="0.1" value="0.02" step="0.01" class="slider">
+    <br>
+    <button id="resetButton" class="button">Reset</button>
+    <button id="pauseButton" class="button">Pause</button>
   </div>
+  
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
+  <script>
+    let a = -2;
+    let da = 0.02;
+    let xMin = -5, xMax = 5;
+    let yMin = -5, yMax = 5;
+    let lineThickness = 4;
+
+    // Custom sliders
+    let rangeSliderValue = 5;
+    let thicknessSliderValue = 4;
+    let letterSizeSliderValue = 0.8;
+    let animationSpeedSliderValue = 0.02;
+    let currentColor;
+
+    let functionLayer;
+    let letterMask;
+    let needsUpdate = true;
+    let isPlaying = true;
+
+    function setup() {
+      createCanvas(windowWidth, windowHeight);
+      functionLayer = createGraphics(width, height);
+      letterMask = createGraphics(width, height);
+
+      currentColor = color(0, 255, 0);
+
+      // Initialize sliders
+      document.getElementById('rangeSlider').addEventListener('input', (e) => {
+        rangeSliderValue = e.target.value;
+      });
+
+      document.getElementById('thicknessSlider').addEventListener('input', (e) => {
+        thicknessSliderValue = e.target.value;
+      });
+
+      document.getElementById('letterSizeSlider').addEventListener('input', (e) => {
+        letterSizeSliderValue = e.target.value;
+      });
+
+      document.getElementById('speedSlider').addEventListener('input', (e) => {
+        animationSpeedSliderValue = e.target.value;
+      });
+
+      document.getElementById('resetButton').addEventListener('click', () => {
+        resetToDefaults();
+      });
+
+      document.getElementById('pauseButton').addEventListener('click', () => {
+        isPlaying = !isPlaying;
+        if (isPlaying) {
+          da = abs(da);
+          document.getElementById('pauseButton').textContent = "Pause";
+        } else {
+          da = 0;
+          document.getElementById('pauseButton').textContent = "Play";
+        }
+      });
+
+      frameRate(60);
+    }
+
+    function draw() {
+      updateParameters();
+      if (needsUpdate) {
+        updateVisualization();
+        needsUpdate = false;
+      }
+
+      background(240);
+      drawGrid();
+      fill(31, 30, 36);
+      rect(0, 0, 200, height);
+      push();
+      imageMode(CENTER);
+      translate(width / 2, height / 2);
+      image(functionLayer, 0, 0);
+      pop();
+
+      fill(0);
+      textSize(24);
+      text("a = " + nf(a, 1, 2), 15, 40);
+
+      a += da;
+      if (a > 3 || a < -2) {
+        da *= -1;
+        a = constrain(a, -2, 3);
+      }
+
+      needsUpdate = true;
+    }
+
+    function updateVisualization() {
+      xMin = yMin = -rangeSliderValue;
+      xMax = yMax = rangeSliderValue;
+      lineThickness = thicknessSliderValue;
+
+      if (isPlaying) {
+        da = animationSpeedSliderValue * (da < 0 ? -1 : 1);
+      } else {
+        da = 0;
+      }
+
+      let plotSize = 500;
+      let plotX = (width - plotSize) / 2;
+      let plotY = (height - plotSize) / 2;
+
+      drawLetterMask(plotX, plotY, plotSize);
+      drawFunctionLayer(plotX, plotY, plotSize);
+    }
+
+    function drawGrid() {
+      stroke(200);
+      strokeWeight(1);
+      let gridSize = 20;
+      for (let x = 0; x < width; x += gridSize) {
+        line(x, 0, x, height);
+      }
+      for (let y = 0; y < height; y += gridSize) {
+        line(0, y, width, y);
+      }
+    }
+
+    function drawFunctionLayer(plotX, plotY, plotSize) {
+      functionLayer.beginDraw();
+      functionLayer.clear();
+      functionLayer.loadPixels();
+      let lt = lineThickness / 10.0;
+      for (let screenX = 0; screenX < plotSize; screenX++) {
+        for (let screenY = 0; screenY < plotSize; screenY++) {
+          let x = map(screenX, 0, plotSize, xMin, xMax);
+          let y = map(screenY, plotSize, 0, yMin, yMax);
+          let difference = calculateDifference(x, y);
+          let pixelIndex = (plotY + screenY) * width + (plotX + screenX);
+          if (pixelIndex >= 0 && pixelIndex < functionLayer.pixels.length) {
+            if (letterMask.pixels[pixelIndex] == color(255)) {
+              if (abs(difference) < lt) {
+                functionLayer.pixels[pixelIndex] = currentColor;
+              }
+            }
+          }
+        }
+      }
+      functionLayer.updatePixels();
+      functionLayer.endDraw();
+    }
+
+    function drawLetterMask(plotX, plotY, plotSize) {
+      letterMask.beginDraw();
+      letterMask.clear();
+      letterMask.fill(255);
+      letterMask.noStroke();
+      let centerX = plotX + plotSize / 2;
+      let centerY = plotY + plotSize / 2;
+      let letterSize = plotSize * letterSizeSliderValue;
+      letterMask.pushMatrix();
+      letterMask.translate(centerX, centerY);
+
+      // Draw the letter X
+      letterMask.beginShape();
+      PVector[] xVertices = [
+        new PVector(-letterSize / 2, -letterSize / 2),
+        new PVector(letterSize / 2, letterSize / 2),
+        new PVector(letterSize / 3, letterSize / 2),
+        new PVector(0, letterSize / 6),
+        new PVector(-letterSize / 3, letterSize / 2),
+        new PVector(-letterSize / 2, letterSize / 3),
+        new PVector(-letterSize / 6, 0),
+        new PVector(-letterSize / 2, -letterSize / 3)
+      ];
+      for (let v of xVertices) {
+        letterMask.vertex(v.x, v.y);
+      }
+      letterMask.endShape(CLOSE);
+
+      letterMask.beginShape();
+      PVector[] xVertices2 = [
+        new PVector(letterSize / 2, -letterSize / 2),
+        new PVector(-letterSize / 2, letterSize / 2),
+        new PVector(-letterSize / 3, letterSize / 2),
+        new PVector(0, letterSize / 6),
+        new PVector(letterSize / 3, letterSize / 2),
+        new PVector(letterSize / 2, letterSize / 3),
+        new PVector(letterSize / 6, 0),
+        new PVector(letterSize / 2, -letterSize / 3)
+      ];
+      for (let v of xVertices2) {
+        letterMask.vertex(v.x, v.y);
+      }
+      letterMask.endShape(CLOSE);
+
+      letterMask.popMatrix();
+      letterMask.endDraw();
+    }
+
+    function calculateDifference(x, y) {
+      let leftSide = sin(x * x + y * y);
+      let rightSide = a * cos(x * y);
+      return leftSide - rightSide;
+    }
+
+    function resetToDefaults() {
+      rangeSliderValue = 5;
+      thicknessSliderValue = 4;
+      letterSizeSliderValue = 0.8;
+      animationSpeedSliderValue = 0.02;
+      currentColor = color(0, 255, 0);
+    }
+  </script>
 </body>
 </html>
