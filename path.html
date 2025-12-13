@@ -5,11 +5,24 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Font Path Method</title>
   <style>
-    html, body { margin:0; padding:0; background:#0f1013; overflow:hidden; }
-    canvas { display:block; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #0f1013;
+      overflow: hidden;
+      height: 100%;
+      width: 100%;
+    }
+    canvas {
+      display: block;
+      position: fixed;
+      left: 0;
+      top: 0;
+    }
 
+    /* 输入框：固定在左侧栏里（不跟 canvas offset 走） */
     .glyphInput {
-      position: absolute;
+      position: fixed;
       background: #3A393D;
       color: #fff;
       border: 0;
@@ -17,21 +30,32 @@
       border-radius: 12px;
       padding: 8px 10px;
       font-size: 16px;
-      width: 100%;
       box-sizing: border-box;
     }
   </style>
+
   <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
 </head>
-
 <body>
 <script>
-/* =================== 字体（仅 UI 文本用，不影响图形逻辑） =================== */
+/* =================== 字体（仅用于 UI 文本） =================== */
 const FONT_PATH = "assets/fonts/ABCFavoritHebrewBoldVariable-Trial.ttf";
 let uiFont = null;
 let fontLoaded = false;
 
-/* =================== 你的参数（保留原逻辑） =================== */
+/* =================== ✅ sketch.js 同款：动态布局/网格 =================== */
+let cw = 240;       // 会被 computeLayout() 动态算
+let cellSize = 36;  // 会被 computeLayout() 动态算
+let showGrid = true;
+
+// 动态布局：颜色区/Recent/按钮
+let COLOR_MAIN, COLOR_HUE;
+let RECENT_RECTS = [];
+let FUNC_RECTS = {};
+
+let sbGraphic, hueGraphic;
+
+/* =================== 你的参数（保留逻辑 / 不改味道） =================== */
 let maxAmp = 50;
 let t = 0;
 
@@ -39,69 +63,62 @@ let scaleVal = 1.0;
 let strokeW = 2;
 let amplitude = 10;
 let frequency = 1;
-let phase = 0;                 // ✅ 逻辑保留（只是无滑块）
+
+// phase 逻辑保留（不做滑块 UI）
+let phase = 0;
+
 let isAnimating = true;
 let animationSpeed = 0.02;
 
 let currentFunction = 0;
 const functionNames = ["Sin", "Square", "Triangle", "Sawtooth"];
 
-/* =================== 默认字母 + 默认颜色 =================== */
-let glyphChar = "X";           // ✅ 默认 X（你要改默认 A 就把这里改成 "A"）
-let currentColor;
+/* =================== 字母输入（默认 X） =================== */
+let glyphInput;
+let glyphChar = "X"; // 默认 X
 
-/* =================== 参考 sketch.js：布局/网格 =================== */
-let cw = 240;
-let cellSize = 36;
-let showGrid = true;
-
-/* HSV 颜色（sketch.js 一样） */
+/* =================== 颜色模块（默认黑色 + 最近颜色） =================== */
 let hue = 0;
 let sat = 0;
-let bri = 0;
+let bri = 0; // 黑
+let currentColor;
 
-/* 颜色拖动（sketch.js 一样） */
-let isColorDragging = false;
-let colorDragMode = null; // "sb" | "hue"
-
-/* 动态布局变量（sketch.js 一样） */
-let COLOR_MAIN, COLOR_HUE;
-let RECENT_RECTS = [];
-let FUNC_RECTS = {};
-let sbGraphic, hueGraphic;
-
-const defaultRecentHex = ["#482BCC", "#FF04A5", "#FFE900", "#8CE255", "#8EC8EC"];
+const defaultRecentHex = [
+  "#000000",
+  "#482BCC",
+  "#FF04A5",
+  "#FFE900",
+  "#8CE255"
+];
 let recentColors = [];
 
-/* 四个按钮：Reset / Pause / Grid / Save */
+/* =================== 四个功能按钮 =================== */
 let resetButton, pauseButton, gridButton, saveButton;
 
-/* 输入框 + Randomize 按钮 */
-let glyphInput;
+/* =================== Randomize 按钮 =================== */
 let randomizeButton;
 
-/* 5个滑块（保留你想要的：Scale / Stroke / Amp / Freq / Speed） */
+/* =================== 5个滑块 =================== */
 const sliderName = ["Scale", "Stroke Weight", "Amplitude", "Frequency", "Animation Speed"];
 let sliders = [];
 
-/* 波形按钮（右侧） */
+/* =================== 波形按钮（右侧） =================== */
 let waveButtons = [];
 
-/* =================== 工具函数 =================== */
-function clamp(v, lo, hi){ return max(lo, min(hi, v)); }
-function colorsEqual(c1, c2){
-  return red(c1)===red(c2) && green(c1)===green(c2) && blue(c1)===blue(c2);
-}
+/* =================== ✅ sketch.js 布局函数：复制同款 computeLayout =================== */
+function clamp(v, lo, hi) { return max(lo, min(hi, v)); }
 
-/* =================== ✅ computeLayout（照抄 sketch.js） =================== */
-function computeLayout(){
+function computeLayout() {
+  // 左侧栏宽度（✅ 与 sketch.js 一样）
   cw = clamp(width * 0.18, 200, 320);
 
+  // 网格 cellSize（✅ 与 sketch.js 一样）
   const rightW = max(1, width - cw);
   const byWidth = rightW / 26;
   const byHeight = height / 22;
   cellSize = clamp(min(byWidth, byHeight), 24, 52);
 
+  // 颜色区（✅ 与 sketch.js 一样：主色块 + hue 条）
   const pad = 16;
   const gap = 10;
   const hueW = clamp(cw * 0.09, 18, 28);
@@ -110,28 +127,30 @@ function computeLayout(){
   const sbW = cw - pad * 2 - hueW - gap;
   const sbSize = clamp(min(sbW, maxSB), 150, maxSB);
 
+  // 强制整数（避免 retina 黑块/错位）
   const sbSizeI = max(1, floor(sbSize));
-  const hueWI   = max(1, floor(hueW));
+  const hueWI = max(1, floor(hueW));
 
   const topY = pad;
 
   COLOR_MAIN = { x: pad, y: topY, w: sbSizeI, h: sbSizeI };
   COLOR_HUE  = { x: pad + sbSizeI + gap, y: topY, w: hueWI,  h: sbSizeI };
 
-  // 最近颜色
+  // 最近颜色（✅ 与 sketch.js 一样）
   RECENT_RECTS = [];
   const recentCount = 5;
   const recentGap = 10;
-  const rW = clamp((cw - pad*2 - recentGap*(recentCount-1))/recentCount, 22, 34);
+  const rW = clamp((cw - pad * 2 - recentGap * (recentCount - 1)) / recentCount, 22, 34);
   const recentY = topY + sbSizeI + 18;
-  for(let i=0;i<recentCount;i++){
-    RECENT_RECTS.push({ x: pad + i*(rW+recentGap), y: recentY, w: rW, h: rW });
+
+  for (let i = 0; i < recentCount; i++) {
+    RECENT_RECTS.push({ x: pad + i * (rW + recentGap), y: recentY, w: rW, h: rW });
   }
 
-  // 功能按钮（2x2）
+  // 4 个功能按钮（✅ 与 sketch.js 一样）
   const btnGapX = 12;
-  const btnW = (cw - pad*2 - btnGapX)/2;
-  const btnH = clamp(height*0.035, 30, 38);
+  const btnW = (cw - pad * 2 - btnGapX) / 2;
+  const btnH = clamp(height * 0.035, 30, 38);
   const funcY1 = recentY + rW + 18;
   const funcY2 = funcY1 + btnH + 12;
 
@@ -143,8 +162,8 @@ function computeLayout(){
   };
 }
 
-/* =================== 颜色贴图（照抄 sketch.js） =================== */
-function rebuildHueGraphic(){
+/* =================== ✅ 颜色贴图（sketch.js 同款：pixelDensity(1)+整数） =================== */
+function rebuildHueGraphic() {
   const w = max(1, floor(COLOR_HUE.w));
   const h = max(1, floor(COLOR_HUE.h));
 
@@ -154,21 +173,21 @@ function rebuildHueGraphic(){
   hueGraphic.noStroke();
   hueGraphic.loadPixels();
 
-  for(let y=0;y<h;y++){
-    const hh = map(y, 0, h-1, 0, 360);
+  for (let y = 0; y < h; y++) {
+    const hh = map(y, 0, h - 1, 0, 360);
     const c = hueGraphic.color(hh, 100, 100);
-    for(let x=0;x<w;x++){
-      const idx = (y*w + x)*4;
-      hueGraphic.pixels[idx]   = red(c);
-      hueGraphic.pixels[idx+1] = green(c);
-      hueGraphic.pixels[idx+2] = blue(c);
-      hueGraphic.pixels[idx+3] = 255;
+    for (let x = 0; x < w; x++) {
+      const idx = (y * w + x) * 4;
+      hueGraphic.pixels[idx]     = red(c);
+      hueGraphic.pixels[idx + 1] = green(c);
+      hueGraphic.pixels[idx + 2] = blue(c);
+      hueGraphic.pixels[idx + 3] = 255;
     }
   }
   hueGraphic.updatePixels();
 }
 
-function rebuildSBGraphic(){
+function rebuildSBGraphic() {
   const w = max(1, floor(COLOR_MAIN.w));
   const h = max(1, floor(COLOR_MAIN.h));
 
@@ -178,40 +197,351 @@ function rebuildSBGraphic(){
   sbGraphic.noStroke();
   sbGraphic.loadPixels();
 
-  for(let y=0;y<h;y++){
-    for(let x=0;x<w;x++){
-      const sVal = map(x, 0, w-1, 0, 100);
-      const bVal = map(y, 0, h-1, 100, 0);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const sVal = map(x, 0, w - 1, 0, 100);
+      const bVal = map(y, 0, h - 1, 100, 0);
       const c = sbGraphic.color(hue, sVal, bVal);
-      const idx = (y*w + x)*4;
-      sbGraphic.pixels[idx]   = red(c);
-      sbGraphic.pixels[idx+1] = green(c);
-      sbGraphic.pixels[idx+2] = blue(c);
-      sbGraphic.pixels[idx+3] = 255;
+      const idx = (y * w + x) * 4;
+      sbGraphic.pixels[idx]     = red(c);
+      sbGraphic.pixels[idx + 1] = green(c);
+      sbGraphic.pixels[idx + 2] = blue(c);
+      sbGraphic.pixels[idx + 3] = 255;
     }
   }
   sbGraphic.updatePixels();
 }
 
-function updateCurrentColor(addRecent=true){
-  push();
-  colorMode(HSB, 360, 100, 100);
-  currentColor = color(hue, sat, bri);
-  pop();
-  if(addRecent) addRecentColor(currentColor);
-}
-function addRecentColor(c){
-  const nc = color(c);
-  recentColors = recentColors.filter(rc => !colorsEqual(rc, nc));
-  recentColors.unshift(nc);
-  if(recentColors.length>5) recentColors.length = 5;
+/* =================== 初始化/重建 UI（尺寸变化时调用） =================== */
+function layoutUI() {
+  computeLayout();
+  rebuildHueGraphic();
+  rebuildSBGraphic();
+
+  resetButton = rectToCapButton(FUNC_RECTS.reset, "Reset");
+  pauseButton = rectToCapButton(FUNC_RECTS.pause, "Pause");
+  gridButton  = rectToCapButton(FUNC_RECTS.grid,  "Grid");
+  saveButton  = rectToCapButton(FUNC_RECTS.save,  "Save");
+
+  // 输入框：位置与宽度跟随左侧栏（固定定位，但尺寸要一致）
+  placeGlyphInput();
+
+  // Randomize：放输入框下面
+  const pad = 16;
+  const inputY = FUNC_RECTS.save.y + FUNC_RECTS.save.h + 18;
+  const randomizeY = inputY + 36 + 22;
+
+  randomizeButton = new CapButton(cw/2, randomizeY, cw - pad*2, clamp(height * 0.035, 30, 38), "Randomize", true);
+
+  // 滑块：整体下移（在 Randomize 下）
+  const firstSliderY = randomizeY + randomizeButton.h/2 + 24;
+  const gap = 54;
+
+  if (sliders.length === 0) {
+    for (let i = 0; i < 5; i++) {
+      sliders.push(new Slider(cw/2, firstSliderY + i * gap, cw - 32, 34, sliderName[i], 0.5));
+    }
+  } else {
+    for (let i = 0; i < sliders.length; i++) {
+      sliders[i].x = cw/2;
+      sliders[i].y = firstSliderY + i * gap;
+      sliders[i].w = cw - 32;
+    }
+  }
+
+  // 右侧波形按钮位置刷新
+  const bx = width - 120;
+  const by0 = 160;
+  const bGap = 46;
+  const names = ["Sin","Square","Triangle","Sawtooth"];
+  if (waveButtons.length === 0) {
+    for (let i = 0; i < 4; i++) {
+      waveButtons.push(new CapButton(bx, by0 + i*bGap, 150, 30, names[i]));
+    }
+  } else {
+    for (let i = 0; i < waveButtons.length; i++) {
+      waveButtons[i].x = bx;
+      waveButtons[i].y = by0 + i*bGap;
+    }
+  }
 }
 
-/* =================== 左侧颜色面板（sketch.js 一样） =================== */
-function drawColorPanelNew(){
+/* =================== setup =================== */
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  pixelDensity(window.devicePixelRatio || 1);
+
+  // 默认颜色黑
+  hue = 0; sat = 0; bri = 0;
+  currentColor = color(0);
+
+  // 最近颜色
+  recentColors = defaultRecentHex.map(h => color(h));
+
+  // 输入框（先创建，再由 layoutUI 定位/设宽）
+  glyphInput = createInput("X");
+  glyphInput.addClass("glyphInput");
+  glyphInput.attribute("maxlength", "2"); // 允许 XY
+  glyphInput.input(() => {
+    let v = glyphInput.value();
+    if (v.length === 0) { glyphChar = ""; return; }
+    if (v.length > 2) { v = v.slice(0, 2); glyphInput.value(v); }
+    glyphChar = v;
+  });
+  glyphInput.elt.addEventListener("blur", () => {
+    if (!glyphInput.value() || glyphInput.value().length === 0) {
+      glyphChar = "X";
+      glyphInput.value("X");
+    }
+  });
+
+  layoutUI();
+  setWaveSelected(0);
+
+  tryLoadUIFont();
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  pixelDensity(window.devicePixelRatio || 1);
+  layoutUI();
+}
+
+/* =================== draw =================== */
+function draw() {
+  background(240);
+  noTint();
+
+  updateParameters();
+
+  // ✅ sketch.js 网格：只画右侧区域 + 右侧背景 245
+  if (showGrid) drawGrid();
+
+  // ✅ 你喜欢的字形效果：保持原样（居中）
+  push();
+  translate(width / 2, height / 2);
+  scale(scaleVal);
+  drawGlyph(glyphChar);
+  pop();
+
+  // 左侧栏背景（覆盖）
+  noStroke();
+  fill("#1F1E24");
+  rect(0, 0, cw, height);
+
+  // 颜色模块（sketch.js 同款画法：避免黑块）
+  drawColorPanelNew();
+  drawRecentColors();
+
+  // 按钮
+  pauseButton.str = isAnimating ? "Pause" : "Play";
+  resetButton.display();
+  pauseButton.display();
+  gridButton.display();
+  saveButton.display();
+
+  // Glyph label
+  fill(255);
+  useUIFont();
+  textAlign(LEFT, CENTER);
+  textSize(12);
+  text("Glyph", 16, FUNC_RECTS.save.y + FUNC_RECTS.save.h + 6);
+
+  // Randomize
+  randomizeButton.display();
+
+  // 滑块
+  for (let s of sliders) s.run();
+
+  // 波形按钮
+  for (let b of waveButtons) b.display();
+
+  // 函数预览
+  drawFunctionDisplay();
+
+  if (isAnimating) t += animationSpeed;
+}
+
+/* =================== 输入框定位（固定定位，但尺寸跟随 cw） =================== */
+function placeGlyphInput() {
+  if (!glyphInput) return;
+  const pad = 16;
+  const inputY = FUNC_RECTS.save.y + FUNC_RECTS.save.h + 18;
+  glyphInput.position(pad, inputY);
+  glyphInput.size(cw - pad*2, 36);
+}
+
+/* =================== ✅ 网格（sketch.js 一样：cellSize + 背景 245） =================== */
+function drawGrid() {
+  const w = width - cw;
+  const h = height;
+
+  // 右侧背景
+  noStroke();
+  fill(245);
+  rect(cw, 0, w, h);
+
+  stroke(220);
+  strokeWeight(1);
+
+  // 竖线：从 cw 开始
+  for (let x = 0; x <= w; x += cellSize) line(cw + x, 0, cw + x, h);
+  // 横线：从 0 开始，但只画右侧
+  for (let y = 0; y <= h; y += cellSize) line(cw, y, width, y);
+}
+
+/* =================== ✅ 字母绘制：完全保留你这份的效果逻辑 =================== */
+function drawGlyph(str) {
+  stroke(currentColor);
+  strokeWeight(strokeW);
+  noFill();
+
+  if (!str || str.length === 0) return;
+
+  const chars = str.slice(0,2).split("");
+  const spacing = 130;
+
+  if (chars.length === 1) {
+    drawOneGlyph(chars[0], 0);
+  } else {
+    drawOneGlyph(chars[0], -spacing/2);
+    drawOneGlyph(chars[1],  spacing/2);
+  }
+}
+
+function drawOneGlyph(ch, offsetX) {
+  push();
+  translate(offsetX, 0);
+
+  if (ch.toUpperCase() === "X") {
+    drawParametricCurve(-70,  110,  70, -110);
+    drawParametricCurve( 70,  110, -70, -110);
+  }
+  else if (ch.toUpperCase() === "Y") {
+    drawParametricCurve(-70, -110, 0, 0);
+    drawParametricCurve( 70, -110, 0, 0);
+    drawParametricCurve(0, 0, 0, 120);
+  }
+  else if (ch.toUpperCase() === "O") {
+    drawParametricCircle(0, 0, 90);
+  }
+  else {
+    drawParametricCurve(-70,  110,  70, -110);
+    drawParametricCurve( 70,  110, -70, -110);
+  }
+
+  pop();
+}
+
+function drawParametricCircle(cx, cy, r) {
+  beginShape();
+  for (let a = 0; a <= TWO_PI + 0.001; a += 0.03) {
+    let x = cx + cos(a) * r;
+    let y = cy + sin(a) * r;
+
+    let dis = (a * r) * 0.01;
+    let offset = applyFunction(frequency * dis * TWO_PI + phase + t) * amplitude;
+
+    let nx = cos(a);
+    let ny = sin(a);
+    x += nx * offset * 0.15;
+    y += ny * offset * 0.15;
+
+    if (currentFunction === 0 || currentFunction === 2) curveVertex(x, y);
+    else vertex(x, y);
+  }
+  endShape(CLOSE);
+}
+
+function drawParametricCurve(x1, y1, x2, y2) {
+  beginShape();
+  for (let i = 0; i <= 1.00001; i += 0.01) {
+    let x = lerp(x1, x2, i);
+    let y = lerp(y1, y2, i);
+
+    let dis = dist(x, y, x1, y1) * 0.01;
+    let offset = applyFunction(frequency * dis * TWO_PI + phase + t) * amplitude;
+
+    let baseLen = dist(x1, y1, x2, y2);
+    x += offset * (y2 - y1) / baseLen;
+    y -= offset * (x2 - x1) / baseLen;
+
+    if (currentFunction === 0 || currentFunction === 2) curveVertex(x, y);
+    else vertex(x, y);
+  }
+  endShape();
+}
+
+function applyFunction(tt) {
+  switch (currentFunction) {
+    case 0: return sin(tt);
+    case 1: return (tt % TWO_PI < PI) ? 1 : -1;
+    case 2: return asin(sin(tt)) * 2 / PI;
+    case 3: return (tt % TWO_PI) / PI - 1;
+    default: return sin(tt);
+  }
+}
+
+/* =================== 参数更新（滑块 -> 参数，保持你原来的映射） =================== */
+function updateParameters() {
+  scaleVal       = map(sliders[0].val, 0, 1, 0.5, 3);
+  strokeW        = map(sliders[1].val, 0, 1, 0.5, 20);
+  amplitude      = map(sliders[2].val, 0, 1, 0, maxAmp);
+  frequency      = map(sliders[3].val, 0, 1, 0.1, 5);
+  animationSpeed = map(sliders[4].val, 0, 1, 0, 0.1);
+}
+
+/* =================== 右下角函数预览（保留） =================== */
+function drawFunctionDisplay() {
+  const displayWidth = 250;
+  const displayHeight = 250;
+  const margin = 50;
+
+  stroke(0);
+  strokeWeight(3);
+
+  push();
+  translate(width - displayWidth / 2 - margin, height - displayHeight / 2 - margin);
+
+  line(-displayWidth / 2, 0, displayWidth / 2, 0);
+  line(0, -displayHeight / 2, 0, displayHeight / 2);
+
+  fill(0);
+  noStroke();
+  textSize(15);
+
+  triangle(-5, -displayHeight / 2, 5, -displayHeight / 2, 0, -displayHeight / 2 - 15);
+  triangle(displayWidth / 2 + 15, 0, displayWidth / 2, -5, displayWidth / 2, 5);
+
+  fill(0);
+  textAlign(LEFT, TOP);
+  text("y", 15, -displayHeight / 2);
+  text("x", displayWidth / 2, 25);
+
+  textSize(20);
+  textAlign(CENTER, BOTTOM);
+  text(functionNames[currentFunction] + " Function", 0, -displayHeight / 2 - 40);
+  pop();
+
+  stroke(color(140));
+  noFill();
+  strokeWeight(3);
+
+  beginShape();
+  for (let x = 0; x < displayWidth; x += 2) {
+    let amp = map(amplitude, 0, maxAmp, 0, displayHeight / 2);
+    let y = applyFunction(frequency * x * 0.02 + phase + t) * amp;
+    vertex(width - displayWidth - margin + x, height - displayHeight / 2 - margin - y);
+  }
+  endShape();
+}
+
+/* =================== ✅ 颜色面板绘制（sketch.js 同款，避免黑屏/错位） =================== */
+function drawColorPanelNew() {
   noTint();
   const r = 14;
 
+  // 背板
   noStroke();
   fill(38);
   rect(
@@ -222,6 +552,7 @@ function drawColorPanelNew(){
     16
   );
 
+  // SB
   stroke(70);
   strokeWeight(1);
   fill(20);
@@ -230,6 +561,7 @@ function drawColorPanelNew(){
   imageMode(CORNER);
   image(sbGraphic, COLOR_MAIN.x, COLOR_MAIN.y, COLOR_MAIN.w, COLOR_MAIN.h);
 
+  // Hue
   stroke(70);
   strokeWeight(1);
   fill(20);
@@ -237,70 +569,106 @@ function drawColorPanelNew(){
 
   image(hueGraphic, COLOR_HUE.x, COLOR_HUE.y, COLOR_HUE.w, COLOR_HUE.h);
 
-  const hx = COLOR_MAIN.x + (sat/100)*COLOR_MAIN.w;
-  const hy = COLOR_MAIN.y + (1 - bri/100)*COLOR_MAIN.h;
+  // SB 手柄
+  const sx = COLOR_MAIN.x + (sat / 100) * COLOR_MAIN.w;
+  const sy = COLOR_MAIN.y + (1 - bri / 100) * COLOR_MAIN.h;
 
   stroke(255);
   strokeWeight(2);
   noFill();
-  circle(hx, hy, 14);
+  circle(sx, sy, 14);
   stroke(0, 140);
   strokeWeight(2);
-  circle(hx, hy, 10);
+  circle(sx, sy, 10);
 
-  const hueY = COLOR_HUE.y + (hue/360)*COLOR_HUE.h;
+  // Hue 指示线
+  const hueY = COLOR_HUE.y + (hue / 360) * COLOR_HUE.h;
   stroke(255);
   strokeWeight(3);
   line(COLOR_HUE.x - 3, hueY, COLOR_HUE.x + COLOR_HUE.w + 3, hueY);
 }
 
-function drawRecentColors(){
-  for(let i=0;i<RECENT_RECTS.length;i++){
+function drawRecentColors() {
+  for (let i = 0; i < RECENT_RECTS.length; i++) {
     const r = RECENT_RECTS[i];
     stroke(40);
     strokeWeight(1);
     fill(recentColors[i] || color(0));
     rect(r.x, r.y, r.w, r.h, 8);
 
-    if(recentColors[i] && colorsEqual(recentColors[i], currentColor)){
+    if (recentColors[i] && colorsEqual(recentColors[i], currentColor)) {
       noFill();
       stroke(255);
       strokeWeight(2);
-      rect(r.x-3, r.y-3, r.w+6, r.h+6, 10);
+      rect(r.x - 3, r.y - 3, r.w + 6, r.h + 6, 10);
     }
   }
 }
 
-function handleColorPress(){
-  if(mouseX>=COLOR_MAIN.x && mouseX<=COLOR_MAIN.x+COLOR_MAIN.w &&
-     mouseY>=COLOR_MAIN.y && mouseY<=COLOR_MAIN.y+COLOR_MAIN.h){
+function colorsEqual(c1, c2) {
+  return red(c1) === red(c2) &&
+         green(c1) === green(c2) &&
+         blue(c1) === blue(c2);
+}
+
+function updateCurrentColor(addRecent = true) {
+  push();
+  colorMode(HSB, 360, 100, 100);
+  currentColor = color(hue, sat, bri);
+  pop();
+  if (addRecent) addRecentColor(currentColor);
+}
+
+function addRecentColor(c) {
+  const nc = color(c);
+  recentColors = recentColors.filter(rc => !colorsEqual(rc, nc));
+  recentColors.unshift(nc);
+  if (recentColors.length > 5) recentColors.length = 5;
+}
+
+function handleColorPress() {
+  // SB
+  if (
+    mouseX >= COLOR_MAIN.x && mouseX <= COLOR_MAIN.x + COLOR_MAIN.w &&
+    mouseY >= COLOR_MAIN.y && mouseY <= COLOR_MAIN.y + COLOR_MAIN.h
+  ) {
     isColorDragging = true;
     colorDragMode = "sb";
     updateColorByMouse();
     return true;
   }
-  if(mouseX>=COLOR_HUE.x && mouseX<=COLOR_HUE.x+COLOR_HUE.w &&
-     mouseY>=COLOR_HUE.y && mouseY<=COLOR_HUE.y+COLOR_HUE.h){
+
+  // Hue
+  if (
+    mouseX >= COLOR_HUE.x && mouseX <= COLOR_HUE.x + COLOR_HUE.w &&
+    mouseY >= COLOR_HUE.y && mouseY <= COLOR_HUE.y + COLOR_HUE.h
+  ) {
     isColorDragging = true;
     colorDragMode = "hue";
     updateColorByMouse();
     return true;
   }
-  for(let i=0;i<RECENT_RECTS.length;i++){
+
+  // Recent
+  for (let i = 0; i < RECENT_RECTS.length; i++) {
     const r = RECENT_RECTS[i];
-    if(mouseX>=r.x && mouseX<=r.x+r.w && mouseY>=r.y && mouseY<=r.y+r.h){
-      if(recentColors[i]){
+    if (mouseX >= r.x && mouseX <= r.x + r.w && mouseY >= r.y && mouseY <= r.y + r.h) {
+      if (recentColors[i]) {
         currentColor = color(recentColors[i]);
         addRecentColor(currentColor);
       }
       return true;
     }
   }
+
   return false;
 }
 
-function updateColorByMouse(){
-  if(colorDragMode==="sb"){
+let isColorDragging = false;
+let colorDragMode = null;
+
+function updateColorByMouse() {
+  if (colorDragMode === "sb") {
     const sx = clamp(mouseX, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w - 1);
     const sy = clamp(mouseY, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h - 1);
     sat = map(sx, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w - 1, 0, 100);
@@ -308,7 +676,8 @@ function updateColorByMouse(){
     updateCurrentColor(false);
     return true;
   }
-  if(colorDragMode==="hue"){
+
+  if (colorDragMode === "hue") {
     const hy = clamp(mouseY, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h - 1);
     hue = map(hy, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h - 1, 0, 360);
     rebuildSBGraphic();
@@ -318,479 +687,183 @@ function updateColorByMouse(){
   return false;
 }
 
-/* =================== 网格（sketch.js 一样） =================== */
-function drawGrid(){
-  const w = width - cw;
-  const h = height;
-
-  noStroke();
-  fill(245);
-  rect(0, 0, w, h);
-
-  stroke(220);
-  strokeWeight(1);
-  for(let x=0;x<=w;x+=cellSize) line(x, 0, x, h);
-  for(let y=0;y<=h;y+=cellSize) line(0, y, w, y);
-}
-
-/* =================== ✅ 恢复“你原来的字体逻辑味道”：关键是默认参数别变 =================== */
-/* 这里不动你的扰动公式，只负责画骨架（X 就两条线段骨架） */
-function drawGlyphSkeleton(){
-  stroke(currentColor);
-  strokeWeight(strokeW);
-  noFill();
-
-  push();
-  translate(width/2, height/2);
-  scale(scaleVal);
-
-  // X：两条线段骨架
-  drawParametricCurve(-80, -80,  80,  80);
-  drawParametricCurve(-80,  80,  80, -80);
-
-  pop();
-}
-
-function drawParametricCurve(x1,y1,x2,y2){
-  beginShape();
-  for(let i=0;i<=1.00001;i+=0.01){
-    let x = lerp(x1,x2,i);
-    let y = lerp(y1,y2,i);
-
-    // ✅ 完全保留：frequency * dis * TWO_PI + phase + t
-    let dis = dist(x,y,x1,y1)*0.01;
-    let offset = applyFunction(frequency*dis*TWO_PI + phase + t) * amplitude;
-
-    let baseLen = dist(x1,y1,x2,y2);
-    x += offset * (y2-y1) / baseLen;
-    y -= offset * (x2-x1) / baseLen;
-
-    if(currentFunction===0 || currentFunction===2) curveVertex(x,y);
-    else vertex(x,y);
-  }
-  endShape();
-}
-
-function applyFunction(tt){
-  switch(currentFunction){
-    case 0: return sin(tt);
-    case 1: return (tt % TWO_PI < PI) ? 1 : -1;
-    case 2: return asin(sin(tt)) * 2 / PI;
-    case 3: return (tt % TWO_PI) / PI - 1;
-    default: return sin(tt);
-  }
-}
-
-/* =================== 参数更新：滑块 -> 参数（映射不改） =================== */
-function updateParameters(){
-  scaleVal = map(sliders[0].val, 0, 1, 0.5, 3);
-  strokeW  = map(sliders[1].val, 0, 1, 0.5, 20);
-  amplitude = map(sliders[2].val, 0, 1, 0, maxAmp);
-  frequency = map(sliders[3].val, 0, 1, 0.1, 5);
-  animationSpeed = map(sliders[4].val, 0, 1, 0, 0.1);
-}
-
-/* =================== 右下角函数预览（保留） =================== */
-function drawFunctionDisplay(){
-  const displayWidth = 250;
-  const displayHeight = 250;
-  const margin = 50;
-
-  stroke(0);
-  strokeWeight(3);
-
-  push();
-  translate(width - displayWidth/2 - margin, height - displayHeight/2 - margin);
-  line(-displayWidth/2, 0, displayWidth/2, 0);
-  line(0, -displayHeight/2, 0, displayHeight/2);
-
-  fill(0); noStroke();
-  textSize(15);
-  triangle(-5, -displayHeight/2, 5, -displayHeight/2, 0, -displayHeight/2-15);
-  triangle(displayWidth/2+15, 0, displayWidth/2, -5, displayWidth/2, 5);
-
-  fill(0);
-  textAlign(LEFT, TOP);
-  text("y", 15, -displayHeight/2);
-  text("x", displayWidth/2, 25);
-
-  textSize(20);
-  textAlign(CENTER, BOTTOM);
-  text(functionNames[currentFunction] + " Function", 0, -displayHeight/2 - 40);
-  pop();
-
-  stroke(color(140));
-  noFill();
-  strokeWeight(3);
-
-  beginShape();
-  for(let x=0;x<displayWidth;x+=2){
-    let amp = map(amplitude, 0, maxAmp, 0, displayHeight/2);
-    let y = applyFunction(frequency*x*0.02 + phase + t) * amp;
-    vertex(width - displayWidth - margin + x, height - displayHeight/2 - margin - y);
-  }
-  endShape();
-}
-
-/* =================== UI 组件（按钮/滑块） =================== */
-function rectToCapButton(rect, label){
-  const cx = rect.x + rect.w/2;
-  const cy = rect.y + rect.h/2;
-  return new CapButton(cx, cy, rect.w, rect.h, label, true);
-}
-
-class CapButton{
-  constructor(x,y,w,h,str,drawStyle=false){
-    this.x=x; this.y=y; this.w=w; this.h=h; this.str=str;
-    this.state=false;
-    this.drawStyle=drawStyle;
-  }
-  hover(){
-    return mouseX>=this.x-this.w/2 && mouseX<=this.x+this.w/2 &&
-           mouseY>=this.y-this.h/2 && mouseY<=this.y+this.h/2;
-  }
-  display(){
-    push();
-    translate(this.x,this.y);
-    rectMode(CENTER);
-
-    if(this.drawStyle){
-      if(this.hover()) fill(90,89,93);
-      else fill("#464548");
-    }else{
-      if(this.state) fill(110,109,113);
-      else if(this.hover()) fill(90,89,93);
-      else fill("#464548");
-    }
-
-    noStroke();
-    rect(0,0,this.w,this.h,40);
-
-    fill(255);
-    useUIFont();
-    textAlign(CENTER,CENTER);
-    textSize(this.h*0.5);
-    text(this.str,0,0);
-    pop();
-  }
-}
-
-class Slider{
-  constructor(cx,cy,w,h,label,val){
-    this.x=cx; this.y=cy; this.w=w; this.h=h;
-    this.label=label;
-    this.val=val;
-    this.state=false;
-  }
-  hover(){ return abs(mouseX-this.x)<this.w/2 && abs(mouseY-this.y)<this.h/2; }
-  click(){ this.state=this.hover(); }
-  drag(){
-    if(!this.state) return;
-    let v = map(mouseX, this.x-this.w/2, this.x+this.w/2, 0, 1);
-    v = constrain(v,0,1);
-    this.val = lerp(this.val, v, 0.12);
-  }
-  run(){ this.drag(); this.display(); }
-  display(){
-    push();
-    translate(this.x,this.y);
-    rectMode(CENTER);
-    noStroke();
-
-    fill(this.hover()?110:85);
-    rect(0,0,this.w,this.h,999);
-
-    let vw = map(this.val,0,1,0,this.w);
-    fill(this.hover()?160:120);
-    rect(-this.w/2 + vw/2, 0, vw, this.h, 999);
-
-    fill(255);
-    useUIFont();
-    textAlign(CENTER,CENTER);
-    textSize(this.h*0.45);
-    text(this.label,0,0);
-    pop();
-  }
-}
-
-/* =================== 输入框定位 =================== */
-function placeGlyphInput(){
-  if(!glyphInput) return;
-  const pad = 16;
-  const inputY = FUNC_RECTS.save.y + FUNC_RECTS.save.h + 18;
-  glyphInput.position(pad, inputY);
-  glyphInput.size(cw - pad*2, 36);
-}
-
-/* =================== ✅ 关键：把“默认值/Reset值”恢复成 Processing 的默认味道 =================== */
-/* 这是“字体变了”的真正原因修复点 */
-function setDefaultsLikeProcessing(){
-  // Processing 默认：scale=1.0 strokeW=2 amp=10 freq=1 speed=0.02
-  // 反推到滑块值（按映射区间计算）
-  const vScale = (1.0 - 0.5) / (3.0 - 0.5);        // 0.2
-  const vStroke = (2.0 - 0.5) / (20.0 - 0.5);      // ~0.0769
-  const vAmp = 10.0 / maxAmp;                      // 0.2
-  const vFreq = (1.0 - 0.1) / (5.0 - 0.1);         // ~0.1837
-  const vSpeed = 0.02 / 0.1;                       // 0.2
-
-  sliders[0].val = vScale;
-  sliders[1].val = vStroke;
-  sliders[2].val = vAmp;
-  sliders[3].val = vFreq;
-  sliders[4].val = vSpeed;
-
-  for(let s of sliders) s.state = false;
-
-  // 默认波形 = Sin（和你 Processing 默认 currentFunction=0 一样）
-  setWaveSelected(0);
-
-  // 默认动画开
-  isAnimating = true;
-  t = 0;
-}
-
-/* =================== 波形选择 =================== */
-function setWaveSelected(idx){
-  currentFunction = idx;
-  for(let i=0;i<waveButtons.length;i++){
-    waveButtons[i].state = (i===idx);
-  }
-}
-
-/* =================== Randomize（保留） =================== */
-function randomizeParams(){
-  sliders[0].val = random(0.15, 0.6);
-  sliders[1].val = random(0.03, 0.25);
-  sliders[2].val = random(0.05, 0.5);
-  sliders[3].val = random(0.08, 0.5);
-  sliders[4].val = random(0.05, 0.5);
-  setWaveSelected(floor(random(0,4)));
-}
-
-/* =================== setup / resize =================== */
-function setup(){
-  createCanvas(windowWidth, windowHeight);
-  pixelDensity(window.devicePixelRatio || 1);
-
-  // 默认颜色：黑色（你要的）
-  hue = 0; sat = 0; bri = 0;
-  currentColor = color(0);
-
-  // 最近颜色：黑色放第一个
-  recentColors = [color(0), ...defaultRecentHex.map(h=>color(h))].slice(0,5);
-
-  computeLayout();
-  rebuildHueGraphic();
-  rebuildSBGraphic();
-  updateCurrentColor(false);
-
-  resetButton = rectToCapButton(FUNC_RECTS.reset, "Reset");
-  pauseButton = rectToCapButton(FUNC_RECTS.pause, "Pause");
-  gridButton  = rectToCapButton(FUNC_RECTS.grid,  "Grid");
-  saveButton  = rectToCapButton(FUNC_RECTS.save,  "Save");
-
-  glyphInput = createInput(glyphChar);
-  glyphInput.addClass("glyphInput");
-  glyphInput.attribute("maxlength","1");
-  glyphInput.input(()=>{
-    let v = glyphInput.value();
-    if(v.length===0){ glyphChar=""; return; }
-    if(v.length>1){ v=v[0]; glyphInput.value(v); }
-    glyphChar = v;
-  });
-  glyphInput.elt.addEventListener("blur", ()=>{
-    if(!glyphInput.value()){
-      glyphChar = "X";
-      glyphInput.value("X");
-    }
-  });
-  placeGlyphInput();
-
-  // Randomize 按钮
-  const pad = 16;
-  randomizeButton = new CapButton(
-    pad + (cw - pad*2)/2,
-    (FUNC_RECTS.save.y + FUNC_RECTS.save.h + 18) + 36 + 22,
-    cw - pad*2,
-    clamp(height*0.035, 30, 38),
-    "Randomize",
-    true
-  );
-
-  // 滑块（先创建，再把默认值恢复成 Processing 那套）
-  sliders = [];
-  const firstSliderY = randomizeButton.y + randomizeButton.h/2 + 24;
-  const gap = 54;
-  for(let i=0;i<5;i++){
-    sliders.push(new Slider(cw/2, firstSliderY + i*gap, cw-32, 34, sliderName[i], 0.5));
-  }
-
-  // ✅ 把默认值恢复成你 Processing 的默认味道（关键修复）
-  setDefaultsLikeProcessing();
-
-  // 右侧波形按钮
-  waveButtons = [];
-  const bx = width - 120;
-  const by0 = 160;
-  const bGap = 46;
-  const names = ["Sin","Square","Triangle","Sawtooth"];
-  for(let i=0;i<4;i++){
-    waveButtons.push(new CapButton(bx, by0+i*bGap, 150, 30, names[i], false));
-  }
-  setWaveSelected(0);
-
-  tryLoadUIFont();
-}
-
-function windowResized(){
-  resizeCanvas(windowWidth, windowHeight);
-  pixelDensity(window.devicePixelRatio || 1);
-
-  computeLayout();
-  rebuildHueGraphic();
-  rebuildSBGraphic();
-
-  resetButton = rectToCapButton(FUNC_RECTS.reset, "Reset");
-  pauseButton = rectToCapButton(FUNC_RECTS.pause, "Pause");
-  gridButton  = rectToCapButton(FUNC_RECTS.grid,  "Grid");
-  saveButton  = rectToCapButton(FUNC_RECTS.save,  "Save");
-
-  placeGlyphInput();
-
-  const pad = 16;
-  randomizeButton.x = pad + (cw - pad*2)/2;
-  randomizeButton.y = (FUNC_RECTS.save.y + FUNC_RECTS.save.h + 18) + 36 + 22;
-  randomizeButton.w = cw - pad*2;
-
-  const firstSliderY = randomizeButton.y + randomizeButton.h/2 + 24;
-  for(let i=0;i<sliders.length;i++){
-    sliders[i].x = cw/2;
-    sliders[i].y = firstSliderY + i*54;
-    sliders[i].w = cw-32;
-  }
-
-  const bx = width - 120;
-  for(let i=0;i<waveButtons.length;i++){
-    waveButtons[i].x = bx;
-  }
-}
-
-/* =================== draw =================== */
-function draw(){
-  background(240);
-  noTint();
-
-  updateParameters();
-
-  // 右侧区域：网格（sketch.js 一样）
-  push();
-  translate(cw, 0);
-  if(showGrid) drawGrid();
-  pop();
-
-  // 字形：不受左侧栏影响，仍然在屏幕正中心
-  drawGlyphSkeleton();
-
-  // 左侧 UI 背景
-  noStroke();
-  fill("#1F1E24");
-  rect(0, 0, cw, height);
-
-  drawColorPanelNew();
-  drawRecentColors();
-
-  pauseButton.str = isAnimating ? "Pause" : "Play";
-  resetButton.display();
-  pauseButton.display();
-  gridButton.display();
-  saveButton.display();
-
-  // Glyph 标题
-  fill(255);
-  useUIFont();
-  textAlign(LEFT, CENTER);
-  textSize(12);
-  text("Glyph", 16, (FUNC_RECTS.save.y + FUNC_RECTS.save.h + 18) - 10);
-
-  randomizeButton.display();
-
-  for(let s of sliders) s.run();
-
-  for(let b of waveButtons) b.display();
-
-  drawFunctionDisplay();
-
-  if(isAnimating) t += animationSpeed;
-}
-
 /* =================== 交互 =================== */
-function mousePressed(){
-  if(mouseX <= cw){
-    if(resetButton.hover()){ resetToDefaults(); return; }
-    if(pauseButton.hover()){ isAnimating = !isAnimating; return; }
-    if(gridButton.hover()){ showGrid = !showGrid; return; }
-    if(saveButton.hover()){ saveCanvas("FontPath", "png"); return; }
+function mousePressed() {
+  // 左侧按钮
+  if (mouseX <= cw) {
+    if (resetButton.hover()) { resetToDefaults(); return; }
+    if (pauseButton.hover()) { isAnimating = !isAnimating; return; }
+    if (gridButton.hover())  { showGrid = !showGrid; return; }
+    if (saveButton.hover())  { saveCanvas("FontPath", "png"); return; }
 
-    if(handleColorPress()) return;
+    if (randomizeButton.hover()) { randomizeParams(); return; }
 
-    if(randomizeButton.hover()){
-      randomizeParams();
-      return;
-    }
+    if (handleColorPress()) return;
 
-    for(let s of sliders) s.click();
+    for (let s of sliders) s.click();
     return;
   }
 
-  for(let i=0;i<waveButtons.length;i++){
-    if(waveButtons[i].hover()){
+  // 右侧波形按钮
+  for (let i = 0; i < waveButtons.length; i++) {
+    if (waveButtons[i].hover()) {
       setWaveSelected(i);
       return;
     }
   }
 }
 
-function mouseDragged(){
-  if(isColorDragging){
+function mouseDragged() {
+  if (isColorDragging) {
     updateColorByMouse();
-    return;
   }
 }
 
-function mouseReleased(){
-  if(isColorDragging){
+function mouseReleased() {
+  if (isColorDragging) {
     isColorDragging = false;
     colorDragMode = null;
     addRecentColor(currentColor);
     return;
   }
-  for(let s of sliders) s.state = false;
+  for (let s of sliders) s.state = false;
 }
 
-/* ✅ Reset：恢复到 Processing 那套默认“味道” */
-function resetToDefaults(){
-  glyphChar = "X";
-  if(glyphInput) glyphInput.value("X");
+function setWaveSelected(idx) {
+  currentFunction = idx;
+  for (let i = 0; i < waveButtons.length; i++) {
+    waveButtons[i].state = (i === idx);
+  }
+}
 
-  // 默认黑色
+function randomizeParams() {
+  sliders[0].val = random(0.35, 0.75);
+  sliders[1].val = random(0.15, 0.85);
+  sliders[2].val = random(0.05, 0.95);
+  sliders[3].val = random(0.10, 0.90);
+  sliders[4].val = random(0.10, 0.80);
+
+  phase = random(0, TWO_PI);
+  setWaveSelected(floor(random(0, 4)));
+  t = 0;
+}
+
+function resetToDefaults() {
+  isAnimating = true;
+  t = 0;
+  phase = 0;
+
+  for (let s of sliders) {
+    s.val = 0.5;   // ✅ 保留你喜欢的“味道”
+    s.state = false;
+  }
+
+  // 黑色
   hue = 0; sat = 0; bri = 0;
   rebuildSBGraphic();
   updateCurrentColor(true);
 
-  // 默认参数 = Processing 默认
-  setDefaultsLikeProcessing();
+  setWaveSelected(0);
+
+  glyphChar = "X";
+  if (glyphInput) glyphInput.value("X");
+}
+
+/* =================== UI 组件（按钮/滑块） =================== */
+function rectToCapButton(rect, label) {
+  const cx = rect.x + rect.w / 2;
+  const cy = rect.y + rect.h / 2;
+  return new CapButton(cx, cy, rect.w, rect.h, label, true);
+}
+
+class CapButton {
+  constructor(x, y, w, h, str, useDrawStyle=false) {
+    this.x=x; this.y=y; this.w=w; this.h=h; this.str=str;
+    this.state=false;
+    this.useDrawStyle = useDrawStyle;
+  }
+  hover() {
+    return (
+      mouseX >= this.x - this.w / 2 &&
+      mouseX <= this.x + this.w / 2 &&
+      mouseY >= this.y - this.h / 2 &&
+      mouseY <= this.y + this.h / 2
+    );
+  }
+  display() {
+    push();
+    translate(this.x, this.y);
+    rectMode(CENTER);
+
+    if (this.useDrawStyle) {
+      if (this.hover()) fill(90, 89, 93);
+      else fill("#464548");
+    } else {
+      if (this.state) fill(110,109,113);
+      else if (this.hover()) fill(90, 89, 93);
+      else fill("#464548");
+    }
+
+    noStroke();
+    rect(0, 0, this.w, this.h, 40);
+
+    fill(255);
+    useUIFont();
+    textAlign(CENTER, CENTER);
+    textSize(this.h * 0.5);
+    text(this.str, 0, 0);
+    pop();
+  }
+}
+
+class Slider {
+  constructor(cx, cy, w, h, label, val) {
+    this.x = cx; this.y = cy; this.w = w; this.h = h;
+    this.label = label;
+    this.val = val;
+    this.state = false;
+  }
+  hover() { return (abs(mouseX - this.x) < this.w/2 && abs(mouseY - this.y) < this.h/2); }
+  click() { this.state = this.hover(); }
+  drag() {
+    if (!this.state) return;
+    let v = map(mouseX, this.x - this.w/2, this.x + this.w/2, 0, 1);
+    v = constrain(v, 0, 1);
+    this.val = lerp(this.val, v, 0.12);
+  }
+  run() { this.drag(); this.display(); }
+  display() {
+    push();
+    translate(this.x, this.y);
+    rectMode(CENTER);
+    noStroke();
+
+    fill(this.hover() ? 110 : 85);
+    rect(0, 0, this.w, this.h, 999);
+
+    let vw = map(this.val, 0, 1, 0, this.w);
+    fill(this.hover() ? 160 : 120);
+    rect(-this.w/2 + vw/2, 0, vw, this.h, 999);
+
+    fill(255);
+    useUIFont();
+    textAlign(CENTER, CENTER);
+    textSize(this.h * 0.45);
+    text(this.label, 0, 0);
+    pop();
+  }
 }
 
 /* =================== 字体加载（失败不影响） =================== */
-function tryLoadUIFont(){
+function tryLoadUIFont() {
   loadFont(
     FONT_PATH,
-    (f)=>{ uiFont=f; fontLoaded=true; },
-    ()=>{ uiFont=null; fontLoaded=false; }
+    (f) => { uiFont = f; fontLoaded = true; },
+    () => { uiFont = null; fontLoaded = false; }
   );
 }
-function useUIFont(){
-  if(fontLoaded && uiFont) textFont(uiFont);
+function useUIFont() {
+  if (fontLoaded && uiFont) textFont(uiFont);
   else textFont("system-ui");
 }
 </script>
