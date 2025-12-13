@@ -10,7 +10,6 @@
     <h1>纹理绘制</h1>
 
     <script>
-      // 初始化变量
       let a = -2;
       let da = 0.02;
       let xMin = -5, xMax = 5;
@@ -30,7 +29,8 @@
       let isPlaying = true;
       let currentColor;
 
-      // 初始化 p5.js 画布
+      let playButton;
+
       function setup() {
         createCanvas(1440, 900);
         functionLayer = createGraphics(width, height);
@@ -53,33 +53,29 @@
         animationSpeedSlider = createSlider(0.01, 0.1, 0.02, 0.01);
         animationSpeedSlider.position(20, height - 250);
 
-        // 创建播放/暂停按钮
-        playPauseButton = createButton('Pause');
-        playPauseButton.position(20, height - 300);
-        playPauseButton.mousePressed(togglePlayPause);
+        // 播放/暂停按钮
+        playButton = createButton("Pause");
+        playButton.position(20, height - 300);
+        playButton.mousePressed(togglePlay);
       }
 
-      // 绘制函数
       function draw() {
         background(240);
 
-        // 更新滑块的值
+        // 更新参数
         rangeSliderValue = rangeSlider.value();
         thicknessSliderValue = thicknessSlider.value();
         letterSizeSliderValue = letterSizeSlider.value();
         animationSpeedSliderValue = animationSpeedSlider.value();
 
-        // 更新可视化效果
         updateVisualization();
 
-        // 绘制网格、函数图形、字母X等
         drawGrid();
         drawFunctionLayer();
         drawLetterMask();
         displayFunctionWithAxis();
       }
 
-      // 更新可视化
       function updateVisualization() {
         xMin = yMin = -rangeSliderValue;
         xMax = yMax = rangeSliderValue;
@@ -93,7 +89,6 @@
         }
       }
 
-      // 绘制网格
       function drawGrid() {
         stroke(200);
         strokeWeight(1);
@@ -106,7 +101,6 @@
         }
       }
 
-      // 绘制函数层
       function drawFunctionLayer() {
         functionLayer.beginDraw();
         functionLayer.clear();
@@ -128,7 +122,6 @@
         image(functionLayer, 0, 0);
       }
 
-      // 绘制字母X层
       function drawLetterMask() {
         letterMask.beginDraw();
         letterMask.clear();
@@ -162,14 +155,12 @@
         letterMask.endDraw();
       }
 
-      // 计算函数值
       function calculateDifference(x, y) {
         let leftSide = sin(x * x + y * y);
         let rightSide = a * cos(x * y);
         return leftSide - rightSide;
       }
 
-      // 显示坐标轴和函数信息
       function displayFunctionWithAxis() {
         let axisSize = 250;
         let margin = 50;
@@ -182,14 +173,16 @@
         line(axisX, axisY - axisSize / 2, axisX, axisY + axisSize / 2);  // Y轴
       }
 
-      // 切换播放和暂停
-      function togglePlayPause() {
-        isPlaying = !isPlaying;
-        if (isPlaying) {
-          playPauseButton.html('Pause');
-        } else {
-          playPauseButton.html('Play');
+      function mousePressed() {
+        // 切换播放和暂停
+        if (mouseX > 20 && mouseX < 120 && mouseY > height - 300 && mouseY < height - 250) {
+          togglePlay();
         }
+      }
+
+      function togglePlay() {
+        isPlaying = !isPlaying;
+        playButton.html(isPlaying ? "Pause" : "Play");
       }
     </script>
   </body>
