@@ -7,109 +7,19 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
   </head>
   <body>
-    <h1>Texture Drawing</h1>
+    <h1>纹理绘制</h1>
 
-    <!-- 这里是 p5.js 绘图的区域 -->
     <script>
-      // 你的 p5.js 代码放在这里
-
-      let a = -2;
-      let da = 0.02;
-      let xMin = -5, xMax = 5;
-      let yMin = -5, yMax = 5;
-      let lineThickness = 4;
-      let rangeSliderValue = 5;
-      let thicknessSliderValue = 4;
-      let letterSizeSliderValue = 0.8;
-      let animationSpeedSliderValue = 0.02;
-      let cw = 200;
-      let backgroundColor;
-      let functionLayer;
-      let letterMask;
-      let needsUpdate = true;
-      let isPlaying = true;
-      let font1, font2;
-      let currentColor;
-
+      // 简单的 p5.js 测试代码
       function setup() {
-        createCanvas(1440, 900);
-        frameRate(60);
-        font1 = loadFont('ABCFavoritHebrewBoldVariable-Trial.ttf');
-        font2 = loadFont('ABCFavoritHebrewBoldVariable-Trial.ttf');
-        textFont(font1);
-        functionLayer = createGraphics(width, height);
-        letterMask = createGraphics(width, height);
-        backgroundColor = color(240);
-
-        currentColor = color(255);
-
-        // 创建一个滑块（使用 p5.js 的 GUI）
-        createSlider(0, 1, 0.5, 0.01); // 示例滑块
+        createCanvas(1440, 900);  // 创建画布
+        background(240);  // 设置背景颜色
       }
 
       function draw() {
-        updateParameters();
-
-        if (needsUpdate) {
-          updateVisualization();
-          needsUpdate = false;
-        }
-
-        drawGrid();
-        fill(31, 30, 36);
-        rect(0, 0, cw, height);
-        push();
-        imageMode(CENTER);
-        translate(width / 2, height / 2);
-        image(functionLayer, 0, 0);
-        pop();
-
-        fill(0);
-        textSize(24);
-        text("a = " + nf(a, 1, 2), 15, 40);
-        displayFunctionWithAxis();
-
-        a += da;
-
-        if (a > 3 || a < -2) {
-          da *= -1;
-          a = constrain(a, -2, 3);
-        }
+        fill(255, 0, 0);  // 填充红色
+        ellipse(width / 2, height / 2, 200, 200);  // 画一个红色圆形
       }
-
-      function updateVisualization() {
-        xMin = yMin = -rangeSliderValue;
-        xMax = yMax = rangeSliderValue;
-        lineThickness = thicknessSliderValue;
-
-        if (isPlaying) {
-          da = animationSpeedSliderValue * (da < 0 ? -1 : 1);
-        } else {
-          da = 0;
-        }
-
-        let plotSize = 500;
-        let plotX = (width - plotSize) / 2;
-        let plotY = (height - plotSize) / 2;
-
-        drawLetterMask(plotX, plotY, plotSize);
-        drawFunctionLayer(plotX, plotY, plotSize);
-      }
-
-      function drawGrid() {
-        background(240);
-        stroke(200);
-        strokeWeight(1);
-        let gridSize = 20;
-        for (let x = 0; x < width; x += gridSize) {
-          line(x, 0, x, height);
-        }
-        for (let y = 0; y < height; y += gridSize) {
-          line(0, y, width, y);
-        }
-      }
-
-      // 继续其他 p5.js 代码
     </script>
   </body>
 </html>
