@@ -8,7 +8,6 @@
     html, body { margin:0; padding:0; background:#0f1013; overflow:hidden; }
     canvas { display:block; }
 
-    /* 输入框：放在左侧栏里（位置由 JS 动态定位） */
     .glyphInput {
       position: absolute;
       background: #3A393D;
@@ -27,12 +26,12 @@
 
 <body>
 <script>
-/* =================== 字体（仅 UI 文本用） =================== */
+/* =================== 字体（仅 UI 文本用，不影响图形逻辑） =================== */
 const FONT_PATH = "assets/fonts/ABCFavoritHebrewBoldVariable-Trial.ttf";
 let uiFont = null;
 let fontLoaded = false;
 
-/* =================== 你的参数（保留原逻辑风格） =================== */
+/* =================== 你的参数（保留原逻辑） =================== */
 let maxAmp = 50;
 let t = 0;
 
@@ -40,23 +39,20 @@ let scaleVal = 1.0;
 let strokeW = 2;
 let amplitude = 10;
 let frequency = 1;
-
-// phase 逻辑保留（但不做滑块 UI）
-let phase = 0;
-
+let phase = 0;                 // ✅ 逻辑保留（只是无滑块）
 let isAnimating = true;
 let animationSpeed = 0.02;
 
 let currentFunction = 0;
 const functionNames = ["Sin", "Square", "Triangle", "Sawtooth"];
 
-/* =================== 默认：字母 X + 默认黑色 =================== */
-let glyphChar = "X";
+/* =================== 默认字母 + 默认颜色 =================== */
+let glyphChar = "X";           // ✅ 默认 X（你要改默认 A 就把这里改成 "A"）
 let currentColor;
 
-/* =================== 参考 sketch.js：布局相关（完全照抄思路） =================== */
-let cw = 240;         // 左侧栏宽度（由 computeLayout 动态算）
-let cellSize = 36;    // 网格大小（由 computeLayout 动态算）
+/* =================== 参考 sketch.js：布局/网格 =================== */
+let cw = 240;
+let cellSize = 36;
 let showGrid = true;
 
 /* HSV 颜色（sketch.js 一样） */
@@ -77,27 +73,27 @@ let sbGraphic, hueGraphic;
 const defaultRecentHex = ["#482BCC", "#FF04A5", "#FFE900", "#8CE255", "#8EC8EC"];
 let recentColors = [];
 
-/* 四个按钮：Reset / Pause / Grid / Save（位置跟 sketch.js 的 FUNC_RECTS 一样） */
+/* 四个按钮：Reset / Pause / Grid / Save */
 let resetButton, pauseButton, gridButton, saveButton;
 
-/* 输入框 + Randomize 按钮（你要求插在输入框位置） */
+/* 输入框 + Randomize 按钮 */
 let glyphInput;
 let randomizeButton;
 
-/* 5个滑块（下移） */
+/* 5个滑块（保留你想要的：Scale / Stroke / Amp / Freq / Speed） */
 const sliderName = ["Scale", "Stroke Weight", "Amplitude", "Frequency", "Animation Speed"];
 let sliders = [];
 
 /* 波形按钮（右侧） */
 let waveButtons = [];
 
-/* =================== 工具函数（来自 sketch.js 风格） =================== */
+/* =================== 工具函数 =================== */
 function clamp(v, lo, hi){ return max(lo, min(hi, v)); }
 function colorsEqual(c1, c2){
   return red(c1)===red(c2) && green(c1)===green(c2) && blue(c1)===blue(c2);
 }
 
-/* =================== ✅ 核心：完全复刻 sketch.js 的 computeLayout =================== */
+/* =================== ✅ computeLayout（照抄 sketch.js） =================== */
 function computeLayout(){
   cw = clamp(width * 0.18, 200, 320);
 
@@ -132,14 +128,13 @@ function computeLayout(){
     RECENT_RECTS.push({ x: pad + i*(rW+recentGap), y: recentY, w: rW, h: rW });
   }
 
-  // 功能按钮区（2x2）
+  // 功能按钮（2x2）
   const btnGapX = 12;
   const btnW = (cw - pad*2 - btnGapX)/2;
   const btnH = clamp(height*0.035, 30, 38);
   const funcY1 = recentY + rW + 18;
   const funcY2 = funcY1 + btnH + 12;
 
-  // ✅ 这里我们把 sketch.js 的 undo/clear 替换成 reset/pause
   FUNC_RECTS = {
     reset: { x: pad, y: funcY1, w: btnW, h: btnH },
     pause: { x: pad + btnW + btnGapX, y: funcY1, w: btnW, h: btnH },
@@ -148,7 +143,7 @@ function computeLayout(){
   };
 }
 
-/* =================== 颜色贴图（照抄 sketch.js 修复方式） =================== */
+/* =================== 颜色贴图（照抄 sketch.js） =================== */
 function rebuildHueGraphic(){
   const w = max(1, floor(COLOR_HUE.w));
   const h = max(1, floor(COLOR_HUE.h));
@@ -205,7 +200,6 @@ function updateCurrentColor(addRecent=true){
   pop();
   if(addRecent) addRecentColor(currentColor);
 }
-
 function addRecentColor(c){
   const nc = color(c);
   recentColors = recentColors.filter(rc => !colorsEqual(rc, nc));
@@ -213,13 +207,11 @@ function addRecentColor(c){
   if(recentColors.length>5) recentColors.length = 5;
 }
 
-/* =================== 左侧颜色面板（完全 sketch.js 画法） =================== */
+/* =================== 左侧颜色面板（sketch.js 一样） =================== */
 function drawColorPanelNew(){
   noTint();
-
   const r = 14;
 
-  // 背板
   noStroke();
   fill(38);
   rect(
@@ -230,7 +222,6 @@ function drawColorPanelNew(){
     16
   );
 
-  // SB
   stroke(70);
   strokeWeight(1);
   fill(20);
@@ -239,7 +230,6 @@ function drawColorPanelNew(){
   imageMode(CORNER);
   image(sbGraphic, COLOR_MAIN.x, COLOR_MAIN.y, COLOR_MAIN.w, COLOR_MAIN.h);
 
-  // Hue
   stroke(70);
   strokeWeight(1);
   fill(20);
@@ -247,7 +237,6 @@ function drawColorPanelNew(){
 
   image(hueGraphic, COLOR_HUE.x, COLOR_HUE.y, COLOR_HUE.w, COLOR_HUE.h);
 
-  // SB 手柄
   const hx = COLOR_MAIN.x + (sat/100)*COLOR_MAIN.w;
   const hy = COLOR_MAIN.y + (1 - bri/100)*COLOR_MAIN.h;
 
@@ -259,7 +248,6 @@ function drawColorPanelNew(){
   strokeWeight(2);
   circle(hx, hy, 10);
 
-  // Hue 指示线
   const hueY = COLOR_HUE.y + (hue/360)*COLOR_HUE.h;
   stroke(255);
   strokeWeight(3);
@@ -284,7 +272,6 @@ function drawRecentColors(){
 }
 
 function handleColorPress(){
-  // SB
   if(mouseX>=COLOR_MAIN.x && mouseX<=COLOR_MAIN.x+COLOR_MAIN.w &&
      mouseY>=COLOR_MAIN.y && mouseY<=COLOR_MAIN.y+COLOR_MAIN.h){
     isColorDragging = true;
@@ -292,7 +279,6 @@ function handleColorPress(){
     updateColorByMouse();
     return true;
   }
-  // Hue
   if(mouseX>=COLOR_HUE.x && mouseX<=COLOR_HUE.x+COLOR_HUE.w &&
      mouseY>=COLOR_HUE.y && mouseY<=COLOR_HUE.y+COLOR_HUE.h){
     isColorDragging = true;
@@ -300,7 +286,6 @@ function handleColorPress(){
     updateColorByMouse();
     return true;
   }
-  // Recent
   for(let i=0;i<RECENT_RECTS.length;i++){
     const r = RECENT_RECTS[i];
     if(mouseX>=r.x && mouseX<=r.x+r.w && mouseY>=r.y && mouseY<=r.y+r.h){
@@ -333,7 +318,7 @@ function updateColorByMouse(){
   return false;
 }
 
-/* =================== 网格（完全 sketch.js 的画法） =================== */
+/* =================== 网格（sketch.js 一样） =================== */
 function drawGrid(){
   const w = width - cw;
   const h = height;
@@ -348,19 +333,18 @@ function drawGrid(){
   for(let y=0;y<=h;y+=cellSize) line(0, y, w, y);
 }
 
-/* =================== 你的“线段骨架 + 沿线扰动”逻辑 =================== */
-/* ✅ 你要求：X 的骨架就是两条线段，不要很多小短线。我们就用两条对角线。 */
+/* =================== ✅ 恢复“你原来的字体逻辑味道”：关键是默认参数别变 =================== */
+/* 这里不动你的扰动公式，只负责画骨架（X 就两条线段骨架） */
 function drawGlyphSkeleton(){
   stroke(currentColor);
   strokeWeight(strokeW);
   noFill();
 
-  // 在屏幕正中心（不管左右栏）
   push();
   translate(width/2, height/2);
   scale(scaleVal);
 
-  // X：两条线段骨架（对角线）
+  // X：两条线段骨架
   drawParametricCurve(-80, -80,  80,  80);
   drawParametricCurve(-80,  80,  80, -80);
 
@@ -373,7 +357,7 @@ function drawParametricCurve(x1,y1,x2,y2){
     let x = lerp(x1,x2,i);
     let y = lerp(y1,y2,i);
 
-    // 保留你原来的扰动公式
+    // ✅ 完全保留：frequency * dis * TWO_PI + phase + t
     let dis = dist(x,y,x1,y1)*0.01;
     let offset = applyFunction(frequency*dis*TWO_PI + phase + t) * amplitude;
 
@@ -395,6 +379,15 @@ function applyFunction(tt){
     case 3: return (tt % TWO_PI) / PI - 1;
     default: return sin(tt);
   }
+}
+
+/* =================== 参数更新：滑块 -> 参数（映射不改） =================== */
+function updateParameters(){
+  scaleVal = map(sliders[0].val, 0, 1, 0.5, 3);
+  strokeW  = map(sliders[1].val, 0, 1, 0.5, 20);
+  amplitude = map(sliders[2].val, 0, 1, 0, maxAmp);
+  frequency = map(sliders[3].val, 0, 1, 0.1, 5);
+  animationSpeed = map(sliders[4].val, 0, 1, 0, 0.1);
 }
 
 /* =================== 右下角函数预览（保留） =================== */
@@ -439,7 +432,7 @@ function drawFunctionDisplay(){
   endShape();
 }
 
-/* =================== Slider / CapButton（沿用你页面的风格） =================== */
+/* =================== UI 组件（按钮/滑块） =================== */
 function rectToCapButton(rect, label){
   const cx = rect.x + rect.w/2;
   const cy = rect.y + rect.h/2;
@@ -520,28 +513,43 @@ class Slider{
   }
 }
 
-/* =================== 输入框定位（让它嵌进左侧栏） =================== */
+/* =================== 输入框定位 =================== */
 function placeGlyphInput(){
   if(!glyphInput) return;
-
-  // 放在第二排按钮下面（跟 sketch.js 的“形状按钮区域”类似思路）
   const pad = 16;
-  const inputY = FUNC_RECTS.save.y + FUNC_RECTS.save.h + 18; // 在功能按钮区下方
-
+  const inputY = FUNC_RECTS.save.y + FUNC_RECTS.save.h + 18;
   glyphInput.position(pad, inputY);
   glyphInput.size(cw - pad*2, 36);
 }
 
-/* =================== 参数更新（滑块 -> 参数） =================== */
-function updateParameters(){
-  scaleVal = map(sliders[0].val, 0, 1, 0.5, 3);
-  strokeW  = map(sliders[1].val, 0, 1, 0.5, 20);
-  amplitude = map(sliders[2].val, 0, 1, 0, maxAmp);
-  frequency = map(sliders[3].val, 0, 1, 0.1, 5);
-  animationSpeed = map(sliders[4].val, 0, 1, 0, 0.1);
+/* =================== ✅ 关键：把“默认值/Reset值”恢复成 Processing 的默认味道 =================== */
+/* 这是“字体变了”的真正原因修复点 */
+function setDefaultsLikeProcessing(){
+  // Processing 默认：scale=1.0 strokeW=2 amp=10 freq=1 speed=0.02
+  // 反推到滑块值（按映射区间计算）
+  const vScale = (1.0 - 0.5) / (3.0 - 0.5);        // 0.2
+  const vStroke = (2.0 - 0.5) / (20.0 - 0.5);      // ~0.0769
+  const vAmp = 10.0 / maxAmp;                      // 0.2
+  const vFreq = (1.0 - 0.1) / (5.0 - 0.1);         // ~0.1837
+  const vSpeed = 0.02 / 0.1;                       // 0.2
+
+  sliders[0].val = vScale;
+  sliders[1].val = vStroke;
+  sliders[2].val = vAmp;
+  sliders[3].val = vFreq;
+  sliders[4].val = vSpeed;
+
+  for(let s of sliders) s.state = false;
+
+  // 默认波形 = Sin（和你 Processing 默认 currentFunction=0 一样）
+  setWaveSelected(0);
+
+  // 默认动画开
+  isAnimating = true;
+  t = 0;
 }
 
-/* =================== 波形按钮选择 =================== */
+/* =================== 波形选择 =================== */
 function setWaveSelected(idx){
   currentFunction = idx;
   for(let i=0;i<waveButtons.length;i++){
@@ -549,16 +557,13 @@ function setWaveSelected(idx){
   }
 }
 
-/* =================== Randomize（你要的随机一套参数） =================== */
+/* =================== Randomize（保留） =================== */
 function randomizeParams(){
-  // 只随机你有滑块的这几个（不动 phase）
-  sliders[0].val = random(0.35, 0.8);  // Scale
-  sliders[1].val = random(0.15, 0.6);  // Stroke
-  sliders[2].val = random(0.2, 0.9);   // Amp
-  sliders[3].val = random(0.15, 0.85); // Freq
-  sliders[4].val = random(0.05, 0.7);  // Speed
-
-  // 随机波形
+  sliders[0].val = random(0.15, 0.6);
+  sliders[1].val = random(0.03, 0.25);
+  sliders[2].val = random(0.05, 0.5);
+  sliders[3].val = random(0.08, 0.5);
+  sliders[4].val = random(0.05, 0.5);
   setWaveSelected(floor(random(0,4)));
 }
 
@@ -567,11 +572,11 @@ function setup(){
   createCanvas(windowWidth, windowHeight);
   pixelDensity(window.devicePixelRatio || 1);
 
-  // 默认颜色：黑色
+  // 默认颜色：黑色（你要的）
   hue = 0; sat = 0; bri = 0;
   currentColor = color(0);
 
-  // 最近颜色：沿用 sketch.js 默认 + 把黑色放到第一个
+  // 最近颜色：黑色放第一个
   recentColors = [color(0), ...defaultRecentHex.map(h=>color(h))].slice(0,5);
 
   computeLayout();
@@ -579,14 +584,12 @@ function setup(){
   rebuildSBGraphic();
   updateCurrentColor(false);
 
-  // 按钮（位置=sketch.js 的 FUNC_RECTS）
   resetButton = rectToCapButton(FUNC_RECTS.reset, "Reset");
   pauseButton = rectToCapButton(FUNC_RECTS.pause, "Pause");
   gridButton  = rectToCapButton(FUNC_RECTS.grid,  "Grid");
   saveButton  = rectToCapButton(FUNC_RECTS.save,  "Save");
 
-  // 输入框：默认 X
-  glyphInput = createInput("X");
+  glyphInput = createInput(glyphChar);
   glyphInput.addClass("glyphInput");
   glyphInput.attribute("maxlength","1");
   glyphInput.input(()=>{
@@ -596,11 +599,14 @@ function setup(){
     glyphChar = v;
   });
   glyphInput.elt.addEventListener("blur", ()=>{
-    if(!glyphInput.value()){ glyphChar="X"; glyphInput.value("X"); }
+    if(!glyphInput.value()){
+      glyphChar = "X";
+      glyphInput.value("X");
+    }
   });
   placeGlyphInput();
 
-  // Randomize 按钮：放在输入框下面
+  // Randomize 按钮
   const pad = 16;
   randomizeButton = new CapButton(
     pad + (cw - pad*2)/2,
@@ -611,13 +617,16 @@ function setup(){
     true
   );
 
-  // 滑块：整体下移（在 Randomize 下面）
+  // 滑块（先创建，再把默认值恢复成 Processing 那套）
   sliders = [];
   const firstSliderY = randomizeButton.y + randomizeButton.h/2 + 24;
   const gap = 54;
   for(let i=0;i<5;i++){
     sliders.push(new Slider(cw/2, firstSliderY + i*gap, cw-32, 34, sliderName[i], 0.5));
   }
+
+  // ✅ 把默认值恢复成你 Processing 的默认味道（关键修复）
+  setDefaultsLikeProcessing();
 
   // 右侧波形按钮
   waveButtons = [];
@@ -660,7 +669,6 @@ function windowResized(){
     sliders[i].w = cw-32;
   }
 
-  // 右侧波形按钮也跟随屏幕宽度
   const bx = width - 120;
   for(let i=0;i<waveButtons.length;i++){
     waveButtons[i].x = bx;
@@ -674,14 +682,13 @@ function draw(){
 
   updateParameters();
 
-  // 右侧画布（sketch.js 风格：translate(cw,0)）
+  // 右侧区域：网格（sketch.js 一样）
   push();
   translate(cw, 0);
-
   if(showGrid) drawGrid();
-
-  // ✅ 字母始终在屏幕正中心（不受 translate/cw 影响）
   pop();
+
+  // 字形：不受左侧栏影响，仍然在屏幕正中心
   drawGlyphSkeleton();
 
   // 左侧 UI 背景
@@ -693,29 +700,24 @@ function draw(){
   drawRecentColors();
 
   pauseButton.str = isAnimating ? "Pause" : "Play";
-
   resetButton.display();
   pauseButton.display();
   gridButton.display();
   saveButton.display();
 
-  // 输入框标题
+  // Glyph 标题
   fill(255);
   useUIFont();
   textAlign(LEFT, CENTER);
   textSize(12);
   text("Glyph", 16, (FUNC_RECTS.save.y + FUNC_RECTS.save.h + 18) - 10);
 
-  // Randomize
   randomizeButton.display();
 
-  // 滑块
   for(let s of sliders) s.run();
 
-  // 右侧波形按钮
   for(let b of waveButtons) b.display();
 
-  // 右下角预览
   drawFunctionDisplay();
 
   if(isAnimating) t += animationSpeed;
@@ -723,7 +725,6 @@ function draw(){
 
 /* =================== 交互 =================== */
 function mousePressed(){
-  // 左侧栏
   if(mouseX <= cw){
     if(resetButton.hover()){ resetToDefaults(); return; }
     if(pauseButton.hover()){ isAnimating = !isAnimating; return; }
@@ -741,7 +742,6 @@ function mousePressed(){
     return;
   }
 
-  // 右侧波形按钮
   for(let i=0;i<waveButtons.length;i++){
     if(waveButtons[i].hover()){
       setWaveSelected(i);
@@ -767,11 +767,8 @@ function mouseReleased(){
   for(let s of sliders) s.state = false;
 }
 
+/* ✅ Reset：恢复到 Processing 那套默认“味道” */
 function resetToDefaults(){
-  isAnimating = true;
-  t = 0;
-
-  // 默认字母 X
   glyphChar = "X";
   if(glyphInput) glyphInput.value("X");
 
@@ -780,10 +777,8 @@ function resetToDefaults(){
   rebuildSBGraphic();
   updateCurrentColor(true);
 
-  // 滑块回中
-  for(let s of sliders){ s.val = 0.5; s.state = false; }
-
-  setWaveSelected(0);
+  // 默认参数 = Processing 默认
+  setDefaultsLikeProcessing();
 }
 
 /* =================== 字体加载（失败不影响） =================== */
