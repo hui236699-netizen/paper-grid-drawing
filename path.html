@@ -29,7 +29,7 @@
 const CANVAS_W = 1440;
 const CANVAS_H = 900;
 
-/* =================== 左侧操作栏（完全对齐 draw.html） =================== */
+/* =================== 左侧操作栏（对齐 draw.html） =================== */
 let cw = 240;
 let ch = 0;
 let showGrid = true;
@@ -43,7 +43,7 @@ let strokeW = 2;
 let amplitude = 10;
 let frequency = 1;
 
-// ✅ phase 逻辑保留（不做滑块 UI）
+// phase 逻辑保留（不做滑块 UI）
 let phase = 0;
 
 let isAnimating = true;
@@ -58,9 +58,10 @@ let uiFont = null;
 let fontLoaded = false;
 
 /* =================== 颜色模块（完全复制 draw.html 结构） =================== */
-let hue = 220;
-let sat = 100;
-let bri = 80;
+// ✅ 默认颜色黑色：bri=0
+let hue = 0;
+let sat = 0;
+let bri = 0;
 let currentColor;
 
 const COLOR_PANEL_H = 190;
@@ -70,7 +71,7 @@ const COLOR_HUE  = { x: cw - 30, y: 0, w: 30, h: COLOR_PANEL_H };
 
 let sbGraphic, hueGraphic;
 
-// 最近颜色 5 格（对齐 draw.html）
+// 最近颜色 5 格
 const RECENT_RECTS = [
   { x: 16,  y: COLOR_PANEL_H + 25, w: 28, h: 28 },
   { x: 62,  y: COLOR_PANEL_H + 25, w: 28, h: 28 },
@@ -82,7 +83,7 @@ const RECENT_RECTS = [
 const defaultRecentHex = ["#482BCC","#FF04A5","#FFE900","#8CE255","#8EC8EC"];
 let recentColors = [];
 
-/* =================== 四个功能按钮（位置完全对齐 draw.html） =================== */
+/* =================== 四个功能按钮 =================== */
 const FUNC_RECTS = {
   reset: { x: 20,  y: COLOR_PANEL_H + 68,  w: 90, h: 32 },
   pause: { x: 130, y: COLOR_PANEL_H + 68,  w: 90, h: 32 },
@@ -92,54 +93,40 @@ const FUNC_RECTS = {
 
 let resetButton, pauseButton, gridButton, saveButton;
 
-/* =================== 输入框（放在按钮下方） =================== */
+/* =================== 输入框 =================== */
 let glyphInput;
-// ✅ 默认字母改为 X
+// 默认字母：X
 let glyphChar = "X";
 
-/* =================== 5个滑块（你的顺序） =================== */
+/* =================== 5个滑块 =================== */
 const sliderName = ["Scale", "Stroke Weight", "Amplitude", "Frequency", "Animation Speed"];
 let sliders = [];
 
-/* =================== 波形按钮（放右边） =================== */
+/* =================== 波形按钮（右边） =================== */
 let waveButtons = [];
 
-/* ============================================================
-   ✅ 单线骨架字库：重点优化 X / Y / O
-   - X：两条对角线在中心“断开再接”，中心更干净
-   - Y：上部V + 中部汇合 + 竖干，更像字体骨架
-   - O：点更多更圆（不会“八边形感”）
-   ============================================================ */
+/* =================== 单线骨架字库：优化 X/Y/O =================== */
 const STICK_FONT = {
-  // 你原来的 A 保留（虽然默认不再用它）
   "A": [
     [[-50, 100],[  0,-100]],
     [[ 50, 100],[  0,-100]],
     [[-30,  30],[ 30,  30]]
   ],
-
-  // ✅ 优化后的 X
   "X": [
-    [[-55,-100],[-10,-20],[  0,  0]],   // 斜线1上半
-    [[  0,  0],[ 10, 20],[ 55,100]],    // 斜线1下半
-    [[ 55,-100],[ 10,-20],[  0,  0]],   // 斜线2上半
-    [[  0,  0],[-10, 20],[-55,100]]     // 斜线2下半
+    [[-55,-100],[-10,-20],[  0,  0]],
+    [[  0,  0],[ 10, 20],[ 55,100]],
+    [[ 55,-100],[ 10,-20],[  0,  0]],
+    [[  0,  0],[-10, 20],[-55,100]]
   ],
-
-  // ✅ 优化后的 Y
   "Y": [
-    [[-55,-100],[-15,-35],[  0,  0]],   // 左上到汇合
-    [[ 55,-100],[ 15,-35],[  0,  0]],   // 右上到汇合
-    [[  0,  0],[  0,100]]               // 竖干
+    [[-55,-100],[-15,-35],[  0,  0]],
+    [[ 55,-100],[ 15,-35],[  0,  0]],
+    [[  0,  0],[  0,100]]
   ],
-
-  // ✅ 优化后的 O（更圆：更多采样点）
   "O": [
     [[  0,-105],[ 35,-95],[ 60,-65],[ 75,-25],[ 75, 25],[ 60, 65],[ 35, 95],[  0,105],
       [-35, 95],[-60, 65],[-75, 25],[-75,-25],[-60,-65],[-35,-95],[  0,-105]]
   ],
-
-  // 其它字符：你如果暂时不需要，可以先留少量
   "?": [
     [[-20,-60],[0,-100],[20,-60],[0,-20]],
     [[0,60],[0,80]]
@@ -161,18 +148,22 @@ function setup() {
   createCanvas(CANVAS_W, CANVAS_H);
   pixelDensity(1);
 
-  currentColor = color("#482BCC");
+  // 最近颜色保留你原来的 palette
   recentColors = defaultRecentHex.map(h => color(h));
+
+  // ✅ 默认黑色
+  currentColor = color(0);
 
   buildHueGraphic();
   buildSBGraphic();
+  // 把黑色同步进 recentColors 的第一格（可删：如果你不想黑色占最近色）
+  addRecentColor(currentColor);
 
   resetButton = rectToCapButton(FUNC_RECTS.reset, "Reset");
   pauseButton = rectToCapButton(FUNC_RECTS.pause, "Pause");
   gridButton  = rectToCapButton(FUNC_RECTS.grid,  "Grid");
   saveButton  = rectToCapButton(FUNC_RECTS.save,  "Save");
 
-  // ✅ 输入框默认也改为 X
   glyphInput = createInput("X");
   glyphInput.addClass("glyphInput");
   glyphInput.attribute("maxlength", "1");
@@ -185,7 +176,6 @@ function setup() {
     glyphChar = v;
   });
 
-  // ✅ 失焦：空则回到 X
   glyphInput.elt.addEventListener("blur", () => {
     if (!glyphInput.value() || glyphInput.value().length === 0) {
       glyphChar = "X";
@@ -222,12 +212,9 @@ function draw() {
 
   if (showGrid) drawGrid();
 
-  // ✅ 关键：在“除去左侧操作栏”的右侧区域正中间
-  const centerX = cw + (width - cw) / 2;
-  const centerY = height / 2;
-
+  // ✅ 永远画布正中间（不管操作栏）
   push();
-  translate(centerX, centerY);
+  translate(width / 2, height / 2);
   scale(scaleVal);
   drawGlyph(glyphChar);
   pop();
@@ -289,7 +276,7 @@ function drawGrid() {
   for (let y = 0; y <= height; y += step) line(cw, y, width, y);
 }
 
-/* =================== 绘制骨架字（保留你原来的扰动味道） =================== */
+/* =================== 绘制骨架字（保留扰动味道） =================== */
 function drawGlyph(ch) {
   const key = normalizeGlyphChar(ch);
   const strokes = STICK_FONT[key] || STICK_FONT["?"];
@@ -567,13 +554,13 @@ function resetToDefaults() {
     s.state = false;
   }
 
-  hue = 220; sat = 100; bri = 80;
+  // ✅ Reset 回到黑色
+  hue = 0; sat = 0; bri = 0;
   buildSBGraphic();
   updateCurrentColor();
 
   setWaveSelected(0);
 
-  // ✅ Reset 回到 X
   glyphChar = "X";
   if (glyphInput) glyphInput.value("X");
 }
