@@ -231,15 +231,15 @@
 
       // Draw the letter X
       letterMask.beginShape();
-      PVector[] xVertices = [
-        new PVector(-letterSize / 2, -letterSize / 2),
-        new PVector(letterSize / 2, letterSize / 2),
-        new PVector(letterSize / 3, letterSize / 2),
-        new PVector(0, letterSize / 6),
-        new PVector(-letterSize / 3, letterSize / 2),
-        new PVector(-letterSize / 2, letterSize / 3),
-        new PVector(-letterSize / 6, 0),
-        new PVector(-letterSize / 2, -letterSize / 3)
+      let xVertices = [
+        createVector(-letterSize / 2, -letterSize / 2),
+        createVector(letterSize / 2, letterSize / 2),
+        createVector(letterSize / 3, letterSize / 2),
+        createVector(0, letterSize / 6),
+        createVector(-letterSize / 3, letterSize / 2),
+        createVector(-letterSize / 2, letterSize / 3),
+        createVector(-letterSize / 6, 0),
+        createVector(-letterSize / 2, -letterSize / 3)
       ];
       for (let v of xVertices) {
         letterMask.vertex(v.x, v.y);
@@ -247,15 +247,15 @@
       letterMask.endShape(CLOSE);
 
       letterMask.beginShape();
-      PVector[] xVertices2 = [
-        new PVector(letterSize / 2, -letterSize / 2),
-        new PVector(-letterSize / 2, letterSize / 2),
-        new PVector(-letterSize / 3, letterSize / 2),
-        new PVector(0, letterSize / 6),
-        new PVector(letterSize / 3, letterSize / 2),
-        new PVector(letterSize / 2, letterSize / 3),
-        new PVector(letterSize / 6, 0),
-        new PVector(letterSize / 2, -letterSize / 3)
+      let xVertices2 = [
+        createVector(letterSize / 2, -letterSize / 2),
+        createVector(-letterSize / 2, letterSize / 2),
+        createVector(-letterSize / 3, letterSize / 2),
+        createVector(0, letterSize / 6),
+        createVector(letterSize / 3, letterSize / 2),
+        createVector(letterSize / 2, letterSize / 3),
+        createVector(letterSize / 6, 0),
+        createVector(letterSize / 2, -letterSize / 3)
       ];
       for (let v of xVertices2) {
         letterMask.vertex(v.x, v.y);
