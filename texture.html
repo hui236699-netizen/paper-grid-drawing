@@ -1,91 +1,75 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Font Texture</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Texture Animation</title>
   <style>
-    html, body {
+    body {
       margin: 0;
       padding: 0;
       background: #0f1013;
-      overflow: hidden;
-      height: 100%;
-      width: 100%;
+      font-family: Arial, sans-serif;
     }
-    canvas {
-      display: block;
-      position: fixed;
-      left: 0;
-      top: 0;
-    }
-
-    .control-panel {
+    .controls {
       position: absolute;
       top: 20px;
       left: 20px;
       background: rgba(0, 0, 0, 0.7);
-      color: #fff;
+      color: white;
       padding: 20px;
       border-radius: 10px;
     }
-
+    .slider, .button {
+      margin: 10px 0;
+      width: 200px;
+    }
     .slider {
-      margin: 10px 0;
+      width: 100%;
     }
-
-    .slider label {
-      margin-right: 10px;
-    }
-
     .button {
-      margin: 10px 0;
-      padding: 10px 20px;
       background-color: #3a3a3a;
-      color: #fff;
+      color: white;
+      padding: 10px;
       border: none;
       border-radius: 5px;
       cursor: pointer;
     }
-
     .button:hover {
       background-color: #666;
     }
   </style>
 </head>
 <body>
-  <div class="control-panel">
-    <label>Function Range:</label>
-    <input id="rangeSlider" type="range" min="2" max="10" value="5" step="0.1" class="slider">
-    <br>
-    <label>Line Thickness:</label>
-    <input id="thicknessSlider" type="range" min="1" max="10" value="4" step="0.1" class="slider">
-    <br>
-    <label>Letter Size:</label>
-    <input id="letterSizeSlider" type="range" min="0.5" max="1.5" value="0.8" step="0.01" class="slider">
-    <br>
-    <label>Animation Speed:</label>
-    <input id="speedSlider" type="range" min="0.01" max="0.1" value="0.02" step="0.01" class="slider">
-    <br>
+  <div class="controls">
+    <label>Function Range</label>
+    <input id="rangeSlider" class="slider" type="range" min="2" max="10" value="5" step="0.1">
+    
+    <label>Line Thickness</label>
+    <input id="thicknessSlider" class="slider" type="range" min="1" max="10" value="4" step="0.1">
+    
+    <label>Letter Size</label>
+    <input id="letterSizeSlider" class="slider" type="range" min="0.5" max="1.5" value="0.8" step="0.01">
+    
+    <label>Animation Speed</label>
+    <input id="speedSlider" class="slider" type="range" min="0.01" max="0.1" value="0.02" step="0.01">
+    
     <button id="resetButton" class="button">Reset</button>
     <button id="pauseButton" class="button">Pause</button>
   </div>
-  
-  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
   <script>
     let a = -2;
     let da = 0.02;
     let xMin = -5, xMax = 5;
     let yMin = -5, yMax = 5;
     let lineThickness = 4;
-
-    // Custom sliders
     let rangeSliderValue = 5;
     let thicknessSliderValue = 4;
     let letterSizeSliderValue = 0.8;
     let animationSpeedSliderValue = 0.02;
     let currentColor;
-
     let functionLayer;
     let letterMask;
     let needsUpdate = true;
