@@ -104,9 +104,9 @@ let sliders = [];
 let waveButtons = [];
 
 /* ============================================================
-   ✅ 单骨架“线段字体”：每个字符 = 多条折线（points list）
-   - 你可以随时扩展/改形
-   - 坐标范围大致：x [-60..60], y [-100..100]
+   ✅ 关键：单线骨架字库（不是轮廓）
+   - 每个字符 = 多条折线（points list）
+   - 每一段折线都走 drawParametricCurve()（你的原味逻辑）
    ============================================================ */
 const STICK_FONT = {
   "A": [
@@ -137,10 +137,6 @@ const STICK_FONT = {
     [[-50,-100],[ 50,-100]],
     [[-50,   0],[ 30,   0]]
   ],
-  "G": [
-    [[ 40,-80],[  0,-100],[-50,-60],[-50,60],[0,100],[40,80]],
-    [[ 10, 20],[ 50, 20],[50,60]]
-  ],
   "H": [
     [[-50,-100],[-50,100]],
     [[ 50,-100],[ 50,100]],
@@ -150,15 +146,6 @@ const STICK_FONT = {
     [[-30,-100],[ 30,-100]],
     [[  0,-100],[  0, 100]],
     [[-30, 100],[ 30, 100]]
-  ],
-  "J": [
-    [[-30,-100],[ 30,-100]],
-    [[ 30,-100],[ 30, 60],[  0,100],[-30,60]]
-  ],
-  "K": [
-    [[-50,-100],[-50,100]],
-    [[-50,   0],[ 50,-100]],
-    [[-50,   0],[ 50, 100]]
   ],
   "L": [
     [[-50,-100],[-50,100]],
@@ -176,10 +163,6 @@ const STICK_FONT = {
   "P": [
     [[-50,100],[-50,-100]],
     [[-50,-100],[ 40,-70],[40,-10],[-50,  0]]
-  ],
-  "Q": [
-    [[  0,-100],[ 40,-80],[ 50,  0],[40,80],[0,100],[-40,80],[-50,0],[-40,-80],[0,-100]],
-    [[ 10, 60],[ 50,100]]
   ],
   "R": [
     [[-50,100],[-50,-100]],
@@ -257,6 +240,15 @@ const STICK_FONT = {
   " ": []
 };
 
+function normalizeGlyphChar(ch) {
+  if (!ch || ch.length === 0) return " ";
+  const c = ch[0];
+  const up = c.toUpperCase();
+  if (STICK_FONT[up]) return up;
+  if (STICK_FONT[c]) return c;
+  return "?";
+}
+
 /* =================== setup =================== */
 function setup() {
   createCanvas(CANVAS_W, CANVAS_H);
@@ -278,7 +270,7 @@ function setup() {
   glyphInput.attribute("maxlength", "1");
   placeGlyphInput();
 
-  // ✅ 允许删除、允许输入任意字符
+  // ✅ 允许删除 A，允许输入任意单字符
   glyphInput.input(() => {
     let v = glyphInput.value();
     if (v.length === 0) { glyphChar = ""; return; }
@@ -286,7 +278,6 @@ function setup() {
     glyphChar = v;
   });
 
-  // 失焦：空则回到 A
   glyphInput.elt.addEventListener("blur", () => {
     if (!glyphInput.value() || glyphInput.value().length === 0) {
       glyphChar = "A";
@@ -294,14 +285,12 @@ function setup() {
     }
   });
 
-  // sliders
   const firstSliderY = COLOR_PANEL_H + 160 + 70;
   const gap = 54;
   for (let i = 0; i < 5; i++) {
     sliders.push(new Slider(120, firstSliderY + i * gap, 200, 34, sliderName[i], 0.5));
   }
 
-  // right wave buttons
   const bx = width - 120;
   const by0 = 160;
   const bGap = 46;
@@ -314,6 +303,7 @@ function setup() {
   tryLoadUIFont();
 }
 
+/* 画布固定不变，只重定位 input */
 function windowResized() {
   placeGlyphInput();
 }
@@ -325,14 +315,14 @@ function draw() {
 
   if (showGrid) drawGrid();
 
-  // ✅ 用输入字符绘制“单骨架扰动字体”
+  // ✅ 这里是核心改动：不再固定 drawMathA()，而是画输入的 glyph
   push();
   translate(width / 2, height / 2);
   scale(scaleVal);
   drawGlyph(glyphChar);
   pop();
 
-  // left panel bg
+  // 左侧背景
   noStroke();
   fill("#1F1E24");
   rect(0, 0, cw, height);
@@ -362,7 +352,7 @@ function draw() {
   if (glyphInput && document.activeElement !== glyphInput.elt) placeGlyphInput();
 }
 
-/* =================== 输入框定位 =================== */
+/* =================== 输入框定位（canvas 居中时需要 offset） =================== */
 function canvasOffsetX() {
   const c = document.querySelector("canvas");
   if (!c) return 0;
@@ -389,19 +379,7 @@ function drawGrid() {
   for (let y = 0; y <= height; y += step) line(cw, y, width, y);
 }
 
-/* ============================================================
-   ✅ 关键：按“你喜欢的逻辑”画字
-   - 字 = 多条折线，每一段都走 drawParametricCurve()
-   - 完全保留你的 dis/offset 公式，味道不变
-   ============================================================ */
-function normalizeGlyphChar(ch) {
-  if (!ch || ch.length === 0) return " ";
-  // 把小写映射到大写（骨架字库用大写）
-  const c = ch[0];
-  const up = c.toUpperCase();
-  return STICK_FONT[up] ? up : (STICK_FONT[c] ? c : "?");
-}
-
+/* =================== 绘制骨架字（保持你原来的 drawParametricCurve 扰动逻辑） =================== */
 function drawGlyph(ch) {
   const key = normalizeGlyphChar(ch);
   const strokes = STICK_FONT[key] || STICK_FONT["?"];
@@ -412,12 +390,11 @@ function drawGlyph(ch) {
   strokeJoin(ROUND);
   noFill();
 
-  // 每条 stroke = 折线 points
   for (const strokePts of strokes) {
     if (!strokePts || strokePts.length < 2) continue;
     for (let i = 0; i < strokePts.length - 1; i++) {
-      const [x1,y1] = strokePts[i];
-      const [x2,y2] = strokePts[i+1];
+      const [x1, y1] = strokePts[i];
+      const [x2, y2] = strokePts[i + 1];
       drawParametricCurve(x1, y1, x2, y2);
     }
   }
@@ -615,6 +592,7 @@ function handleColorClick() {
       return true;
     }
   }
+
   return false;
 }
 
