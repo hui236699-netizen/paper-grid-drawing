@@ -26,7 +26,7 @@ let strokeW = 2;
 let amplitude = 10;
 let frequency = 1;
 
-// ✅ phase 还在逻辑里，但不提供滑块（默认 0）
+// ✅ phase 仍在逻辑里（没有滑块，但按钮会改它）
 let phase = 0;
 
 let isAnimating = true;
@@ -45,7 +45,7 @@ let uiFont = null;
 let fontLoaded = false;
 
 /* ===========================
-   2) 颜色模块：用你 draw.html 那套 SB + Hue
+   2) 颜色模块：SB + Hue（draw.html 同款）
    =========================== */
 let hueVal = 220;
 let satVal = 100;
@@ -53,8 +53,8 @@ let briVal = 80;
 let currentColor;
 
 const COLOR_PANEL_H = 190;
-const COLOR_MAIN = { x: 10, y: 10, w: cw - 30 - 10, h: COLOR_PANEL_H }; // 左边 SB 方块
-const COLOR_HUE  = { x: cw - 30, y: 10, w: 20, h: COLOR_PANEL_H };      // 右边 Hue 条
+const COLOR_MAIN = { x: 10, y: 10, w: cw - 30 - 10, h: COLOR_PANEL_H };
+const COLOR_HUE  = { x: cw - 30, y: 10, w: 20, h: COLOR_PANEL_H };
 
 let sbGraphic, hueGraphic;
 
@@ -65,8 +65,11 @@ let sbGraphic, hueGraphic;
 const sliderName = ["Scale", "Stroke Weight", "Amplitude", "Frequency", "Animation Speed"];
 let sliders = [];
 
-// 按钮
+// ✅ 按钮新增 Randomize / Phase Step
 let capButtons = [];
+
+// Phase Step 步长（你可以改大/改小）
+const PHASE_STEP = Math.PI / 6;
 
 /* ===========================
    setup / draw
@@ -82,7 +85,7 @@ function setup() {
   buildHueGraphic();
   buildSBGraphic();
 
-  // Sliders 布局（类似你原来 400..750，但更均匀）
+  // Sliders 布局
   const sliderStartY = 380;
   const sliderEndY = 760;
   for (let i = 0; i < 5; i++) {
@@ -91,9 +94,21 @@ function setup() {
   }
 
   // CapButtons（右侧）
-  const capNames = ["Save", "Toggle Animation", "Reset", "Sin", "Square", "Triangle", "Sawtooth"];
+  // ✅ 加了 Randomize / Phase Step
+  const capNames = [
+    "Save",
+    "Toggle Animation",
+    "Reset",
+    "Randomize",
+    "Phase Step",
+    "Sin",
+    "Square",
+    "Triangle",
+    "Sawtooth"
+  ];
+
   for (let i = 0; i < capNames.length; i++) {
-    const y = map(i, 0, capNames.length - 1, 55, 500);
+    const y = map(i, 0, capNames.length - 1, 55, 620);
     capButtons.push(new CapButton(width - 120, y, 150, 30, capNames[i]));
   }
 
@@ -143,12 +158,8 @@ function drawGrid() {
   strokeWeight(1);
   const step = 25;
 
-  for (let x = cw; x <= width; x += step) {
-    line(x, ch, x, height);
-  }
-  for (let y = ch; y <= height; y += step) {
-    line(cw, y, width, y);
-  }
+  for (let x = cw; x <= width; x += step) line(x, ch, x, height);
+  for (let y = ch; y <= height; y += step) line(cw, y, width, y);
 }
 
 /* ===========================
@@ -175,7 +186,7 @@ function drawParametricCurve(x1, y1, x2, y2) {
     let x = lerp(x1, x2, i);
     let y = lerp(y1, y2, i);
 
-    // ✅ 这里完全照你的原逻辑：frequency*dis*TWO_PI + phase + t
+    // ✅ 完全照你的原逻辑：frequency*dis*TWO_PI + phase + t
     let dis = dist(x, y, x1, y1) * 0.01;
     let offset = applyFunction(frequency * dis * TWO_PI + phase + t) * amplitude;
 
@@ -200,7 +211,7 @@ function applyFunction(tt) {
 }
 
 /* ===========================
-   Parameters（删掉 Phase 滑块，但 phase 逻辑不动）
+   Parameters（✅ 没有 Phase 滑块，但 phase 逻辑不动）
    =========================== */
 function updateParameters() {
   scaleVal = map(sliders[0].val, 0, 1, 0.5, 3);
@@ -208,7 +219,6 @@ function updateParameters() {
   amplitude = map(sliders[2].val, 0, 1, 0, maxAmp);
   frequency = map(sliders[3].val, 0, 1, 0.1, 5);
   animationSpeed = map(sliders[4].val, 0, 1, 0, 0.1);
-  // ✅ phase 不再由滑块更新，但仍参与公式
 }
 
 /* ===========================
@@ -253,11 +263,34 @@ function drawFunctionDisplay() {
   beginShape();
   for (let x = 0; x < displayWidth; x += 2) {
     let amp = map(amplitude, 0, maxAmp, 0, displayHeight / 2);
-    // ✅ 保留 phase + t（跟你的 Processing 一样）
     let y = applyFunction(frequency * x * 0.02 + phase + t) * amp;
     vertex(width - displayWidth - margin + x, height - displayHeight / 2 - margin - y);
   }
   endShape();
+}
+
+/* ===========================
+   Randomize / Phase Step
+   =========================== */
+function randomizeParams() {
+  // 只随机“风格相关参数” + phase
+  // （不动颜色，避免你辛苦选的颜色被一键改掉）
+
+  // sliders 的 val 都是 0..1
+  sliders[0].val = random(0.20, 0.75);  // Scale -> 0.5..3 之间偏中间
+  sliders[1].val = random(0.05, 0.55);  // Stroke -> 偏细更好看
+  sliders[2].val = random(0.10, 0.85);  // Amplitude
+  sliders[3].val = random(0.15, 0.70);  // Frequency
+  sliders[4].val = random(0.05, 0.55);  // Speed
+
+  // ✅ phase 保留在逻辑里：Randomize 只是在“起始纹理位置”抽一个
+  phase = random(0, TWO_PI);
+
+  // 让动画从当前时刻继续（不重置 t），更像生成器“换皮”
+}
+
+function phaseStep() {
+  phase = (phase + PHASE_STEP) % TWO_PI;
 }
 
 /* ===========================
@@ -393,6 +426,15 @@ function handleButtonPress(label) {
     case "Reset":
       resetToDefaults();
       break;
+
+    // ✅ 新增
+    case "Randomize":
+      randomizeParams();
+      break;
+    case "Phase Step":
+      phaseStep();
+      break;
+
     default:
       for (let i = 0; i < functionNames.length; i++) {
         if (label === functionNames[i]) currentFunction = i;
@@ -406,21 +448,37 @@ function resetToDefaults() {
   isAnimating = true;
   t = 0;
 
-  // sliders 全回 0.5
   for (let s of sliders) {
     s.val = 0.5;
     s.state = false;
   }
 
-  // 颜色回默认
   hueVal = 220; satVal = 100; briVal = 80;
   updateCurrentColorFromHSV(true);
 
-  // ✅ phase 不变（仍保留逻辑里，默认就是 0）
+  // phase 回到默认（仍保留在逻辑里）
+  phase = 0;
 }
 
 /* ===========================
-   Slider / CapButton（复刻你原来的感觉）
+   键盘快捷键（可选）
+   =========================== */
+function keyPressed() {
+  // R = Randomize
+  if (key === 'r' || key === 'R') randomizeParams();
+
+  // P = Phase Step
+  if (key === 'p' || key === 'P') phaseStep();
+
+  // 1~4 切函数
+  if (key === '1') currentFunction = 0;
+  if (key === '2') currentFunction = 1;
+  if (key === '3') currentFunction = 2;
+  if (key === '4') currentFunction = 3;
+}
+
+/* ===========================
+   Slider / CapButton（保持你原来的手感）
    =========================== */
 class CapButton {
   constructor(x, y, w, h, str) {
@@ -519,7 +577,6 @@ function tryLoadUIFont() {
     () => { uiFont = null; fontLoaded = false; }
   );
 }
-
 function useUIFont() {
   if (fontLoaded && uiFont) textFont(uiFont);
   else textFont("system-ui");
