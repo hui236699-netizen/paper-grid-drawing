@@ -42,16 +42,16 @@
 
 <body>
 <script>
-/* =================== 统一圆角（同 path.html） =================== */
+/* =================== UI 基础 =================== */
 const BTN_R = 18;
-
-/* =================== 字体（UI + 遮罩字母） =================== */
 const FONT_PATH = "assets/fonts/ABCFavoritHebrewBoldVariable-Trial.ttf";
+
+/* 字体（UI + 遮罩字母） */
 let uiFont = null;
 let glyphFont = null;
 let fontLoaded = false;
 
-/* ✅ preload：字体加载失败也不会崩（不会黑屏） */
+/* ✅ preload：字体失败也不崩 */
 function preload() {
   loadFont(
     FONT_PATH,
@@ -60,12 +60,12 @@ function preload() {
   );
 }
 
-/* =================== 左侧操作栏（同 path.html） =================== */
+/* =================== 左侧操作栏（跟 path 一样） =================== */
 let cw = 240;
 const COLOR_PANEL_H = 190;
 let showGrid = true;
 
-/* =================== 字母输入：默认 O =================== */
+/* =================== 输入：默认 O =================== */
 let glyphInput;
 let glyphChar = "O";
 
@@ -86,12 +86,12 @@ let animationSpeedSliderValue = 0.02;
 let needsUpdate = true;
 let isPlaying = true;
 
-// 图层
-let functionLayer;
-let letterMask;
+/* ✅ 改成 tile：永远居中贴到画布中心 */
+let functionTile = null;
+let maskTile = null;
+let tileSize = 0;
 
-/* =================== 颜色模块（同 path.html） =================== */
-/* ✅ 避免命名冲突：不要叫 hue/sat/bri（会和 p5 的 hue() 冲突） */
+/* =================== 颜色模块（同 path 逻辑，避免 hue() 冲突） =================== */
 let hueV = 120;
 let satV = 100;
 let briV = 95;
@@ -106,25 +106,21 @@ const defaultRecentHex = ["#000000", "#482BCC", "#FF04A5", "#FFE900", "#8CE255"]
 let recentColors = [];
 const RECENT_BIAS_X = 6;
 
-/* =================== 功能按钮（Pause / Save） =================== */
+/* =================== 按钮 / Randomize / Sliders =================== */
 let pauseButton, saveButton;
 let FUNC_RECTS = {};
-
-/* =================== Randomize（同 path） =================== */
 let randomizeButton;
 
-/* =================== 4 个滑块（同风格） =================== */
 const sliderName = ["Function Range", "Line Thickness", "Letter Size", "Animation Speed"];
 let sliders = [];
 
-/* =================== 控件整体下移 + 底部留白 =================== */
 const CONTROLS_SHIFT_Y = 18;
 const BOTTOM_PAD = 24;
 
 /* =================== 小工具 =================== */
 function clamp(v, lo, hi) { return max(lo, min(hi, v)); }
 
-/* =================== 布局（同 path：色盘+recent+按钮+输入框+randomize+sliders） =================== */
+/* =================== 布局（path 风格） =================== */
 let layout = null;
 
 function computeLayout() {
@@ -217,17 +213,10 @@ function setup() {
   pixelDensity(1);
   frameRate(60);
 
-  functionLayer = createGraphics(windowWidth, windowHeight);
-  functionLayer.pixelDensity(1);
-
-  letterMask = createGraphics(windowWidth, windowHeight);
-  letterMask.pixelDensity(1);
-
   computeLayout();
   buildHueGraphic();
   buildSBGraphic();
 
-  // 默认颜色（绿色感）
   updateCurrentColor(false);
   recentColors = defaultRecentHex.map(h => color(h));
   addRecentColor(currentColor);
@@ -274,12 +263,6 @@ function setup() {
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
 
-  functionLayer = createGraphics(windowWidth, windowHeight);
-  functionLayer.pixelDensity(1);
-
-  letterMask = createGraphics(windowWidth, windowHeight);
-  letterMask.pixelDensity(1);
-
   computeLayout();
   buildHueGraphic();
   buildSBGraphic();
@@ -319,12 +302,13 @@ function draw() {
 
   if (showGrid) drawGrid();
 
-  // ✅ 纹理永远以画布中心对齐显示
-  push();
-  imageMode(CENTER);
-  translate(width/2, height/2);
-  image(functionLayer, 0, 0);
-  pop();
+  /* ✅ 关键：tile 永远贴画布正中心 */
+  if (functionTile) {
+    push();
+    imageMode(CENTER);
+    image(functionTile, width/2, height/2);
+    pop();
+  }
 
   displayFunctionWithAxis();
 
@@ -337,7 +321,7 @@ function draw() {
     }
   }
 
-  // 左侧栏覆盖
+  /* 左侧栏覆盖（不会影响 tile 的计算中心，但会遮挡左侧区域，这是 UI 需求） */
   noStroke();
   fill("#1F1E24");
   rect(0, 0, cw, height);
@@ -363,7 +347,7 @@ function placeGlyphInput() {
   glyphInput.size(layout.inputW, layout.inputH);
 }
 
-/* =================== 网格 =================== */
+/* =================== 网格（从 cw 开始） =================== */
 function drawGrid() {
   const step = 25;
   stroke(220);
@@ -382,36 +366,113 @@ function updateParameters() {
   if (isPlaying) da = daSign * animationSpeedSliderValue;
 }
 
-/* =================== 纹理更新（遮罩裁切逻辑不变 + 居中对齐 + 放大不裁掉） =================== */
+/* =================== ✅ 纹理更新（居中 + Letter Size 不跑偏 + 大尺寸不裁） =================== */
 function updateVisualization() {
   xMin = yMin = -rangeSliderValue;
   xMax = yMax = rangeSliderValue;
   lineThickness = thicknessSliderValue;
 
+  /* basePlotSize：你原来 500 的概念 */
   const basePlotSize = floor(min(500, min(width, height) - 120));
-  const renderSize = floor(basePlotSize * max(1, letterSizeSliderValue));
 
-  const plotX = floor(width/2 - renderSize/2);
-  const plotY = floor(height/2 - renderSize/2);
+  /* ✅ 限制最大可视（避免 Letter Size 拉太大导致必然出屏） */
+  const maxFit = (min(width, height) - 80) / basePlotSize;
+  const effLetterScale = min(letterSizeSliderValue, maxFit);
 
-  drawLetterMask(plotX, plotY, renderSize, basePlotSize);
-  drawFunctionLayer(plotX, plotY, renderSize, basePlotSize);
+  const renderSize = max(120, floor(basePlotSize * effLetterScale));
+
+  ensureTiles(renderSize);
+
+  drawLetterMaskTile(renderSize, basePlotSize, effLetterScale);
+  drawFunctionTile(renderSize, basePlotSize);
 }
 
+function ensureTiles(sz) {
+  if (tileSize === sz && functionTile && maskTile) return;
+
+  tileSize = sz;
+  functionTile = createGraphics(tileSize, tileSize);
+  functionTile.pixelDensity(1);
+
+  maskTile = createGraphics(tileSize, tileSize);
+  maskTile.pixelDensity(1);
+}
+
+/* =================== 计算函数（同 Processing） =================== */
 function calculateDifference(x, y) {
   const leftSide = sin(x*x + y*y);
   const rightSide = a * cos(x*y);
   return leftSide - rightSide;
 }
 
-function mapToDomain(d, basePlotSize, minV, maxV) {
-  return map(d, -basePlotSize/2, basePlotSize/2, minV, maxV);
+/* =================== ✅ 字母遮罩：组合包围盒居中（解决 O 等字母看起来偏） =================== */
+function drawLetterMaskTile(renderSize, basePlotSize, effScale) {
+  maskTile.clear();
+  maskTile.noStroke();
+  maskTile.fill(255);
+
+  const txtRaw = (glyphChar && glyphChar.length) ? glyphChar.slice(0,2) : "O";
+  const chars = txtRaw.split("");
+
+  const letterPx = basePlotSize * effScale;
+
+  maskTile.push();
+  maskTile.translate(renderSize/2, renderSize/2);
+
+  if (glyphFont) maskTile.textFont(glyphFont);
+  maskTile.textSize(letterPx);
+  maskTile.textAlign(CENTER, CENTER);
+
+  // 先为每个字符算“自身居中偏移 + 组合包围盒”
+  const spacing = letterPx * 0.75;
+  let parts = [];
+
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
+    const baseX = (chars.length === 1) ? 0 : (i === 0 ? -spacing/2 : spacing/2);
+
+    let bx = 0, by = 0, bw = 0, bh = 0;
+    if (glyphFont && glyphFont.textBounds) {
+      const b = glyphFont.textBounds(ch, 0, 0, letterPx);
+      bx = b.x; by = b.y; bw = b.w; bh = b.h;
+    }
+
+    // 把单个 glyph 的包围盒中心对齐到 (baseX, 0)
+    const drawX = baseX - (bx + bw/2);
+    const drawY = 0     - (by + bh/2);
+
+    parts.push({ ch, drawX, drawY, bx, by, bw, bh });
+  }
+
+  // 计算组合包围盒（用每个 glyph 的 bounds 推出实际占用）
+  let minX = +1e9, maxX = -1e9, minY = +1e9, maxY = -1e9;
+  for (const p of parts) {
+    const x0 = p.drawX + p.bx;
+    const x1 = x0 + p.bw;
+    const y0 = p.drawY + p.by;
+    const y1 = y0 + p.bh;
+    minX = min(minX, x0);
+    maxX = max(maxX, x1);
+    minY = min(minY, y0);
+    maxY = max(maxY, y1);
+  }
+
+  // 让组合中心严格落在 (0,0)
+  const groupCX = (minX + maxX) / 2;
+  const groupCY = (minY + maxY) / 2;
+
+  for (const p of parts) {
+    maskTile.text(p.ch, p.drawX - groupCX, p.drawY - groupCY);
+  }
+
+  maskTile.pop();
 }
 
-function drawFunctionLayer(plotX, plotY, renderSize, basePlotSize) {
-  functionLayer.clear();
-  functionLayer.loadPixels();
-  letterMask.loadPixels();
+/* =================== ✅ 纹理层：只在遮罩内写像素 =================== */
+function drawFunctionTile(renderSize, basePlotSize) {
+  functionTile.clear();
+  functionTile.loadPixels();
+  maskTile.loadPixels();
 
   const lt = lineThickness / 10.0;
 
@@ -419,73 +480,33 @@ function drawFunctionLayer(plotX, plotY, renderSize, basePlotSize) {
   const cg = floor(green(currentColor));
   const cb = floor(blue(currentColor));
 
-  const W = functionLayer.width;
-  const H = functionLayer.height;
-
+  // screen -> domain：用 basePlotSize 做“数学空间”尺度
   for (let sx = 0; sx < renderSize; sx++) {
     const dx = sx - renderSize/2;
-    const xVal = mapToDomain(dx, basePlotSize, xMin, xMax);
+    const xVal = map(dx, -basePlotSize/2, basePlotSize/2, xMin, xMax);
 
     for (let sy = 0; sy < renderSize; sy++) {
       const dy = (renderSize/2 - sy);
-      const yVal = mapToDomain(dy, basePlotSize, yMin, yMax);
+      const yVal = map(dy, -basePlotSize/2, basePlotSize/2, yMin, yMax);
 
       const diff = calculateDifference(xVal, yVal);
 
-      const px = plotX + sx;
-      const py = plotY + sy;
-      if (px < 0 || px >= W || py < 0 || py >= H) continue;
+      const idx = (sy * renderSize + sx) * 4;
+      const maskA = maskTile.pixels[idx + 3];
 
-      const idx = (py * W + px) * 4;
-      const maskA = letterMask.pixels[idx + 3];
       if (maskA > 0 && abs(diff) < lt) {
-        functionLayer.pixels[idx]     = cr;
-        functionLayer.pixels[idx + 1] = cg;
-        functionLayer.pixels[idx + 2] = cb;
-        functionLayer.pixels[idx + 3] = 255;
+        functionTile.pixels[idx]     = cr;
+        functionTile.pixels[idx + 1] = cg;
+        functionTile.pixels[idx + 2] = cb;
+        functionTile.pixels[idx + 3] = 255;
       }
     }
   }
-  functionLayer.updatePixels();
+
+  functionTile.updatePixels();
 }
 
-function drawLetterMask(plotX, plotY, renderSize, basePlotSize) {
-  letterMask.clear();
-  letterMask.noStroke();
-  letterMask.fill(255);
-
-  const centerX = width / 2;
-  const centerY = height / 2;
-
-  const letterSize = basePlotSize * letterSizeSliderValue;
-
-  letterMask.push();
-  letterMask.translate(centerX, centerY);
-
-  if (glyphFont) letterMask.textFont(glyphFont);
-  letterMask.textSize(letterSize);
-  letterMask.textAlign(CENTER, CENTER);
-
-  const txt = (glyphChar && glyphChar.length) ? glyphChar.slice(0, 2) : "O";
-  const chars = txt.split("");
-  const spacing = letterSize * 0.75;
-
-  for (let i = 0; i < chars.length; i++) {
-    const ch = chars[i];
-    const offX = (chars.length === 1) ? 0 : (i === 0 ? -spacing/2 : spacing/2);
-
-    if (glyphFont && glyphFont.textBounds) {
-      const b = glyphFont.textBounds(ch, 0, 0, letterSize);
-      letterMask.text(ch, offX - b.x - b.w/2, -b.y - b.h/2);
-    } else {
-      letterMask.text(ch, offX, 0);
-    }
-  }
-
-  letterMask.pop();
-}
-
-/* =================== 右下角预览与信息 =================== */
+/* =================== 右下角预览与信息（保留） =================== */
 function displayFunctionWithAxis() {
   const axisSize = 250;
   const margin = 50;
