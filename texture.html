@@ -19,56 +19,44 @@
       left: 0;
       top: 0;
     }
+
+    /* ✅ path 同款输入框 */
+    .glyphInput {
+      position: fixed;
+      background: #3A393D;
+      color: #fff;
+      border: 0;
+      outline: none;
+      border-radius: 18px;
+      padding: 8px 10px;
+      font-size: 14px;
+      box-sizing: border-box;
+      height: 36px;
+      z-index: 10;
+    }
+    .glyphInput::placeholder{
+      color: rgba(255,255,255,0.45);
+    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
 </head>
 <body>
 <script>
-/* =================== 统一圆角（跟 path.html 一样） =================== */
+/* =================== path 同款圆角 =================== */
 const BTN_R = 18;
 
-/* =================== 字体（仅用于 UI 文本，可失败不影响） =================== */
+/* =================== 字体路径（UI + 字母 mask 都会用） =================== */
 const FONT_PATH = "assets/fonts/ABCFavoritHebrewBoldVariable-Trial.ttf";
 let uiFont = null;
 let fontLoaded = false;
 
-/* =================== 左侧操作栏（响应式：跟 path.html 一样） =================== */
+/* =================== 左侧操作栏（响应式：同 path） =================== */
 let cw = 240;
 const COLOR_PANEL_H = 190;
 let showGrid = true;
 
-/* =================== 颜色模块（完全沿用 path.html 的 SB + Hue + Recent 逻辑） =================== */
-let hue = 120;
-let sat = 100;
-let bri = 95;
-let currentColor;
-
-let COLOR_MAIN = null;
-let COLOR_HUE  = null;
-let sbGraphic, hueGraphic;
-
-// ✅ 你要求“下面三个最近颜色”
-let RECENT_RECTS = [];
-const defaultRecentHex = ["#00FF00", "#482BCC", "#FF04A5"];
-let recentColors = [];
-const RECENT_BIAS_X = 6;
-
-/* =================== 功能按钮（只保留 Pause / Save，位置同 path.html） =================== */
-let pauseButton, saveButton;
-let FUNC_RECTS = {};
-
-/* =================== 4 个滑块（风格同 path.html） =================== */
-const sliderName = ["Function Range", "Line Thickness", "Letter Size", "Animation Speed"];
-let sliders = [];
-
-/* =================== 控件整体下移 + 底部留白（同 path.html 思路） =================== */
-const CONTROLS_SHIFT_Y = 18;
-const BOTTOM_PAD = 24;
-
-/* =================== Processing 纹理核心参数（保留） =================== */
+/* =================== 纹理核心参数（来自 Processing） =================== */
 let a = -2;
-
-// 用 sign 保存方向，避免 Pause 时丢符号
 let daSign = +1;
 let da = 0.02;
 
@@ -84,14 +72,47 @@ let animationSpeedSliderValue = 0.02;
 let needsUpdate = true;
 let isPlaying = true;
 
-// 图层
 let functionLayer;
 let letterMask;
+
+/* =================== 输入框（同 path） =================== */
+let glyphInput;
+let glyphChar = "X";
+
+/* =================== 颜色模块（✅完全照 path：SB + Hue + Recent 5） =================== */
+let hue = 0;
+let sat = 0;
+let bri = 0;
+let currentColor;
+
+let COLOR_MAIN = null;
+let COLOR_HUE  = null;
+let sbGraphic, hueGraphic;
+
+let RECENT_RECTS = [];
+const defaultRecentHex = ["#000000", "#482BCC", "#FF04A5", "#FFE900", "#8CE255"];
+let recentColors = [];
+const RECENT_BIAS_X = 6;
+
+/* =================== Pause / Save（同 path） =================== */
+let pauseButton, saveButton;
+let FUNC_RECTS = {};
+
+/* =================== Randomize（同 path） =================== */
+let randomizeButton;
+
+/* =================== 4 个滑块（保持你 texture 原本的功能） =================== */
+const sliderName = ["Function Range", "Line Thickness", "Letter Size", "Animation Speed"];
+let sliders = [];
+
+/* =================== 下移与底部留白（同 path） =================== */
+const CONTROLS_SHIFT_Y = 18;
+const BOTTOM_PAD = 24;
 
 /* =================== 小工具 =================== */
 function clamp(v, lo, hi) { return max(lo, min(hi, v)); }
 
-/* =================== 布局计算（✅把 path.html 的色盘 + recent + pause/save 布局搬过来） =================== */
+/* =================== layout（复用 path 的节奏：色盘->recent->pause/save->input->randomize->sliders） =================== */
 let layout = null;
 
 function computeLayout() {
@@ -125,12 +146,18 @@ function computeLayout() {
     save:  { x: pad + btnW + btnGapX, y: btnRowY_base, w: btnW, h: btnH }
   };
 
-  // sliders：从按钮下方开始（保持与 path 的间距节奏）
-  const firstSliderY_base = btnRowY_base + btnH + 18;
+  const inputY_base = btnRowY_base + btnH + 18;
+  const inputH = 36;
+  const inputW = cw - pad * 2;
+
+  const randomY_base = inputY_base + inputH + 18;
+  const randomH = clamp(btnH * 1.35, 42, 56);
+  const randomRect_base = { x: pad, y: randomY_base, w: cw - pad * 2, h: randomH };
+
   const sliderH = 34;
   const sliderGap = 48;
+  const firstSliderY_base = randomY_base + randomH + 18;
 
-  // 控件整体下移（但不让底部溢出）
   const lastBottom_base = firstSliderY_base + 4 * sliderGap + sliderH;
   const maxShiftAllowed = (height - BOTTOM_PAD) - lastBottom_base;
   const shiftY = max(0, min(CONTROLS_SHIFT_Y, maxShiftAllowed));
@@ -141,6 +168,11 @@ function computeLayout() {
   layout = {
     pad,
     btnH, btnW,
+    inputX: pad,
+    inputY: inputY_base + shiftY,
+    inputW,
+    inputH,
+    randomRect: { x: randomRect_base.x, y: randomRect_base.y + shiftY, w: randomRect_base.w, h: randomRect_base.h },
     firstSliderY: firstSliderY_base + shiftY,
     sliderGap,
     sliderH
@@ -148,7 +180,7 @@ function computeLayout() {
 }
 
 function rebuildRecentRects() {
-  const RECENT_COUNT = 3;
+  const RECENT_COUNT = 5;
   const RECENT_GAP = 10;
   const RECENT_SIZE = 28;
 
@@ -181,21 +213,56 @@ function setup() {
   letterMask.pixelDensity(1);
 
   recentColors = defaultRecentHex.map(h => color(h));
-  updateCurrentColor(false);
 
   computeLayout();
   buildHueGraphic();
   buildSBGraphic();
 
+  // 初始色：保持默认黑（跟 path 一样你后面会点色盘）
+  currentColor = color(0);
+
   pauseButton = rectToCapButton(FUNC_RECTS.pause, "Pause");
   saveButton  = rectToCapButton(FUNC_RECTS.save,  "Save");
 
+  // ✅ 输入框（同 path）
+  glyphChar = "X";
+  glyphInput = createInput("");
+  glyphInput.addClass("glyphInput");
+  glyphInput.attribute("maxlength", "2");
+  glyphInput.attribute("placeholder", "Try a letter");
+  placeGlyphInput();
+
+  glyphInput.input(() => {
+    let v = glyphInput.value();
+    if (v.length === 0) { glyphChar = "X"; needsUpdate = true; return; }
+    if (v.length > 2) { v = v.slice(0, 2); glyphInput.value(v); }
+    glyphChar = v;
+    needsUpdate = true;
+  });
+
+  glyphInput.elt.addEventListener("blur", () => {
+    if (!glyphInput.value() || glyphInput.value().length === 0) {
+      glyphChar = "X";
+      needsUpdate = true;
+    }
+  });
+
+  // ✅ Randomize（同 path 视觉与尺寸）
+  randomizeButton = new CapButton(
+    layout.randomRect.x + layout.randomRect.w/2,
+    layout.randomRect.y + layout.randomRect.h/2,
+    layout.randomRect.w,
+    layout.randomRect.h,
+    "Randomize",
+    true
+  );
+
+  // sliders
   sliders = [];
   for (let i = 0; i < 4; i++) {
     const y = layout.firstSliderY + i * layout.sliderGap;
     sliders.push(new Slider(cw/2, y + layout.sliderH/2, 200, layout.sliderH, sliderName[i], 0.5));
   }
-  // 让默认速度接近你 Processing 的 0.03
   sliders[3].val = 0.03;
 
   tryLoadUIFont();
@@ -217,6 +284,15 @@ function windowResized() {
   pauseButton = rectToCapButton(FUNC_RECTS.pause, isPlaying ? "Pause" : "Play");
   saveButton  = rectToCapButton(FUNC_RECTS.save,  "Save");
 
+  randomizeButton = new CapButton(
+    layout.randomRect.x + layout.randomRect.w/2,
+    layout.randomRect.y + layout.randomRect.h/2,
+    layout.randomRect.w,
+    layout.randomRect.h,
+    "Randomize",
+    true
+  );
+
   for (let i = 0; i < sliders.length; i++) {
     const y = layout.firstSliderY + i * layout.sliderGap;
     sliders[i].x = cw/2;
@@ -224,6 +300,7 @@ function windowResized() {
     sliders[i].h = layout.sliderH;
   }
 
+  placeGlyphInput();
   needsUpdate = true;
 }
 
@@ -246,10 +323,10 @@ function draw() {
   image(functionLayer, 0, 0);
   pop();
 
-  // 右下角预览与信息（保留 Processing 功能）
+  // 右下角预览/信息
   displayFunctionWithAxis();
 
-  // 动画推进（往返）
+  // a 往返动画
   if (isPlaying) {
     a += da;
     if (a > 3 || a < -2) {
@@ -259,28 +336,38 @@ function draw() {
     }
   }
 
-  // 左侧栏覆盖（跟 path）
+  // 左侧栏覆盖
   noStroke();
   fill("#1F1E24");
   rect(0, 0, cw, height);
 
-  // 色盘 + recent（跟 path）
+  // 色盘 + recent
   drawColorPanel();
   drawRecentColors();
 
-  // Pause/Save（位置同 path）
+  // Pause/Save
   pauseButton.str = isPlaying ? "Pause" : "Play";
   pauseButton.display();
   saveButton.display();
 
-  // Sliders（风格同 path）
+  // Randomize
+  randomizeButton.display();
+
+  // Sliders
   for (let s of sliders) s.run();
 
-  // 跟你 Processing 一样：每帧都更新一次
+  // 保持动态更新（与你 Processing 一样）
   needsUpdate = true;
 }
 
-/* =================== 网格（同 Processing 的感觉） =================== */
+/* =================== 输入框定位 =================== */
+function placeGlyphInput() {
+  if (!glyphInput) return;
+  glyphInput.position(layout.inputX, layout.inputY);
+  glyphInput.size(layout.inputW, layout.inputH);
+}
+
+/* =================== 网格 =================== */
 function drawGrid() {
   stroke(200);
   strokeWeight(1);
@@ -289,26 +376,44 @@ function drawGrid() {
   for (let y = 0; y < height; y += gridSize) line(0, y, width, y);
 }
 
-/* =================== 参数映射（按你的 Processing 映射范围） =================== */
+/* =================== slider -> 参数映射（同你原始 texture） =================== */
 function updateParameters() {
   rangeSliderValue = map(sliders[0].val, 0, 1, 2, 10);
   thicknessSliderValue = map(sliders[1].val, 0, 1, 1, 10);
   letterSizeSliderValue = map(sliders[2].val, 0, 1, 0.5, 1.5);
   animationSpeedSliderValue = map(sliders[3].val, 0, 1, 0.01, 0.1);
 
-  // 保持方向，用 slider 控制速度
-  if (isPlaying) {
-    da = daSign * animationSpeedSliderValue;
-  }
+  if (isPlaying) da = daSign * animationSpeedSliderValue;
 }
 
-/* =================== 纹理更新（mask + function layer） =================== */
+/* =================== Randomize（同 path 的按钮，参数随机） =================== */
+function randomizeParams() {
+  sliders[0].val = random(0.10, 0.90);
+  sliders[1].val = random(0.10, 0.90);
+  sliders[2].val = random(0.10, 0.90);
+  sliders[3].val = random(0.10, 0.90);
+
+  // 随机颜色（走同一套色盘参数）
+  hue = random(0, 360);
+  sat = random(40, 100);
+  bri = random(40, 100);
+  buildSBGraphic();
+  updateCurrentColor(true);
+
+  // 随机 a
+  a = random(-2, 3);
+  daSign = random() < 0.5 ? -1 : 1;
+  da = daSign * animationSpeedSliderValue;
+
+  needsUpdate = true;
+}
+
+/* =================== 纹理更新 =================== */
 function updateVisualization() {
   xMin = yMin = -rangeSliderValue;
   xMax = yMax = rangeSliderValue;
   lineThickness = thicknessSliderValue;
 
-  // plot 尺寸：优先 500，不够则缩小避免溢出
   const maxPlotW = max(220, width - cw - 100);
   const maxPlotH = max(220, height - 120);
   const plotSize = floor(min(500, maxPlotW, maxPlotH));
@@ -321,9 +426,7 @@ function updateVisualization() {
 }
 
 function calculateDifference(x, y) {
-  const leftSide = sin(x*x + y*y);
-  const rightSide = a * cos(x*y);
-  return leftSide - rightSide;
+  return sin(x*x + y*y) - (a * cos(x*y));
 }
 
 function drawFunctionLayer(plotX, plotY, plotSize) {
@@ -332,19 +435,18 @@ function drawFunctionLayer(plotX, plotY, plotSize) {
   letterMask.loadPixels();
 
   const lt = lineThickness / 10.0;
-
   const cr = floor(red(currentColor));
   const cg = floor(green(currentColor));
   const cb = floor(blue(currentColor));
 
-  for (let screenX = 0; screenX < plotSize; screenX++) {
-    const xVal = map(screenX, 0, plotSize, xMin, xMax);
-    for (let screenY = 0; screenY < plotSize; screenY++) {
-      const yVal = map(screenY, plotSize, 0, yMin, yMax);
+  for (let sx = 0; sx < plotSize; sx++) {
+    const xVal = map(sx, 0, plotSize, xMin, xMax);
+    for (let sy = 0; sy < plotSize; sy++) {
+      const yVal = map(sy, plotSize, 0, yMin, yMax);
       const diff = calculateDifference(xVal, yVal);
 
-      const px = plotX + screenX;
-      const py = plotY + screenY;
+      const px = plotX + sx;
+      const py = plotY + sy;
       if (px < 0 || px >= width || py < 0 || py >= height) continue;
 
       const idx = (py * width + px) * 4;
@@ -363,51 +465,41 @@ function drawFunctionLayer(plotX, plotY, plotSize) {
   functionLayer.updatePixels();
 }
 
+/* =================== ✅ 关键：字母 mask 改成“用字体画字” =================== */
 function drawLetterMask(plotX, plotY, plotSize) {
   letterMask.clear();
   letterMask.fill(255);
   letterMask.noStroke();
 
-  const centerX = plotX + plotSize / 2;
-  const centerY = plotY + plotSize / 2;
+  const cx = plotX + plotSize / 2;
+  const cy = plotY + plotSize / 2;
   const letterSize = plotSize * letterSizeSliderValue;
 
   letterMask.push();
-  letterMask.translate(centerX, centerY);
+  letterMask.translate(cx, cy);
 
-  // X（两块多边形，保留你 Processing 的顶点）
-  letterMask.beginShape();
-  const xV1 = [
-    [-letterSize/2, -letterSize/2],
-    [ letterSize/2,  letterSize/2],
-    [ letterSize/3,  letterSize/2],
-    [ 0,             letterSize/6],
-    [-letterSize/3,  letterSize/2],
-    [-letterSize/2,  letterSize/3],
-    [-letterSize/6,  0],
-    [-letterSize/2, -letterSize/3]
-  ];
-  for (const [vx, vy] of xV1) letterMask.vertex(vx, vy);
-  letterMask.endShape(CLOSE);
+  // 用字体画字（这就是你想要的“原网页逻辑”方向：不是 path 骨架）
+  if (fontLoaded && uiFont) letterMask.textFont(uiFont);
+  else letterMask.textFont("system-ui");
 
-  letterMask.beginShape();
-  const xV2 = [
-    [ letterSize/2, -letterSize/2],
-    [-letterSize/2,  letterSize/2],
-    [-letterSize/3,  letterSize/2],
-    [ 0,             letterSize/6],
-    [ letterSize/3,  letterSize/2],
-    [ letterSize/2,  letterSize/3],
-    [ letterSize/6,  0],
-    [ letterSize/2, -letterSize/3]
-  ];
-  for (const [vx, vy] of xV2) letterMask.vertex(vx, vy);
-  letterMask.endShape(CLOSE);
+  letterMask.textAlign(CENTER, CENTER);
+  letterMask.textSize(letterSize);
+
+  const str = (glyphChar && glyphChar.length) ? glyphChar.slice(0,2) : "X";
+  const chars = str.split("");
+  const spacing = letterSize * 0.62;
+
+  if (chars.length === 1) {
+    letterMask.text(chars[0], 0, 0);
+  } else {
+    letterMask.text(chars[0], -spacing/2, 0);
+    letterMask.text(chars[1],  spacing/2, 0);
+  }
 
   letterMask.pop();
 }
 
-/* =================== 右下角预览与信息（保留） =================== */
+/* =================== 右下角预览与信息 =================== */
 function displayFunctionWithAxis() {
   const axisSize = 250;
   const margin = 50;
@@ -436,7 +528,6 @@ function displayFunctionWithAxis() {
   text("x", axisSize/2, 15);
   pop();
 
-  // heatmap 点阵
   const resolution = 2;
   const c1 = color(140);
   const c2 = color(140, 1);
@@ -453,7 +544,6 @@ function displayFunctionWithAxis() {
     }
   }
 
-  // 文本
   noStroke();
   fill(0);
   useUIFont();
@@ -466,7 +556,7 @@ function displayFunctionWithAxis() {
   text(functionInfo, axisX, axisY - 130);
 }
 
-/* =================== 颜色模块（完全照 path.html） =================== */
+/* =================== 颜色模块（完全照 path） =================== */
 function buildHueGraphic() {
   const w = max(1, floor(COLOR_HUE.w));
   const h = max(1, floor(COLOR_HUE.h));
@@ -518,7 +608,6 @@ function buildSBGraphic() {
 
 function drawColorPanel() {
   noTint();
-
   noStroke();
   fill(20,20,24);
   rect(8, 8, cw-16, COLOR_PANEL_H, BTN_R);
@@ -606,14 +695,14 @@ function addRecentColor(c) {
   let nc = color(c);
   recentColors = recentColors.filter(rc => !colorsEqual(rc, nc));
   recentColors.unshift(nc);
-  if (recentColors.length > RECENT_RECTS.length) recentColors.length = RECENT_RECTS.length;
+  if (recentColors.length > 5) recentColors.length = 5;
 }
 
 function colorsEqual(c1, c2) {
   return red(c1) === red(c2) && green(c1) === green(c2) && blue(c1) === blue(c2);
 }
 
-/* =================== 交互（按钮 + 色盘 + slider） =================== */
+/* =================== 交互 =================== */
 function mousePressed() {
   if (pauseButton.hover()) {
     isPlaying = !isPlaying;
@@ -625,9 +714,12 @@ function mousePressed() {
     saveCanvas("FontTexture", "png");
     return;
   }
+  if (randomizeButton.hover()) {
+    randomizeParams();
+    return;
+  }
 
   if (handleColorClick()) return;
-
   for (let s of sliders) s.click();
 }
 
@@ -635,7 +727,7 @@ function mouseReleased() {
   for (let s of sliders) s.state = false;
 }
 
-/* =================== UI：CapButton / Slider（同 path.html） =================== */
+/* =================== UI：CapButton / Slider（同 path） =================== */
 function rectToCapButton(rect, label) {
   const cx = rect.x + rect.w / 2;
   const cy = rect.y + rect.h / 2;
@@ -721,7 +813,7 @@ class Slider {
   }
 }
 
-/* =================== 字体加载（失败不影响） =================== */
+/* =================== 字体加载 =================== */
 function tryLoadUIFont() {
   loadFont(
     FONT_PATH,
