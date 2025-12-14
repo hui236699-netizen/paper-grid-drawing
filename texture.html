@@ -20,7 +20,7 @@
       top: 0;
     }
 
-    /* 输入框：固定在左侧栏里（与 path.html 一致） */
+    /* 输入框（与 path.html 一样） */
     .glyphInput {
       position: fixed;
       background: #3A393D;
@@ -46,7 +46,7 @@
 /* =================== 统一圆角（与 path.html 一样） =================== */
 const BTN_R = 18;
 
-/* =================== 字体（用于 mask + UI 文本，失败不影响） =================== */
+/* =================== 字体（用于 mask + UI 文本，可失败不影响） =================== */
 const FONT_PATH = "assets/fonts/ABCFavoritHebrewBoldVariable-Trial.ttf";
 let uiFont = null;
 let fontLoaded = false;
@@ -56,21 +56,19 @@ let cw = 240;
 const COLOR_PANEL_H = 190;
 let showGrid = true;
 
-/* =================== 文本输入：与 path.html 一样的模块 =================== */
+/* =================== 文本输入：与 path.html 一样 =================== */
 let glyphInput;
-let glyphChar = "X"; // 画面默认 X，输入框默认空 placeholder
+let glyphChar = "X";
 
-/* =================== 颜色模块（完全沿用 path.html 的 SB + Hue + Recent 逻辑） =================== */
-let hue = 0;
-let sat = 0;
-let bri = 0; // 默认黑
+/* =================== 颜色模块（与 path.html 一样：SB + Hue + 5 recent） =================== */
+let hue = 0, sat = 0, bri = 0;
 let currentColor;
 
 let COLOR_MAIN = null;
 let COLOR_HUE  = null;
 let sbGraphic, hueGraphic;
 
-// recent：5 个（与 path 完全一致）
+// ✅ 5 个 Recent（与你 path 完全一致）
 let RECENT_RECTS = [];
 const defaultRecentHex = ["#000000", "#482BCC", "#FF04A5", "#FFE900", "#8CE255"];
 let recentColors = [];
@@ -80,21 +78,19 @@ const RECENT_BIAS_X = 6;
 let pauseButton, saveButton;
 let FUNC_RECTS = {};
 
-/* =================== Randomize 按钮（与 path 一样） =================== */
+/* =================== Randomize（与 path 一样） =================== */
 let randomizeButton;
 
-/* =================== 4 个滑块（对应 Processing 的 4 个参数） =================== */
+/* =================== 4 个滑块（Processing 4 参数） =================== */
 const sliderName = ["Function Range", "Line Thickness", "Letter Size", "Animation Speed"];
 let sliders = [];
 
-/* =================== 控件整体下移 + 底部留白（与 path 思路一致） =================== */
+/* =================== 控件整体下移 + 底部留白（同 path 思路） =================== */
 const CONTROLS_SHIFT_Y = 18;
 const BOTTOM_PAD = 24;
 
 /* =================== Processing 纹理核心参数（保留） =================== */
 let a = -2;
-
-// 用 sign 保存方向，避免 Pause 时丢符号
 let daSign = +1;
 let da = 0.02;
 
@@ -114,10 +110,13 @@ let isPlaying = true;
 let functionLayer;
 let letterMask;
 
+/* =================== 关键：当前 plot 信息（用于“真正居中 + 不裁切”） =================== */
+let plot = { x: 0, y: 0, size: 500, letterPx: 400 };
+
 /* =================== 小工具 =================== */
 function clamp(v, lo, hi) { return max(lo, min(hi, v)); }
 
-/* =================== 布局计算（把 path.html 的布局搬过来） =================== */
+/* =================== 布局（path.html 同款） =================== */
 let layout = null;
 
 function computeLayout() {
@@ -151,12 +150,12 @@ function computeLayout() {
     save:  { x: pad + btnW + btnGapX, y: btnRowY_base, w: btnW, h: btnH }
   };
 
-  // 输入框（与 path 一样）
+  // 输入框
   const inputY_base = btnRowY_base + btnH + 18;
   const inputH = 36;
   const inputW = cw - pad * 2;
 
-  // Randomize（与 path 一样）
+  // Randomize
   const randomY_base = inputY_base + inputH + 18;
   const randomH = clamp(btnH * 1.35, 42, 56);
   const randomRect_base = { x: pad, y: randomY_base, w: cw - pad * 2, h: randomH };
@@ -166,7 +165,6 @@ function computeLayout() {
   const sliderGap = 48;
   const firstSliderY_base = randomY_base + randomH + 18;
 
-  // 控件整体下移（但不让底部溢出）
   const lastBottom_base = firstSliderY_base + 4 * sliderGap + sliderH;
   const maxShiftAllowed = (height - BOTTOM_PAD) - lastBottom_base;
   const shiftY = max(0, min(CONTROLS_SHIFT_Y, maxShiftAllowed));
@@ -179,8 +177,7 @@ function computeLayout() {
     btnH, btnW,
     inputX: pad,
     inputY: inputY_base + shiftY,
-    inputW,
-    inputH,
+    inputW, inputH,
     randomRect: { x: randomRect_base.x, y: randomRect_base.y + shiftY, w: randomRect_base.w, h: randomRect_base.h },
     firstSliderY: firstSliderY_base + shiftY,
     sliderGap,
@@ -189,23 +186,17 @@ function computeLayout() {
 }
 
 function rebuildRecentRects() {
-  const RECENT_COUNT = 5; // ✅ 与 path 一致
+  const RECENT_COUNT = 5;  // ✅ 5 个
   const RECENT_GAP = 10;
   const RECENT_SIZE = 28;
 
   const totalW = RECENT_COUNT * RECENT_SIZE + (RECENT_COUNT - 1) * RECENT_GAP;
   const startX = (cw - totalW) / 2 + RECENT_BIAS_X;
-
   const y = COLOR_MAIN.y + COLOR_MAIN.h + 18;
 
   RECENT_RECTS = [];
   for (let i = 0; i < RECENT_COUNT; i++) {
-    RECENT_RECTS.push({
-      x: startX + i * (RECENT_SIZE + RECENT_GAP),
-      y,
-      w: RECENT_SIZE,
-      h: RECENT_SIZE
-    });
+    RECENT_RECTS.push({ x: startX + i * (RECENT_SIZE + RECENT_GAP), y, w: RECENT_SIZE, h: RECENT_SIZE });
   }
 }
 
@@ -231,7 +222,7 @@ function setup() {
   pauseButton = rectToCapButton(FUNC_RECTS.pause, "Pause");
   saveButton  = rectToCapButton(FUNC_RECTS.save,  "Save");
 
-  // ✅ 输入框（与 path 一样）
+  // 输入框
   glyphChar = "X";
   glyphInput = createInput("");
   glyphInput.addClass("glyphInput");
@@ -244,15 +235,17 @@ function setup() {
     if (v.length === 0) { glyphChar = "X"; return; }
     if (v.length > 2) { v = v.slice(0, 2); glyphInput.value(v); }
     glyphChar = v;
+    needsUpdate = true;
   });
 
   glyphInput.elt.addEventListener("blur", () => {
     if (!glyphInput.value() || glyphInput.value().length === 0) {
       glyphChar = "X";
+      needsUpdate = true;
     }
   });
 
-  // ✅ Randomize（与 path 一样的位置/样式）
+  // Randomize
   randomizeButton = new CapButton(
     layout.randomRect.x + layout.randomRect.w/2,
     layout.randomRect.y + layout.randomRect.h/2,
@@ -262,13 +255,12 @@ function setup() {
     true
   );
 
-  // sliders（4 个）
+  // sliders
   sliders = [];
   for (let i = 0; i < 4; i++) {
     const y = layout.firstSliderY + i * layout.sliderGap;
     sliders.push(new Slider(cw/2, y + layout.sliderH/2, 200, layout.sliderH, sliderName[i], 0.5));
   }
-  // 默认速度更接近你 Processing 的感觉
   sliders[3].val = 0.03;
 
   tryLoadUIFont();
@@ -316,23 +308,21 @@ function draw() {
   updateParameters();
 
   if (needsUpdate) {
-    updateVisualization(); // ✅ 纹理+遮罩每帧更新（与 Processing 一样）
+    updateVisualization();
     needsUpdate = false;
   }
 
   if (showGrid) drawGrid();
 
-  // ✅ 核心：永远以“整个画布中心”显示（不考虑左侧栏）
+  // ✅ 永远画布正中心显示（忽略左侧栏）
   push();
   imageMode(CENTER);
   translate(width/2, height/2);
   image(functionLayer, 0, 0);
   pop();
 
-  // 右下角预览与信息（保留）
   displayFunctionWithAxis();
 
-  // 动画推进（往返）
   if (isPlaying) {
     a += da;
     if (a > 3 || a < -2) {
@@ -342,39 +332,34 @@ function draw() {
     }
   }
 
-  // 左侧栏覆盖（与 path 一样）
+  // 左侧栏覆盖（UI）
   noStroke();
   fill("#1F1E24");
   rect(0, 0, cw, height);
 
-  // 色盘 + recent（与 path 一样）
   drawColorPanel();
   drawRecentColors();
 
-  // Pause/Save（与 path 一样）
   pauseButton.str = isPlaying ? "Pause" : "Play";
   pauseButton.display();
   saveButton.display();
 
-  // 输入框（DOM 元素）
-  // Randomize
   randomizeButton.display();
 
-  // Sliders
   for (let s of sliders) s.run();
 
-  // 每帧都更新
+  // 与 Processing 一样：持续刷新
   needsUpdate = true;
 }
 
-/* =================== 输入框定位（与 path 一样） =================== */
+/* =================== 输入框定位 =================== */
 function placeGlyphInput() {
   if (!glyphInput) return;
   glyphInput.position(layout.inputX, layout.inputY);
   glyphInput.size(layout.inputW, layout.inputH);
 }
 
-/* =================== 网格（Processing 那种全屏网格感觉） =================== */
+/* =================== 网格 =================== */
 function drawGrid() {
   stroke(200);
   strokeWeight(1);
@@ -383,51 +368,64 @@ function drawGrid() {
   for (let y = 0; y < height; y += gridSize) line(0, y, width, y);
 }
 
-/* =================== 参数映射（按 Processing 映射范围） =================== */
+/* =================== 参数映射（同你 Processing） =================== */
 function updateParameters() {
   rangeSliderValue = map(sliders[0].val, 0, 1, 2, 10);
   thicknessSliderValue = map(sliders[1].val, 0, 1, 1, 10);
   letterSizeSliderValue = map(sliders[2].val, 0, 1, 0.5, 1.5);
   animationSpeedSliderValue = map(sliders[3].val, 0, 1, 0.01, 0.1);
 
-  if (isPlaying) {
-    da = daSign * animationSpeedSliderValue;
-  }
+  if (isPlaying) da = daSign * animationSpeedSliderValue;
 }
 
-/* =================== Randomize（与 path 一样的“随机参数”功能） =================== */
+/* =================== Randomize（与 path 一样的感觉） =================== */
 function randomizeParams() {
   sliders[0].val = random(0.15, 0.95);
   sliders[1].val = random(0.10, 0.90);
   sliders[2].val = random(0.10, 0.90);
   sliders[3].val = random(0.10, 0.80);
 
-  // 也可以随机一下 a 的起点，让纹理变化更丰富
   a = random(-2, 3);
   daSign = random() < 0.5 ? -1 : 1;
   if (isPlaying) da = daSign * animationSpeedSliderValue;
+
   needsUpdate = true;
 }
 
-/* =================== 纹理更新（mask + function layer） =================== */
+/* =================== ✅核心修复：plot 会包住 letter，不再被裁切 =================== */
 function updateVisualization() {
   xMin = yMin = -rangeSliderValue;
   xMax = yMax = rangeSliderValue;
   lineThickness = thicknessSliderValue;
 
-  // ✅ 关键：plot 永远以画布中心为中心（不管左侧栏）
-  const plotSize = floor(min(500, width * 0.70, height * 0.78));
-  const plotX = floor((width - plotSize) / 2);
-  const plotY = floor((height - plotSize) / 2);
+  // 画面中心（不管左侧栏）
+  const cx = width / 2;
+  const cy = height / 2;
 
-  drawLetterMask(plotX, plotY, plotSize);
+  // 给字母一个“可见最大范围”，防止 slider 拉太大超出屏幕导致裁切
+  const viewportMargin = 40;
+  const maxFit = min(width, height) - viewportMargin * 2;
+
+  // letterPx：字母实际像素大小（独立于 plotSize）
+  const base = min(500, maxFit);                     // 你的“500优先”逻辑
+  let letterPx = base * letterSizeSliderValue;       // slider 控制
+  letterPx = min(letterPx, maxFit * 0.92);           // ✅ clamp：保证能完整放进屏幕
+
+  // plotSize：必须 >= letterPx 并留 padding，这样“字母变大也不会算不到”
+  let plotSize = ceil(letterPx * 1.28);              // ✅ padding
+  plotSize = min(plotSize, maxFit);                  // ✅ 也 clamp
+
+  const plotX = floor(cx - plotSize / 2);
+  const plotY = floor(cy - plotSize / 2);
+
+  plot = { x: plotX, y: plotY, size: plotSize, letterPx };
+
+  drawLetterMask(plotX, plotY, plotSize, letterPx);
   drawFunctionLayer(plotX, plotY, plotSize);
 }
 
 function calculateDifference(x, y) {
-  const leftSide = sin(x*x + y*y);
-  const rightSide = a * cos(x*y);
-  return leftSide - rightSide;
+  return sin(x*x + y*y) - a * cos(x*y);
 }
 
 function drawFunctionLayer(plotX, plotY, plotSize) {
@@ -453,13 +451,12 @@ function drawFunctionLayer(plotX, plotY, plotSize) {
 
       const idx = (py * width + px) * 4;
       const maskA = letterMask.pixels[idx + 3];
-      if (maskA > 0) {
-        if (abs(diff) < lt) {
-          functionLayer.pixels[idx]     = cr;
-          functionLayer.pixels[idx + 1] = cg;
-          functionLayer.pixels[idx + 2] = cb;
-          functionLayer.pixels[idx + 3] = 255;
-        }
+
+      if (maskA > 0 && abs(diff) < lt) {
+        functionLayer.pixels[idx]     = cr;
+        functionLayer.pixels[idx + 1] = cg;
+        functionLayer.pixels[idx + 2] = cb;
+        functionLayer.pixels[idx + 3] = 255;
       }
     }
   }
@@ -467,8 +464,8 @@ function drawFunctionLayer(plotX, plotY, plotSize) {
   functionLayer.updatePixels();
 }
 
-/* =================== 字母遮罩（X 保留多边形味道；其它字母用字体 mask） =================== */
-function drawLetterMask(plotX, plotY, plotSize) {
+/* =================== ✅核心修复：遮罩真正“视觉居中”（textBounds） =================== */
+function drawLetterMask(plotX, plotY, plotSize, letterPx) {
   letterMask.clear();
   letterMask.noStroke();
   letterMask.fill(255);
@@ -476,30 +473,29 @@ function drawLetterMask(plotX, plotY, plotSize) {
   const centerX = plotX + plotSize / 2;
   const centerY = plotY + plotSize / 2;
 
-  // 基础尺寸
-  let baseSize = plotSize * letterSizeSliderValue;
-
-  // 取最多 2 个字符（与 path 输入一致）
-  const str = (glyphChar || "X").toString();
-  const chars = str.slice(0,2).split("");
-
-  // 两个字母时缩小一点，更容易塞进 plot
-  if (chars.length === 2) baseSize *= 0.78;
-  const spacing = baseSize * 0.65;
+  const str = (glyphChar || "X").toString().slice(0,2);
+  const chars = str.split("");
 
   letterMask.push();
   letterMask.translate(centerX, centerY);
 
-  // 选字体（加载失败也能 fallback）
   if (fontLoaded && uiFont) letterMask.textFont(uiFont);
   else letterMask.textFont("system-ui");
-  letterMask.textAlign(CENTER, CENTER);
+  letterMask.textSize(letterPx);
+
+  // 两个字母时略缩放与间距
+  let sizePx = letterPx;
+  let spacing = sizePx * 0.65;
+  if (chars.length === 2) {
+    sizePx = letterPx * 0.78;
+    spacing = sizePx * 0.75;
+  }
 
   if (chars.length === 1) {
-    drawOneMaskGlyph(chars[0], 0, baseSize);
+    drawOneMaskGlyph(chars[0], 0, sizePx);
   } else {
-    drawOneMaskGlyph(chars[0], -spacing/2, baseSize);
-    drawOneMaskGlyph(chars[1],  spacing/2, baseSize);
+    drawOneMaskGlyph(chars[0], -spacing/2, sizePx);
+    drawOneMaskGlyph(chars[1],  spacing/2, sizePx);
   }
 
   letterMask.pop();
@@ -511,54 +507,69 @@ function drawOneMaskGlyph(ch, offsetX, sizePx) {
   letterMask.push();
   letterMask.translate(offsetX, 0);
 
-  // ✅ X：用你 Processing 那种“多边形 X”味道
+  // X：保留你 Processing 那种多边形味道
   if (up === "X") {
-    const letterSize = sizePx;
+    const s = sizePx;
 
     letterMask.beginShape();
     const xV1 = [
-      [-letterSize/2, -letterSize/2],
-      [ letterSize/2,  letterSize/2],
-      [ letterSize/3,  letterSize/2],
-      [ 0,             letterSize/6],
-      [-letterSize/3,  letterSize/2],
-      [-letterSize/2,  letterSize/3],
-      [-letterSize/6,  0],
-      [-letterSize/2, -letterSize/3]
+      [-s/2, -s/2],
+      [ s/2,  s/2],
+      [ s/3,  s/2],
+      [ 0,    s/6],
+      [-s/3,  s/2],
+      [-s/2,  s/3],
+      [-s/6,  0],
+      [-s/2, -s/3]
     ];
     for (const [vx, vy] of xV1) letterMask.vertex(vx, vy);
     letterMask.endShape(CLOSE);
 
     letterMask.beginShape();
     const xV2 = [
-      [ letterSize/2, -letterSize/2],
-      [-letterSize/2,  letterSize/2],
-      [-letterSize/3,  letterSize/2],
-      [ 0,             letterSize/6],
-      [ letterSize/3,  letterSize/2],
-      [ letterSize/2,  letterSize/3],
-      [ letterSize/6,  0],
-      [ letterSize/2, -letterSize/3]
+      [ s/2, -s/2],
+      [-s/2,  s/2],
+      [-s/3,  s/2],
+      [ 0,    s/6],
+      [ s/3,  s/2],
+      [ s/2,  s/3],
+      [ s/6,  0],
+      [ s/2, -s/3]
     ];
     for (const [vx, vy] of xV2) letterMask.vertex(vx, vy);
     letterMask.endShape(CLOSE);
   } else {
-    // ✅ 其它字母：用字体填充作为“粗体遮罩”
-    letterMask.textSize(sizePx);
+    // 其它字母：用字体填充做粗体遮罩 + ✅用 textBounds 做真正居中
+    if (fontLoaded && uiFont) {
+      const b = uiFont.textBounds(up || "?", 0, 0, sizePx);
+      const dx = -(b.x + b.w/2);
+      const dy = -(b.y + b.h/2);
 
-    // 轻微“加粗”：绘制多次叠加（比 textStyle 更稳定）
-    const s = 1.2;
-    letterMask.text(up || "?", 0, 0);
-    letterMask.text(up || "?", s, 0);
-    letterMask.text(up || "?", -s, 0);
-    letterMask.text(up || "?", 0, s);
-    letterMask.text(up || "?", 0, -s);
+      // 轻微“加粗”叠绘
+      const s = 1.2;
+      letterMask.textSize(sizePx);
+      letterMask.textAlign(LEFT, TOP);
+      letterMask.text(up || "?", dx, dy);
+      letterMask.text(up || "?", dx + s, dy);
+      letterMask.text(up || "?", dx - s, dy);
+      letterMask.text(up || "?", dx, dy + s);
+      letterMask.text(up || "?", dx, dy - s);
+    } else {
+      // fallback：没有 font bounds 时尽量居中
+      letterMask.textSize(sizePx);
+      letterMask.textAlign(CENTER, CENTER);
+      letterMask.text(up || "?", 0, 0);
+      letterMask.text(up || "?", 1.2, 0);
+      letterMask.text(up || "?", -1.2, 0);
+      letterMask.text(up || "?", 0, 1.2);
+      letterMask.text(up || "?", 0, -1.2);
+    }
   }
 
   letterMask.pop();
 }
 
-/* =================== 右下角预览与信息（保留） =================== */
+/* =================== 右下角预览（保留） =================== */
 function displayFunctionWithAxis() {
   const axisSize = 250;
   const margin = 50;
@@ -587,7 +598,6 @@ function displayFunctionWithAxis() {
   text("x", axisSize/2, 15);
   pop();
 
-  // heatmap 点阵
   const resolution = 2;
   const c1 = color(140);
   const c2 = color(140, 1);
@@ -604,20 +614,19 @@ function displayFunctionWithAxis() {
     }
   }
 
-  // 文本
   noStroke();
   fill(0);
   useUIFont();
   textSize(16);
   textAlign(LEFT, TOP);
-  const functionInfo =
+  const info =
     "Function: sin(x² + y²) = a * cos(xy)\n" +
     "a = " + nf(a, 1, 2) + "\n" +
     "Range: [-" + nf(rangeSliderValue, 1, 1) + ", " + nf(rangeSliderValue, 1, 1) + "]";
-  text(functionInfo, axisX, axisY - 130);
+  text(info, axisX, axisY - 130);
 }
 
-/* =================== 颜色模块（完全照 path.html） =================== */
+/* =================== 颜色模块（path 同款） =================== */
 function buildHueGraphic() {
   const w = max(1, floor(COLOR_HUE.w));
   const h = max(1, floor(COLOR_HUE.h));
@@ -669,7 +678,6 @@ function buildSBGraphic() {
 
 function drawColorPanel() {
   noTint();
-
   noStroke();
   fill(20,20,24);
   rect(8, 8, cw-16, COLOR_PANEL_H, BTN_R);
@@ -764,30 +772,24 @@ function colorsEqual(c1, c2) {
   return red(c1) === red(c2) && green(c1) === green(c2) && blue(c1) === blue(c2);
 }
 
-/* =================== 交互（按钮 + 色盘 + slider） =================== */
+/* =================== 交互 =================== */
 function mousePressed() {
-  // Pause / Play
   if (pauseButton.hover()) {
     isPlaying = !isPlaying;
     if (isPlaying) da = daSign * animationSpeedSliderValue;
     else da = 0;
     return;
   }
-  // Save
   if (saveButton.hover()) {
     saveCanvas("FontTexture", "png");
     return;
   }
-  // Randomize
   if (randomizeButton.hover()) {
     randomizeParams();
     return;
   }
 
-  // Color picker
   if (handleColorClick()) return;
-
-  // Sliders
   for (let s of sliders) s.click();
 }
 
@@ -795,7 +797,7 @@ function mouseReleased() {
   for (let s of sliders) s.state = false;
 }
 
-/* =================== UI：CapButton / Slider（同 path.html） =================== */
+/* =================== UI：CapButton / Slider（path 同款） =================== */
 function rectToCapButton(rect, label) {
   const cx = rect.x + rect.w / 2;
   const cy = rect.y + rect.h / 2;
@@ -809,12 +811,8 @@ class CapButton {
     this.useDrawStyle = useDrawStyle;
   }
   hover() {
-    return (
-      mouseX >= this.x - this.w / 2 &&
-      mouseX <= this.x + this.w / 2 &&
-      mouseY >= this.y - this.h / 2 &&
-      mouseY <= this.y + this.h / 2
-    );
+    return (mouseX >= this.x - this.w/2 && mouseX <= this.x + this.w/2 &&
+            mouseY >= this.y - this.h/2 && mouseY <= this.y + this.h/2);
   }
   display() {
     push();
@@ -885,8 +883,8 @@ class Slider {
 function tryLoadUIFont() {
   loadFont(
     FONT_PATH,
-    (f) => { uiFont = f; fontLoaded = true; },
-    () => { uiFont = null; fontLoaded = false; }
+    (f) => { uiFont = f; fontLoaded = true; needsUpdate = true; },
+    () => { uiFont = null; fontLoaded = false; needsUpdate = true; }
   );
 }
 function useUIFont() {
