@@ -1,189 +1,749 @@
-<!DOCTYPE html>
-<html lang="zh">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>纹理绘制</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
-  </head>
-  <body>
-    <h1>纹理绘制</h1>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Font Texture Method</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      height: 100%;
+      width: 100%;
+      background: #0f1013;
+    }
+    canvas { display:block; position:fixed; left:0; top:0; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+</head>
+<body>
+<script>
+/* =========================
+   Processing 版本参数（尽量保持）
+========================= */
+let a = -2;
+let da = 0.02;
 
-    <script>
-      let a = -2;
-      let da = 0.02;
-      let xMin = -5, xMax = 5;
-      let yMin = -5, yMax = 5;
-      let lineThickness = 4;
+let xMin = -5, xMax = 5;
+let yMin = -5, yMax = 5;
 
-      // 滑块的值
-      let rangeSliderValue = 5;
-      let thicknessSliderValue = 4;
-      let letterSizeSliderValue = 0.8;
-      let animationSpeedSliderValue = 0.02;
-      let cw = 200;
+let lineThickness = 4;
 
-      // 画布和图形相关
-      let functionLayer;
-      let letterMask;
-      let isPlaying = true;
-      let currentColor;
+// sliders (0..1)
+let rangeSliderValue = 5;
+let thicknessSliderValue = 4;
+let letterSizeSliderValue = 0.8;
+let animationSpeedSliderValue = 0.02;
 
-      let playButton;
+// 默认值
+const DEFAULT_RANGE = 5;
+const DEFAULT_THICKNESS = 4;
+const DEFAULT_LETTER_SIZE = 0.8;
+const DEFAULT_ANIMATION_SPEED = 0.02;
+const DEFAULT_FUNCTION_COLOR = { r: 40, g: 240, b: 40 };
 
-      function setup() {
-        createCanvas(1440, 900);
-        functionLayer = createGraphics(width, height);
-        letterMask = createGraphics(width, height);
-        background(240);
+let needsUpdate = true;
+let isPlaying = true;
 
-        // 初始化颜色
-        currentColor = color(40, 240, 40);
+// 左侧栏宽（按你 Processing 版）
+let cw = 200;
 
-        // 创建滑块
-        rangeSlider = createSlider(2, 10, 5, 0.1);
-        rangeSlider.position(20, height - 100);
+// 背景
+let backgroundColor;
 
-        thicknessSlider = createSlider(1, 10, 4, 0.1);
-        thicknessSlider.position(20, height - 150);
+// 图层
+let functionLayer;
+let letterMask;
 
-        letterSizeSlider = createSlider(0.5, 1.5, 0.8, 0.1);
-        letterSizeSlider.position(20, height - 200);
+// 字体（仅用于 UI 文本）
+const FONT_PATH = "assets/fonts/ABCFavoritHebrewBoldVariable-Trial.ttf";
+let uiFont = null;
+let fontLoaded = false;
 
-        animationSpeedSlider = createSlider(0.01, 0.1, 0.02, 0.01);
-        animationSpeedSlider.position(20, height - 250);
+/* =========================
+   UI：按钮 & 滑块
+========================= */
+const sliderName = ["Function Range", "Line Thickness", "Letter Size", "Animation Speed"];
+let sliders = [];
+let capButtons = []; // [Reset, Pause/Play]
 
-        // 播放/暂停按钮
-        playButton = createButton("Pause");
-        playButton.position(20, height - 300);
-        playButton.mousePressed(togglePlay);
-      }
+/* =========================
+   Color Wheel（圆盘 + 亮度条）
+   - 圆盘选 Hue/Sat
+   - 横条选 Brightness（就是你截图里那条绿条）
+========================= */
+let wheelG = null;
+let wheelSize = 200;           // 会跟 cw 走
+let wheelCx = 0, wheelCy = 0;  // 左上角绘制
+let briBar = { x:0, y:0, w:200, h:18 };
 
-      function draw() {
-        background(240);
+let wheelHue = 120;  // 初始接近绿色
+let wheelSat = 85;
+let wheelBri = 95;
 
-        // 更新参数
-        rangeSliderValue = rangeSlider.value();
-        thicknessSliderValue = thicknessSlider.value();
-        letterSizeSliderValue = letterSizeSlider.value();
-        animationSpeedSliderValue = animationSpeedSlider.value();
+let currentColor;
+let isWheelDragging = false;
+let isBriDragging = false;
 
-        updateVisualization();
+/* =========================
+   布局（跟 Processing 相似，但做一点点自适应）
+========================= */
+function computeLayout() {
+  cw = 200;                  // 保持你 Processing 的操作栏宽
+  wheelSize = cw;            // 颜色轮直径 = cw
 
-        drawGrid();
-        drawFunctionLayer();
-        drawLetterMask();
-        displayFunctionWithAxis();
-      }
+  wheelCx = 0;
+  wheelCy = 0;
 
-      function updateVisualization() {
-        xMin = yMin = -rangeSliderValue;
-        xMax = yMax = rangeSliderValue;
-        lineThickness = thicknessSliderValue;
+  briBar.x = 0;
+  briBar.y = wheelCy + wheelSize + 12;
+  briBar.w = cw;
+  briBar.h = 18;
 
-        // 控制动画
-        if (isPlaying) {
-          da = animationSpeedSliderValue * (da < 0 ? -1 : 1);
-        } else {
-          da = 0;
+  // 滑块区（参考你 Processing map 到 400~750）
+  const top = max(briBar.y + briBar.h + 40, 260);
+  const bottom = height - 90;
+  const span = max(240, bottom - top);
+
+  const sliderW = 150;
+  const sliderH = 40;
+
+  sliders = [];
+  for (let i = 0; i < 4; i++) {
+    const y = top + (span * (i / 3));
+    sliders.push(new Slider(cw/2, y, sliderW, sliderH, sliderName[i], 0.5));
+  }
+  sliders[3].val = 0.03; // 你 Processing 里默认设的
+
+  // 两个按钮：Reset / Pause
+  capButtons = [];
+  const btnW = 140;
+  const btnH = 40;
+  const btnTop = max(340, top - 90);
+  capButtons.push(new CapButton(cw/2, btnTop, btnW, btnH, "Reset"));
+  capButtons.push(new CapButton(cw/2, btnTop + 90, btnW, btnH, isPlaying ? "Pause" : "Play"));
+}
+
+/* =========================
+   p5 生命周期
+========================= */
+function preload() {
+  // 字体加载失败也不影响
+  try {
+    uiFont = loadFont(FONT_PATH, () => { fontLoaded = true; }, () => { fontLoaded = false; uiFont = null; });
+  } catch (e) {
+    fontLoaded = false;
+    uiFont = null;
+  }
+}
+
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  frameRate(60);
+  pixelDensity(1);
+
+  backgroundColor = color(240);
+
+  functionLayer = createGraphics(windowWidth, windowHeight);
+  functionLayer.pixelDensity(1);
+
+  letterMask = createGraphics(windowWidth, windowHeight);
+  letterMask.pixelDensity(1);
+
+  // 初始颜色
+  wheelHue = 120;
+  wheelSat = 85;
+  wheelBri = 95;
+  currentColor = color(DEFAULT_FUNCTION_COLOR.r, DEFAULT_FUNCTION_COLOR.g, DEFAULT_FUNCTION_COLOR.b);
+
+  computeLayout();
+  rebuildColorWheel();
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+
+  // 需要重建图层尺寸
+  functionLayer = createGraphics(windowWidth, windowHeight);
+  functionLayer.pixelDensity(1);
+
+  letterMask = createGraphics(windowWidth, windowHeight);
+  letterMask.pixelDensity(1);
+
+  computeLayout();
+  rebuildColorWheel();
+  needsUpdate = true;
+}
+
+/* =========================
+   主循环
+========================= */
+function draw() {
+  updateParameters();
+
+  if (needsUpdate) {
+    updateVisualization();
+    needsUpdate = false;
+  }
+
+  drawGrid();
+
+  // 左侧栏背景（跟你 Processing）
+  noStroke();
+  fill(31, 30, 36);
+  rect(0, 0, cw, height);
+
+  // 画中间 functionLayer
+  push();
+  imageMode(CENTER);
+  translate(width/2, height/2);
+  image(functionLayer, 0, 0);
+  pop();
+
+  // 右下角预览 + 说明（跟 Processing）
+  displayFunctionWithAxis();
+
+  // a 动画（往返）
+  a += da;
+  if (a > 3 || a < -2) {
+    da *= -1;
+    a = constrain(a, -2, 3);
+  }
+
+  // 左侧 UI（颜色轮、亮度条、按钮、滑块）
+  drawColorWheelUI();
+  for (let s of sliders) s.run();
+  capButtons[0].display();
+  capButtons[1].str = isPlaying ? "Pause" : "Play";
+  capButtons[1].display();
+
+  // 每帧都更新（跟你原逻辑：needsUpdate=true）
+  needsUpdate = true;
+}
+
+/* =========================
+   参数映射（和你 Processing 一致）
+========================= */
+function updateParameters() {
+  rangeSliderValue = map(sliders[0].val, 0, 1, 2, 10);
+  thicknessSliderValue = map(sliders[1].val, 0, 1, 1, 10);
+  letterSizeSliderValue = map(sliders[2].val, 0, 1, 0.5, 1.5);
+  animationSpeedSliderValue = map(sliders[3].val, 0, 1, 0.01, 0.1);
+}
+
+/* =========================
+   更新可视化（核心：mask + function layer）
+========================= */
+function updateVisualization() {
+  xMin = yMin = -rangeSliderValue;
+  xMax = yMax = rangeSliderValue;
+  lineThickness = thicknessSliderValue;
+
+  if (isPlaying) {
+    da = animationSpeedSliderValue * (da < 0 ? -1 : 1);
+  } else {
+    da = 0;
+  }
+
+  // plotSize 尽量 500，但要能放进右侧区域
+  const maxPlotW = max(200, width - cw - 80);
+  const maxPlotH = max(200, height - 80);
+  const plotSize = floor(min(500, maxPlotW, maxPlotH));
+
+  const plotX = floor((width - plotSize) / 2);
+  const plotY = floor((height - plotSize) / 2);
+
+  drawLetterMask(plotX, plotY, plotSize);
+  drawFunctionLayer(plotX, plotY, plotSize);
+}
+
+function calculateDifference(x, y) {
+  const leftSide = sin(x*x + y*y);
+  const rightSide = a * cos(x*y);
+  return leftSide - rightSide;
+}
+
+function drawFunctionLayer(plotX, plotY, plotSize) {
+  functionLayer.clear();
+  functionLayer.loadPixels();
+
+  letterMask.loadPixels();
+
+  const lt = lineThickness / 10.0;
+
+  // 当前颜色 RGBA
+  const cr = floor(red(currentColor));
+  const cg = floor(green(currentColor));
+  const cb = floor(blue(currentColor));
+  const ca = 255;
+
+  // 遍历 plotSize 区域
+  for (let screenX = 0; screenX < plotSize; screenX++) {
+    const xVal = map(screenX, 0, plotSize, xMin, xMax);
+    for (let screenY = 0; screenY < plotSize; screenY++) {
+      const yVal = map(screenY, plotSize, 0, yMin, yMax);
+
+      const diff = calculateDifference(xVal, yVal);
+
+      const px = plotX + screenX;
+      const py = plotY + screenY;
+
+      if (px < 0 || px >= width || py < 0 || py >= height) continue;
+
+      const idx = (py * width + px) * 4;
+
+      // mask: 只要 alpha > 0 就算命中（白色 X 区域）
+      const maskA = letterMask.pixels[idx + 3];
+      if (maskA > 0) {
+        if (abs(diff) < lt) {
+          functionLayer.pixels[idx]     = cr;
+          functionLayer.pixels[idx + 1] = cg;
+          functionLayer.pixels[idx + 2] = cb;
+          functionLayer.pixels[idx + 3] = ca;
         }
       }
+    }
+  }
 
-      function drawGrid() {
-        stroke(200);
-        strokeWeight(1);
-        let gridSize = 20;
-        for (let x = 0; x < width; x += gridSize) {
-          line(x, 0, x, height);
-        }
-        for (let y = 0; y < height; y += gridSize) {
-          line(0, y, width, y);
-        }
+  functionLayer.updatePixels();
+}
+
+function drawLetterMask(plotX, plotY, plotSize) {
+  letterMask.clear();
+  letterMask.noStroke();
+  letterMask.fill(255);
+
+  const centerX = plotX + plotSize / 2;
+  const centerY = plotY + plotSize / 2;
+  const letterSize = plotSize * letterSizeSliderValue;
+
+  letterMask.push();
+  letterMask.translate(centerX, centerY);
+
+  // 第一块 X
+  letterMask.beginShape();
+  const xV1 = [
+    [-letterSize/2, -letterSize/2],
+    [ letterSize/2,  letterSize/2],
+    [ letterSize/3,  letterSize/2],
+    [ 0,             letterSize/6],
+    [-letterSize/3,  letterSize/2],
+    [-letterSize/2,  letterSize/3],
+    [-letterSize/6,  0],
+    [-letterSize/2, -letterSize/3]
+  ];
+  for (const [vx, vy] of xV1) letterMask.vertex(vx, vy);
+  letterMask.endShape(CLOSE);
+
+  // 第二块 X
+  letterMask.beginShape();
+  const xV2 = [
+    [ letterSize/2, -letterSize/2],
+    [-letterSize/2,  letterSize/2],
+    [-letterSize/3,  letterSize/2],
+    [ 0,             letterSize/6],
+    [ letterSize/3,  letterSize/2],
+    [ letterSize/2,  letterSize/3],
+    [ letterSize/6,  0],
+    [ letterSize/2, -letterSize/3]
+  ];
+  for (const [vx, vy] of xV2) letterMask.vertex(vx, vy);
+  letterMask.endShape(CLOSE);
+
+  letterMask.pop();
+}
+
+/* =========================
+   网格（跟你 Processing drawGrid）
+========================= */
+function drawGrid() {
+  background(240);
+  stroke(200);
+  strokeWeight(1);
+  const gridSize = 20;
+
+  for (let x = 0; x < width; x += gridSize) line(x, 0, x, height);
+  for (let y = 0; y < height; y += gridSize) line(0, y, width, y, );
+}
+
+/* =========================
+   右下角函数预览 + 文本（跟你 Processing displayFunctionWithAxis）
+========================= */
+function displayFunctionWithAxis() {
+  let axisSize = 250;
+  const margin = 50;
+
+  const axisX = width - axisSize - margin;
+  const axisY = height - axisSize - margin;
+
+  // 轴
+  stroke(0);
+  strokeWeight(3);
+
+  push();
+  translate(width - axisSize/2 - margin, height - axisSize/2 - margin);
+
+  line(-axisSize/2, 0, axisSize/2, 0);
+  line(0, -axisSize/2, 0, axisSize/2);
+
+  noStroke();
+  fill(0);
+  textSize(15);
+  triangle(-5, -axisSize/2, 5, -axisSize/2, 0, -axisSize/2 - 15);
+  triangle(axisSize/2 + 15, 0, axisSize/2, -5, axisSize/2, 5);
+
+  useUIFont(15);
+  textAlign(LEFT, TOP);
+  text("y", 15, -axisSize/2 - 10);
+  text("x", axisSize/2, 15);
+
+  pop();
+
+  // heatmap（点阵）
+  const resolution = 2;
+  const c1 = color(140);
+  const c2 = color(140, 1);
+
+  strokeWeight(1);
+  for (let x = 0; x < axisSize; x += resolution) {
+    for (let y = 0; y < axisSize; y += resolution) {
+      const xVal = map(x, 0, axisSize, -5, 5);
+      const yVal = map(y, axisSize, 0, -5, 5);
+      const diff = calculateDifference(xVal, yVal);
+
+      const tcol = map(abs(diff), 0, 1, 0, 2.6);
+      const cc = lerpColor(c1, c2, tcol);
+
+      stroke(cc);
+      point(axisX + x, axisY + y);
+    }
+  }
+
+  // 文本信息
+  noStroke();
+  fill(0);
+  useUIFont(16);
+  textAlign(LEFT, TOP);
+
+  const functionInfo =
+    "Function: sin(x² + y²) = a * cos(xy)\n" +
+    "a = " + nf(a, 1, 2) + "\n" +
+    "Range: [-" + nf(rangeSliderValue, 1, 1) + ", " + nf(rangeSliderValue, 1, 1) + "]";
+
+  text(functionInfo, axisX, axisY - 130);
+}
+
+/* =========================
+   Color Wheel 实现（圆盘 + 亮度条）
+========================= */
+function rebuildColorWheel() {
+  const s = wheelSize;
+  wheelG = createGraphics(s, s);
+  wheelG.pixelDensity(1);
+  wheelG.colorMode(HSB, 360, 100, 100, 255);
+  wheelG.loadPixels();
+
+  const cx = s / 2;
+  const cy = s / 2;
+  const rMax = s * 0.48;
+
+  for (let y = 0; y < s; y++) {
+    for (let x = 0; x < s; x++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      const rr = sqrt(dx*dx + dy*dy);
+
+      const idx = (y * s + x) * 4;
+
+      if (rr <= rMax) {
+        let ang = atan2(dy, dx); // -PI..PI
+        let hh = degrees(ang);
+        if (hh < 0) hh += 360;
+
+        const ss = map(rr, 0, rMax, 0, 100);
+        const cc = wheelG.color(hh, ss, wheelBri);
+
+        wheelG.pixels[idx]     = red(cc);
+        wheelG.pixels[idx + 1] = green(cc);
+        wheelG.pixels[idx + 2] = blue(cc);
+        wheelG.pixels[idx + 3] = 255;
+      } else {
+        wheelG.pixels[idx + 3] = 0;
       }
+    }
+  }
+  wheelG.updatePixels();
+}
 
-      function drawFunctionLayer() {
-        functionLayer.beginDraw();
-        functionLayer.clear();
-        functionLayer.loadPixels();
+function setCurrentColorFromWheel() {
+  colorMode(HSB, 360, 100, 100);
+  const c = color(wheelHue, wheelSat, wheelBri);
+  colorMode(RGB, 255);
+  currentColor = c;
+}
 
-        let lt = lineThickness / 10.0;
-        for (let screenX = 0; screenX < width; screenX++) {
-          for (let screenY = 0; screenY < height; screenY++) {
-            let x = map(screenX, 0, width, xMin, xMax);
-            let y = map(screenY, height, 0, yMin, yMax);
-            let difference = calculateDifference(x, y);
-            let pixelIndex = screenY * width + screenX;
-            if (abs(difference) < lt) {
-              functionLayer.pixels[pixelIndex] = currentColor.levels[0];
-            }
-          }
-        }
-        functionLayer.updatePixels();
-        image(functionLayer, 0, 0);
-      }
+function drawColorWheelUI() {
+  // 圆盘
+  imageMode(CORNER);
+  image(wheelG, wheelCx, wheelCy);
 
-      function drawLetterMask() {
-        letterMask.beginDraw();
-        letterMask.clear();
-        letterMask.fill(255);
-        letterMask.noStroke();
-        let centerX = width / 2;
-        let centerY = height / 2;
-        let letterSize = 200 * letterSizeSliderValue;
+  // 外圈描边
+  noFill();
+  stroke(0, 140);
+  strokeWeight(2);
+  circle(wheelCx + wheelSize/2, wheelCy + wheelSize/2, wheelSize * 0.96);
 
-        // 绘制字母X
-        letterMask.pushMatrix();
-        letterMask.translate(centerX, centerY);
+  // 选点指示
+  const rMax = wheelSize * 0.48;
+  const ang = radians(wheelHue);
+  const rr = map(wheelSat, 0, 100, 0, rMax);
+  const px = wheelCx + wheelSize/2 + cos(ang) * rr;
+  const py = wheelCy + wheelSize/2 + sin(ang) * rr;
 
-        letterMask.beginShape();
-        let xVertices = [
-          createVector(-letterSize / 2, -letterSize / 2),
-          createVector(letterSize / 2, letterSize / 2),
-          createVector(letterSize / 3, letterSize / 2),
-          createVector(0, letterSize / 6),
-          createVector(-letterSize / 3, letterSize / 2),
-          createVector(-letterSize / 2, letterSize / 3),
-          createVector(-letterSize / 6, 0),
-          createVector(-letterSize / 2, -letterSize / 3)
-        ];
-        for (let v of xVertices) {
-          letterMask.vertex(v.x, v.y);
-        }
-        letterMask.endShape(CLOSE);
+  stroke(255);
+  strokeWeight(2);
+  fill(0, 0);
+  circle(px, py, 12);
 
-        letterMask.popMatrix();
-        letterMask.endDraw();
-      }
+  // 亮度条（横条）
+  const bx = briBar.x;
+  const by = briBar.y;
+  const bw = briBar.w;
+  const bh = briBar.h;
 
-      function calculateDifference(x, y) {
-        let leftSide = sin(x * x + y * y);
-        let rightSide = a * cos(x * y);
-        return leftSide - rightSide;
-      }
+  // 背板
+  noStroke();
+  fill(10);
+  rect(bx, by, bw, bh, 10);
 
-      function displayFunctionWithAxis() {
-        let axisSize = 250;
-        let margin = 50;
-        let axisX = width - axisSize - margin;
-        let axisY = height - axisSize - margin;
+  // 渐变条：同 hue/sat，不同 bri
+  // 画成很多竖线即可
+  for (let i = 0; i < bw; i++) {
+    const bb = map(i, 0, bw-1, 0, 100);
+    colorMode(HSB, 360, 100, 100);
+    const cc = color(wheelHue, wheelSat, bb);
+    colorMode(RGB, 255);
+    stroke(cc);
+    line(bx + i, by, bx + i, by + bh);
+  }
 
-        stroke(0);
-        strokeWeight(3);
-        line(axisX - axisSize / 2, axisY, axisX + axisSize / 2, axisY);  // X轴
-        line(axisX, axisY - axisSize / 2, axisX, axisY + axisSize / 2);  // Y轴
-      }
+  // 指示线
+  const ix = bx + map(wheelBri, 0, 100, 0, bw);
+  stroke(255);
+  strokeWeight(2);
+  line(ix, by - 4, ix, by + bh + 4);
 
-      function mousePressed() {
-        // 切换播放和暂停
-        if (mouseX > 20 && mouseX < 120 && mouseY > height - 300 && mouseY < height - 250) {
-          togglePlay();
-        }
-      }
+  // 恢复
+  noStroke();
+}
 
-      function togglePlay() {
-        isPlaying = !isPlaying;
-        playButton.html(isPlaying ? "Pause" : "Play");
-      }
-    </script>
-  </body>
+function pickWheelColor(mx, my) {
+  const s = wheelSize;
+  const cx = wheelCx + s/2;
+  const cy = wheelCy + s/2;
+  const dx = mx - cx;
+  const dy = my - cy;
+
+  const rMax = s * 0.48;
+  const rr = sqrt(dx*dx + dy*dy);
+
+  if (rr <= rMax) {
+    let hh = degrees(atan2(dy, dx));
+    if (hh < 0) hh += 360;
+    let ss = map(rr, 0, rMax, 0, 100);
+
+    wheelHue = constrain(hh, 0, 360);
+    wheelSat = constrain(ss, 0, 100);
+
+    setCurrentColorFromWheel();
+    // brightness 不变，但色轮图像需要按当前 brightness 重建（保持一致）
+    rebuildColorWheel();
+    return true;
+  }
+  return false;
+}
+
+function pickBrightness(mx, my) {
+  if (mx >= briBar.x && mx <= briBar.x + briBar.w &&
+      my >= briBar.y && my <= briBar.y + briBar.h) {
+    wheelBri = map(mx, briBar.x, briBar.x + briBar.w, 0, 100);
+    wheelBri = constrain(wheelBri, 0, 100);
+    setCurrentColorFromWheel();
+    rebuildColorWheel();
+    return true;
+  }
+  return false;
+}
+
+/* =========================
+   交互
+========================= */
+function mousePressed() {
+  // 左侧 Color wheel / bri bar
+  if (mouseX <= cw) {
+    if (pickBrightness(mouseX, mouseY)) { isBriDragging = true; return; }
+    if (pickWheelColor(mouseX, mouseY)) { isWheelDragging = true; return; }
+  }
+
+  // sliders
+  for (let s of sliders) s.click();
+
+  // buttons
+  if (capButtons[0].hover()) {
+    resetToDefaults();
+    return;
+  }
+  if (capButtons[1].hover()) {
+    isPlaying = !isPlaying;
+    if (!isPlaying) {
+      da = 0;
+    } else {
+      da = abs(da) || DEFAULT_ANIMATION_SPEED;
+    }
+    return;
+  }
+}
+
+function mouseDragged() {
+  if (isWheelDragging) {
+    pickWheelColor(mouseX, mouseY);
+    return;
+  }
+  if (isBriDragging) {
+    pickBrightness(mouseX, mouseY);
+    return;
+  }
+}
+
+function mouseReleased() {
+  isWheelDragging = false;
+  isBriDragging = false;
+  for (let s of sliders) s.state = false;
+}
+
+/* =========================
+   Reset
+========================= */
+function resetToDefaults() {
+  // slider 值复位（保持你 Processing 的“重建 slider”效果）
+  computeLayout();
+
+  // 让滑块回到默认映射附近
+  // DEFAULT_RANGE = 5 -> map(0..1,2..10) 反推：
+  sliders[0].val = constrain(map(DEFAULT_RANGE, 2, 10, 0, 1), 0, 1);
+  sliders[1].val = constrain(map(DEFAULT_THICKNESS, 1, 10, 0, 1), 0, 1);
+  sliders[2].val = constrain(map(DEFAULT_LETTER_SIZE, 0.5, 1.5, 0, 1), 0, 1);
+  sliders[3].val = 0.03; // 你原来写死的
+
+  a = -2;
+  isPlaying = true;
+  da = DEFAULT_ANIMATION_SPEED;
+
+  // 颜色复位到绿色
+  wheelHue = 120;
+  wheelSat = 85;
+  wheelBri = 95;
+  setCurrentColorFromWheel();
+  rebuildColorWheel();
+
+  needsUpdate = true;
+}
+
+/* =========================
+   UI：字体
+========================= */
+function useUIFont(sz) {
+  if (fontLoaded && uiFont) textFont(uiFont);
+  else textFont("system-ui");
+  if (typeof sz === "number") textSize(sz);
+}
+
+/* =========================
+   UI 类：CapButton / Slider（风格尽量接近你 Processing 版）
+========================= */
+class CapButton {
+  constructor(x, y, w, h, str) {
+    this.x = x; this.y = y; this.w = w; this.h = h;
+    this.str = str;
+    this.scl = 1;
+    this.gray = 150;
+  }
+  hover() {
+    return abs(mouseX - this.x) < this.w/2 && abs(mouseY - this.y) < this.h/2;
+  }
+  display() {
+    push();
+    rectMode(CENTER);
+    translate(this.x, this.y);
+
+    if (this.hover()) {
+      this.gray = lerp(this.gray, 200, 0.12);
+      this.scl = lerp(this.scl, 1.12, 0.12);
+    } else {
+      this.gray = lerp(this.gray, 150, 0.12);
+      this.scl = lerp(this.scl, 1.0, 0.12);
+    }
+
+    noStroke();
+    fill(this.gray);
+    push();
+    scale(this.scl);
+    rect(0, 0, this.w, this.h, 40);
+    pop();
+
+    fill(255);
+    useUIFont(this.h * 0.5);
+    textAlign(CENTER, CENTER);
+    text(this.str, 0, -this.h * 0.05);
+    pop();
+  }
+}
+
+class Slider {
+  constructor(x, y, w, h, str, val) {
+    this.x=x; this.y=y; this.w=w; this.h=h; this.str=str;
+    this.val = val;
+    this.state = false;
+  }
+  hover() {
+    return abs(mouseX - this.x) < this.w/2 && abs(mouseY - this.y) < this.h/2;
+  }
+  click() {
+    this.state = this.hover();
+  }
+  drag() {
+    if (!this.state) return;
+    let v = map(mouseX, this.x - this.w/2, this.x + this.w/2, 0, 1);
+    v = constrain(v, 0, 1);
+    this.val = lerp(this.val, v, 0.12);
+  }
+  run() {
+    this.drag();
+    this.display();
+  }
+  display() {
+    push();
+    translate(this.x, this.y);
+    rectMode(CENTER);
+    noStroke();
+
+    // 背条
+    fill(this.hover() ? 150 : 85);
+    rect(0, 0, this.w, this.h, 40);
+
+    // 填充条
+    const vw = map(this.val, 0, 1, 0, this.w);
+    fill(this.hover() ? 200 : 150);
+    rect(-this.w/2 + vw/2, 0, vw, this.h, 40);
+
+    fill(255);
+    useUIFont(this.h * 0.4);
+    textAlign(CENTER, CENTER);
+    text(this.str, 0, -this.h * 0.04);
+    pop();
+  }
+}
+</script>
+</body>
 </html>
