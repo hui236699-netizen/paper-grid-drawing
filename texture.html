@@ -51,7 +51,6 @@ let uiFont = null;
 let glyphFont = null;
 let fontLoaded = false;
 
-/* ✅ preload：字体失败也不崩 */
 function preload() {
   loadFont(
     FONT_PATH,
@@ -86,12 +85,12 @@ let animationSpeedSliderValue = 0.02;
 let needsUpdate = true;
 let isPlaying = true;
 
-/* ✅ 改成 tile：永远居中贴到画布中心 */
+/* ✅ tile：纹理 + 遮罩都只在 tile 上做，最后贴到中心 */
 let functionTile = null;
 let maskTile = null;
 let tileSize = 0;
 
-/* =================== 颜色模块（同 path 逻辑，避免 hue() 冲突） =================== */
+/* =================== 颜色模块（避免 hue() 冲突） =================== */
 let hueV = 120;
 let satV = 100;
 let briV = 95;
@@ -302,11 +301,18 @@ function draw() {
 
   if (showGrid) drawGrid();
 
-  /* ✅ 关键：tile 永远贴画布正中心 */
+  /* ✅ 关键：贴到“右侧网格区域”的几何中心 */
+  const centerX = cw + (width - cw) / 2;
+  const centerY = height / 2;
+
+  /* 如果你想贴到“整张画布中心”，改成：
+     const centerX = width / 2;
+  */
+
   if (functionTile) {
     push();
     imageMode(CENTER);
-    image(functionTile, width/2, height/2);
+    image(functionTile, centerX, centerY);
     pop();
   }
 
@@ -321,7 +327,7 @@ function draw() {
     }
   }
 
-  /* 左侧栏覆盖（不会影响 tile 的计算中心，但会遮挡左侧区域，这是 UI 需求） */
+  /* 左侧栏覆盖 */
   noStroke();
   fill("#1F1E24");
   rect(0, 0, cw, height);
@@ -366,110 +372,74 @@ function updateParameters() {
   if (isPlaying) da = daSign * animationSpeedSliderValue;
 }
 
-/* =================== ✅ 纹理更新（居中 + Letter Size 不跑偏 + 大尺寸不裁） =================== */
+/* =================== ✅ 纹理更新：tile 自动变大 + 真正中心对齐 =================== */
 function updateVisualization() {
   xMin = yMin = -rangeSliderValue;
   xMax = yMax = rangeSliderValue;
   lineThickness = thicknessSliderValue;
 
-  /* basePlotSize：你原来 500 的概念 */
-  const basePlotSize = floor(min(500, min(width, height) - 120));
+  const availW = max(240, (width - cw) - 120);
+  const availH = max(240, height - 120);
 
-  /* ✅ 限制最大可视（避免 Letter Size 拉太大导致必然出屏） */
-  const maxFit = (min(width, height) - 80) / basePlotSize;
-  const effLetterScale = min(letterSizeSliderValue, maxFit);
+  const plotSize = floor(min(500, availW, availH));               // 保持“纹理数学空间”的基准尺寸
+  const letterPx = plotSize * letterSizeSliderValue;              // 你 slider 的真实字母尺寸
 
-  const renderSize = max(120, floor(basePlotSize * effLetterScale));
+  const pad = 60;                                                 // ✅ 给字母额外留边，避免 O 被裁
+  const wantTile = floor(max(plotSize, letterPx) + pad);
+  const maxTile = floor(min(availW, availH));                     // 不让 tile 大过屏幕可用区
+  const newTile = clamp(wantTile, 200, maxTile);
 
-  ensureTiles(renderSize);
+  ensureTiles(newTile);
 
-  drawLetterMaskTile(renderSize, basePlotSize, effLetterScale);
-  drawFunctionTile(renderSize, basePlotSize);
+  drawLetterMaskTile(plotSize, letterPx);
+  drawFunctionTile(plotSize);
 }
 
 function ensureTiles(sz) {
   if (tileSize === sz && functionTile && maskTile) return;
-
   tileSize = sz;
+
   functionTile = createGraphics(tileSize, tileSize);
   functionTile.pixelDensity(1);
 
   maskTile = createGraphics(tileSize, tileSize);
   maskTile.pixelDensity(1);
+
+  needsUpdate = true;
 }
 
-/* =================== 计算函数（同 Processing） =================== */
 function calculateDifference(x, y) {
   const leftSide = sin(x*x + y*y);
   const rightSide = a * cos(x*y);
   return leftSide - rightSide;
 }
 
-/* =================== ✅ 字母遮罩：组合包围盒居中（解决 O 等字母看起来偏） =================== */
-function drawLetterMaskTile(renderSize, basePlotSize, effScale) {
+/* ✅ 遮罩：用 textWidth + ascent/descent 算“真实中心” */
+function drawLetterMaskTile(plotSize, letterPx) {
   maskTile.clear();
   maskTile.noStroke();
   maskTile.fill(255);
 
-  const txtRaw = (glyphChar && glyphChar.length) ? glyphChar.slice(0,2) : "O";
-  const chars = txtRaw.split("");
-
-  const letterPx = basePlotSize * effScale;
+  const txt = (glyphChar && glyphChar.length) ? glyphChar.slice(0,2) : "O";
 
   maskTile.push();
-  maskTile.translate(renderSize/2, renderSize/2);
+  maskTile.translate(tileSize/2, tileSize/2);
 
   if (glyphFont) maskTile.textFont(glyphFont);
   maskTile.textSize(letterPx);
-  maskTile.textAlign(CENTER, CENTER);
+  maskTile.textAlign(LEFT, BASELINE);
 
-  // 先为每个字符算“自身居中偏移 + 组合包围盒”
-  const spacing = letterPx * 0.75;
-  let parts = [];
+  const w = maskTile.textWidth(txt);
+  const asc = maskTile.textAscent();
+  const desc = maskTile.textDescent();
+  const baselineY = (asc - desc) / 2;       // ✅ 让包围盒中心落在 y=0
 
-  for (let i = 0; i < chars.length; i++) {
-    const ch = chars[i];
-    const baseX = (chars.length === 1) ? 0 : (i === 0 ? -spacing/2 : spacing/2);
-
-    let bx = 0, by = 0, bw = 0, bh = 0;
-    if (glyphFont && glyphFont.textBounds) {
-      const b = glyphFont.textBounds(ch, 0, 0, letterPx);
-      bx = b.x; by = b.y; bw = b.w; bh = b.h;
-    }
-
-    // 把单个 glyph 的包围盒中心对齐到 (baseX, 0)
-    const drawX = baseX - (bx + bw/2);
-    const drawY = 0     - (by + bh/2);
-
-    parts.push({ ch, drawX, drawY, bx, by, bw, bh });
-  }
-
-  // 计算组合包围盒（用每个 glyph 的 bounds 推出实际占用）
-  let minX = +1e9, maxX = -1e9, minY = +1e9, maxY = -1e9;
-  for (const p of parts) {
-    const x0 = p.drawX + p.bx;
-    const x1 = x0 + p.bw;
-    const y0 = p.drawY + p.by;
-    const y1 = y0 + p.bh;
-    minX = min(minX, x0);
-    maxX = max(maxX, x1);
-    minY = min(minY, y0);
-    maxY = max(maxY, y1);
-  }
-
-  // 让组合中心严格落在 (0,0)
-  const groupCX = (minX + maxX) / 2;
-  const groupCY = (minY + maxY) / 2;
-
-  for (const p of parts) {
-    maskTile.text(p.ch, p.drawX - groupCX, p.drawY - groupCY);
-  }
-
+  maskTile.text(txt, -w/2, baselineY);
   maskTile.pop();
 }
 
-/* =================== ✅ 纹理层：只在遮罩内写像素 =================== */
-function drawFunctionTile(renderSize, basePlotSize) {
+/* ✅ 纹理层：只在遮罩内写像素；纹理映射保持 plotSize 尺度（不随 tileSize 乱变） */
+function drawFunctionTile(plotSize) {
   functionTile.clear();
   functionTile.loadPixels();
   maskTile.loadPixels();
@@ -480,18 +450,19 @@ function drawFunctionTile(renderSize, basePlotSize) {
   const cg = floor(green(currentColor));
   const cb = floor(blue(currentColor));
 
-  // screen -> domain：用 basePlotSize 做“数学空间”尺度
-  for (let sx = 0; sx < renderSize; sx++) {
-    const dx = sx - renderSize/2;
-    const xVal = map(dx, -basePlotSize/2, basePlotSize/2, xMin, xMax);
+  for (let sx = 0; sx < tileSize; sx++) {
+    let dx = sx - tileSize/2;
+    dx = constrain(dx, -plotSize/2, plotSize/2);  // ✅ 保持原来 plotSize 的数学尺度
+    const xVal = map(dx, -plotSize/2, plotSize/2, xMin, xMax);
 
-    for (let sy = 0; sy < renderSize; sy++) {
-      const dy = (renderSize/2 - sy);
-      const yVal = map(dy, -basePlotSize/2, basePlotSize/2, yMin, yMax);
+    for (let sy = 0; sy < tileSize; sy++) {
+      let dy = (tileSize/2 - sy);
+      dy = constrain(dy, -plotSize/2, plotSize/2);
+      const yVal = map(dy, -plotSize/2, plotSize/2, yMin, yMax);
 
       const diff = calculateDifference(xVal, yVal);
 
-      const idx = (sy * renderSize + sx) * 4;
+      const idx = (sy * tileSize + sx) * 4;
       const maskA = maskTile.pixels[idx + 3];
 
       if (maskA > 0 && abs(diff) < lt) {
