@@ -54,13 +54,14 @@ const COLOR_PANEL_H = 190;
 const CONTROLS_SHIFT_Y = 18;
 const BOTTOM_PAD = 24;
 
-/* =================== 输入：默认 O =================== */
+/* =================== 输入：默认字母 O =================== */
 let glyphInput;
 const DEFAULT_GLYPH = "O";
 let glyphChar = DEFAULT_GLYPH;
 
 /* =================== 颜色模块（path 同款） =================== */
-let hue = 120, sat = 100, bri = 95;
+/* ✅ 默认黑色 */
+let hue = 0, sat = 0, bri = 0;
 let currentColor;
 
 let COLOR_MAIN = null;
@@ -68,6 +69,7 @@ let COLOR_HUE  = null;
 let sbGraphic, hueGraphic;
 
 let RECENT_RECTS = [];
+/* ✅ recent 5 个（第一个黑色） */
 const defaultRecentHex = ["#000000", "#482BCC", "#FF04A5", "#FFE900", "#8CE255"];
 let recentColors = [];
 const RECENT_BIAS_X = 6;
@@ -91,7 +93,7 @@ let yMin = -5, yMax = 5;
 
 let rangeSliderValue = 5;
 let thicknessSliderValue = 4;
-let letterSizeSliderValue = 0.72;
+let letterScale = 0.72;              // <- slider 映射出来的 scale
 let animationSpeedSliderValue = 0.02;
 
 let needsUpdate = true;
@@ -102,14 +104,15 @@ let functionLayer;
 let letterMask;
 
 /* =================== plot 区域：永远居中 =================== */
-let plotSize = 500;
+let basePlotSize = 500;     // 用于字形大小的“基准”
+let plotSize = 500;         // 用于纹理计算的“覆盖区域”
 let plotX = 0, plotY = 0;
 
 /* =================== helpers =================== */
 function clamp(v, lo, hi) { return max(lo, min(hi, v)); }
 
 /* =========================================================
-   ✅ 关键修复 1：字体在第一帧前加载完（避免 1 秒后跳一下）
+   ✅ 关键：preload 字体，避免加载后度量变化导致“跳一下”
    ========================================================= */
 function preload() {
   try {
@@ -222,6 +225,7 @@ function setup() {
   letterMask = createGraphics(windowWidth, windowHeight);
   letterMask.pixelDensity(1);
 
+  /* ✅ 默认 currentColor = 黑色；recent 也初始化 */
   recentColors = defaultRecentHex.map(h => color(h));
   updateCurrentColor(false);
 
@@ -366,37 +370,43 @@ function drawGrid() {
   for (let y = 0; y <= height; y += step) line(0, y, width, y);
 }
 
-/* =================== 参数映射（Letter Size 范围更大一点） =================== */
+/* =================== 参数映射 =================== */
 function updateParameters() {
   rangeSliderValue = map(sliders[0].val, 0, 1, 2, 10);
   thicknessSliderValue = map(sliders[1].val, 0, 1, 1, 10);
 
-  // ✅ 你要范围大一点：上限从 0.92 提到 1.08
-  letterSizeSliderValue = map(sliders[2].val, 0, 1, 0.45, 1.08);
+  /* ✅ Letter Size 范围再大一点（更大但会自动放大 plot 去包住它） */
+  letterScale = map(sliders[2].val, 0, 1, 0.45, 1.25);
 
   animationSpeedSliderValue = map(sliders[3].val, 0, 1, 0.01, 0.1);
 
   if (isPlaying) da = daSign * animationSpeedSliderValue;
 }
 
-/* =================== ✅ 核心：plot 永远居中 + mask 用同一中心 =================== */
+/* =================== ✅ 核心：plot 永远居中；并随 letterScale 扩张避免裁切 =================== */
 function updateVisualization() {
   xMin = yMin = -rangeSliderValue;
   xMax = yMax = rangeSliderValue;
 
-  const maxPlot = 620;  // ✅ 放大一点，配合更大的 Letter Size
-  const minPlot = 320;
-
-  // 更稳的“安全 plot”：永远在画布内，且以画布中心对齐
   const safeMax = min(width, height) - 40;
-  const base = min(width, height) * 0.75;
-  plotSize = floor(clamp(base, minPlot, min(maxPlot, safeMax)));
+  const minPlot = 320;
+  const maxPlot = 860;
 
-  // ✅ 用 round 确保像素对齐一致（减少 1px 偏差）
+  // 基准 plot：决定“字形大小”的参照（不随 letterScale 抖动）
+  const base = min(width, height) * 0.75;
+  basePlotSize = floor(clamp(base, minPlot, safeMax));
+
+  // ✅ 纹理计算的 plotSize：随 letterScale 增长来包住更大的字
+  const padFactor = 0.86; // 越小 => plot 更愿意变大来包字
+  const grow = max(1, letterScale / padFactor);
+  plotSize = floor(clamp(basePlotSize * grow, minPlot, min(maxPlot, safeMax)));
+
   plotX = round(width/2 - plotSize/2);
   plotY = round(height/2 - plotSize/2);
 
-  drawLetterMaskAtPlotCenter(plotX, plotY, plotSize);
+  const textSizePx = basePlotSize * letterScale;
+
+  drawLetterMaskAtPlotCenter(plotX, plotY, plotSize, textSizePx);
   drawFunctionLayer(plotX, plotY, plotSize);
 }
 
@@ -443,28 +453,39 @@ function drawFunctionLayer(px0, py0, size) {
   functionLayer.updatePixels();
 }
 
-/* =================== ✅ 遮罩：严格用 plot 的中心（保证和纹理同心） =================== */
-function drawLetterMaskAtPlotCenter(px0, py0, size) {
+/* =================== ✅ 遮罩：用 textBounds 把字形包围盒中心对齐到 plot 中心（消“偏下”） =================== */
+function drawLetterMaskAtPlotCenter(px0, py0, size, textSizePx) {
   letterMask.clear();
   letterMask.push();
 
   const cx = px0 + size/2;
   const cy = py0 + size/2;
-
   letterMask.translate(cx, cy);
 
   letterMask.noStroke();
   letterMask.fill(255);
 
-  letterMask.textAlign(CENTER, CENTER);
-  if (glyphFont) letterMask.textFont(glyphFont);
-  else letterMask.textFont("system-ui");
-
-  const ts = size * letterSizeSliderValue;
-  letterMask.textSize(ts);
-
   const s = (glyphChar || DEFAULT_GLYPH).toString().slice(0, 2);
-  letterMask.text(s, 0, 0);
+
+  if (glyphFont) {
+    letterMask.textFont(glyphFont);
+    letterMask.textSize(textSizePx);
+
+    // textBounds 是相对 baseline(0,0) 的盒子：用它做精确居中
+    const b = glyphFont.textBounds(s, 0, 0, textSizePx);
+
+    // 让 “盒子中心” = (0,0)
+    const tx = -(b.x + b.w/2);
+    const ty = -(b.y + b.h/2);
+
+    letterMask.textAlign(LEFT, BASELINE);
+    letterMask.text(s, tx, ty);
+  } else {
+    letterMask.textFont("system-ui");
+    letterMask.textSize(textSizePx);
+    letterMask.textAlign(CENTER, CENTER);
+    letterMask.text(s, 0, 0);
+  }
 
   letterMask.pop();
 }
@@ -679,7 +700,7 @@ function colorsEqual(c1, c2) {
 function randomizeParams() {
   sliders[0].val = random(0.15, 0.95);
   sliders[1].val = random(0.10, 0.95);
-  sliders[2].val = random(0.10, 0.90);
+  sliders[2].val = random(0.10, 0.95);
   sliders[3].val = random(0.10, 0.90);
 
   a = random(-2, 3);
@@ -687,8 +708,8 @@ function randomizeParams() {
   if (isPlaying) da = daSign * animationSpeedSliderValue;
 
   hue = random(0, 360);
-  sat = random(40, 100);
-  bri = random(40, 100);
+  sat = random(0, 100);
+  bri = random(0, 100);
   buildSBGraphic();
   updateCurrentColor(true);
 
