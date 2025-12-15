@@ -19,6 +19,8 @@
       left: 0;
       top: 0;
     }
+
+    /* 输入框：固定在左侧栏里（同 path.html） */
     .glyphInput {
       position: fixed;
       background: #3A393D;
@@ -42,35 +44,34 @@
 
 <body>
 <script>
-/* =================== UI 基础 =================== */
+/* =================== 统一圆角（同 path.html） =================== */
 const BTN_R = 18;
-const FONT_PATH = "assets/fonts/ABCFavoritHebrewBoldVariable-Trial.ttf";
 
-/* 字体（UI + 遮罩字母） */
+/* =================== 字体（UI + 遮罩字母都用它） =================== */
+const FONT_PATH = "assets/fonts/ABCFavoritHebrewBoldVariable-Trial.ttf";
 let uiFont = null;
 let glyphFont = null;
 let fontLoaded = false;
 
+/* ✅ preload：确保字体加载完成再开始绘制（避免只 X 正常，其它字母不正常） */
 function preload() {
-  loadFont(
-    FONT_PATH,
-    (f) => { glyphFont = f; uiFont = f; fontLoaded = true; },
-    () => { glyphFont = null; uiFont = null; fontLoaded = false; }
-  );
+  glyphFont = loadFont(FONT_PATH);
+  uiFont = glyphFont;
+  fontLoaded = true;
 }
 
-/* =================== 左侧操作栏（跟 path 一样） =================== */
+/* =================== 左侧操作栏（同 path.html） =================== */
 let cw = 240;
 const COLOR_PANEL_H = 190;
 let showGrid = true;
 
-/* =================== 输入：默认 O =================== */
+/* =================== 字母输入：默认 O（你要求） =================== */
 let glyphInput;
 let glyphChar = "O";
 
 /* =================== Processing 纹理核心参数（保留） =================== */
 let a = -2;
-let daSign = +1;
+let daSign = +1;     // 用 sign 保存方向
 let da = 0.02;
 
 let xMin = -5, xMax = 5;
@@ -85,41 +86,46 @@ let animationSpeedSliderValue = 0.02;
 let needsUpdate = true;
 let isPlaying = true;
 
-/* ✅ tile：纹理 + 遮罩都只在 tile 上做，最后贴到中心 */
-let functionTile = null;
-let maskTile = null;
-let tileSize = 0;
+// 图层
+let functionLayer;
+let letterMask;
 
-/* =================== 颜色模块（避免 hue() 冲突） =================== */
-let hueV = 120;
-let satV = 100;
-let briV = 95;
+/* =================== 颜色模块（完全照 path.html） =================== */
+let hue = 0;
+let sat = 0;
+let bri = 0; // 默认黑
 let currentColor;
 
 let COLOR_MAIN = null;
 let COLOR_HUE  = null;
+
 let sbGraphic, hueGraphic;
 
+// ✅ Recent：5个（同 path.html）
 let RECENT_RECTS = [];
 const defaultRecentHex = ["#000000", "#482BCC", "#FF04A5", "#FFE900", "#8CE255"];
 let recentColors = [];
 const RECENT_BIAS_X = 6;
 
-/* =================== 按钮 / Randomize / Sliders =================== */
+/* =================== 功能按钮（只保留 Pause / Save） =================== */
 let pauseButton, saveButton;
 let FUNC_RECTS = {};
+
+/* =================== Randomize（同 path.html） =================== */
 let randomizeButton;
 
+/* =================== 4 个滑块（同风格） =================== */
 const sliderName = ["Function Range", "Line Thickness", "Letter Size", "Animation Speed"];
 let sliders = [];
 
+/* =================== 控件整体下移 + 底部留白（同 path 思路） =================== */
 const CONTROLS_SHIFT_Y = 18;
 const BOTTOM_PAD = 24;
 
 /* =================== 小工具 =================== */
 function clamp(v, lo, hi) { return max(lo, min(hi, v)); }
 
-/* =================== 布局（path 风格） =================== */
+/* =================== 布局计算（把 path 的布局搬过来：色盘+recent+pause/save+输入框+randomize+sliders） =================== */
 let layout = null;
 
 function computeLayout() {
@@ -153,18 +159,22 @@ function computeLayout() {
     save:  { x: pad + btnW + btnGapX, y: btnRowY_base, w: btnW, h: btnH }
   };
 
+  // 输入框（同 path）
   const inputY_base = btnRowY_base + btnH + 18;
   const inputH = 36;
   const inputW = cw - pad * 2;
 
+  // Randomize（同 path）
   const randomY_base = inputY_base + inputH + 18;
   const randomH = clamp(btnH * 1.35, 42, 56);
   const randomRect_base = { x: pad, y: randomY_base, w: cw - pad * 2, h: randomH };
 
+  // sliders
   const sliderH = 34;
   const sliderGap = 48;
   const firstSliderY_base = randomY_base + randomH + 18;
 
+  // 控件整体下移（不让底部溢出）
   const lastBottom_base = firstSliderY_base + 4 * sliderGap + sliderH;
   const maxShiftAllowed = (height - BOTTOM_PAD) - lastBottom_base;
   const shiftY = max(0, min(CONTROLS_SHIFT_Y, maxShiftAllowed));
@@ -187,12 +197,13 @@ function computeLayout() {
 }
 
 function rebuildRecentRects() {
-  const RECENT_COUNT = 5;
+  const RECENT_COUNT = 5;     // ✅ 5 个（同 path）
   const RECENT_GAP = 10;
   const RECENT_SIZE = 28;
 
   const totalW = RECENT_COUNT * RECENT_SIZE + (RECENT_COUNT - 1) * RECENT_GAP;
   const startX = (cw - totalW) / 2 + RECENT_BIAS_X;
+
   const y = COLOR_MAIN.y + COLOR_MAIN.h + 18;
 
   RECENT_RECTS = [];
@@ -212,23 +223,35 @@ function setup() {
   pixelDensity(1);
   frameRate(60);
 
+  functionLayer = createGraphics(windowWidth, windowHeight);
+  functionLayer.pixelDensity(1);
+
+  letterMask = createGraphics(windowWidth, windowHeight);
+  letterMask.pixelDensity(1);
+
+  // 默认 recent
+  recentColors = defaultRecentHex.map(h => color(h));
+  // 默认颜色就用 recent[4] 的绿色感（你也可以改）
+  currentColor = color("#8CE255");
+  addRecentColor(currentColor);
+
   computeLayout();
   buildHueGraphic();
   buildSBGraphic();
-
-  updateCurrentColor(false);
-  recentColors = defaultRecentHex.map(h => color(h));
-  addRecentColor(currentColor);
+  // 用 currentColor 反推 hue/sat/bri 的初始，保证色盘圈圈位置一致
+  syncHSBFromCurrentColor();
 
   pauseButton = rectToCapButton(FUNC_RECTS.pause, "Pause");
   saveButton  = rectToCapButton(FUNC_RECTS.save,  "Save");
 
+  // 输入框（同 path）
   glyphInput = createInput("");
   glyphInput.addClass("glyphInput");
   glyphInput.attribute("maxlength", "2");
   glyphInput.attribute("placeholder", "Try a letter");
   placeGlyphInput();
 
+  // 逻辑：空则显示默认 O
   glyphChar = "O";
   glyphInput.input(() => {
     let v = glyphInput.value();
@@ -240,6 +263,7 @@ function setup() {
     if (!glyphInput.value() || glyphInput.value().length === 0) glyphChar = "O";
   });
 
+  // Randomize（同 path）
   randomizeButton = new CapButton(
     layout.randomRect.x + layout.randomRect.w/2,
     layout.randomRect.y + layout.randomRect.h/2,
@@ -249,18 +273,25 @@ function setup() {
     true
   );
 
+  // sliders（同风格）
   sliders = [];
   for (let i = 0; i < 4; i++) {
     const y = layout.firstSliderY + i * layout.sliderGap;
     sliders.push(new Slider(cw/2, y + layout.sliderH/2, 200, layout.sliderH, sliderName[i], 0.5));
   }
-  sliders[3].val = 0.03;
+  sliders[3].val = 0.03; // 接近你 Processing 的默认速度
 
   needsUpdate = true;
 }
 
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
+
+  functionLayer = createGraphics(windowWidth, windowHeight);
+  functionLayer.pixelDensity(1);
+
+  letterMask = createGraphics(windowWidth, windowHeight);
+  letterMask.pixelDensity(1);
 
   computeLayout();
   buildHueGraphic();
@@ -301,23 +332,17 @@ function draw() {
 
   if (showGrid) drawGrid();
 
-  /* ✅ 贴到“右侧网格区域”的几何中心 */
-  const centerX = cw + (width - cw) / 2;
-  const centerY = height / 2;
+  // ✅ 纹理层永远以画布中心对齐显示（不管左边栏）
+  push();
+  imageMode(CENTER);
+  translate(width/2, height/2);
+  image(functionLayer, 0, 0);
+  pop();
 
-  /* 如果你想贴到“整张画布中心”，改成：
-     const centerX = width / 2;
-  */
-
-  if (functionTile) {
-    push();
-    imageMode(CENTER);
-    image(functionTile, centerX, centerY);
-    pop();
-  }
-
+  // 右下角预览信息（保留）
   displayFunctionWithAxis();
 
+  // 动画推进（往返）
   if (isPlaying) {
     a += da;
     if (a > 3 || a < -2) {
@@ -327,22 +352,27 @@ function draw() {
     }
   }
 
-  /* 左侧栏覆盖 */
+  // 左侧栏覆盖（同 path）
   noStroke();
   fill("#1F1E24");
   rect(0, 0, cw, height);
 
+  // 色盘 + recent（同 path）
   drawColorPanel();
   drawRecentColors();
 
+  // Pause/Save（同 path）
   pauseButton.str = isPlaying ? "Pause" : "Play";
   pauseButton.display();
   saveButton.display();
 
+  // Randomize（同 path）
   randomizeButton.display();
 
+  // Sliders（同 path 风格）
   for (let s of sliders) s.run();
 
+  // 跟 Processing 一样：每帧都更新
   needsUpdate = true;
 }
 
@@ -353,7 +383,7 @@ function placeGlyphInput() {
   glyphInput.size(layout.inputW, layout.inputH);
 }
 
-/* =================== 网格（从 cw 开始） =================== */
+/* =================== 网格（同 path：不画到左侧栏下面） =================== */
 function drawGrid() {
   const step = 25;
   stroke(220);
@@ -362,7 +392,7 @@ function drawGrid() {
   for (let y = 0; y <= height; y += step) line(cw, y, width, y);
 }
 
-/* =================== 参数映射 =================== */
+/* =================== 参数映射（按你 Processing 的映射范围） =================== */
 function updateParameters() {
   rangeSliderValue = map(sliders[0].val, 0, 1, 2, 10);
   thicknessSliderValue = map(sliders[1].val, 0, 1, 1, 10);
@@ -372,40 +402,24 @@ function updateParameters() {
   if (isPlaying) da = daSign * animationSpeedSliderValue;
 }
 
-/* =================== ✅ 纹理更新：不 clamp，避免“两瓣/冻结边缘” =================== */
+/* =================== 纹理更新（mask + function layer） =================== */
 function updateVisualization() {
   xMin = yMin = -rangeSliderValue;
   xMax = yMax = rangeSliderValue;
   lineThickness = thicknessSliderValue;
 
-  const availW = max(240, (width - cw) - 120);
-  const availH = max(240, height - 120);
+  // ✅ basePlotSize：纹理的“函数尺度”基准（固定逻辑）
+  const basePlotSize = floor(min(500, min(width, height) - 120));
 
-  const plotSize = floor(min(500, availW, availH));
-  const letterPx = plotSize * letterSizeSliderValue;
+  // ✅ renderSize：真正要计算的像素区域（随字母变大扩展，避免 letter size 大就裁掉）
+  const renderSize = floor(basePlotSize * max(1, letterSizeSliderValue));
 
-  const pad = 80; // ✅ 给大字母留边，避免被裁（O 最明显）
-  const wantTile = floor(letterPx + pad);
-  const maxTile = floor(min(availW, availH));
-  const newTile = clamp(wantTile, 220, maxTile);
+  // ✅ 永远以画布中心为中心对齐（完全不管左侧栏）
+  const plotX = floor(width / 2 - renderSize / 2);
+  const plotY = floor(height / 2 - renderSize / 2);
 
-  ensureTiles(newTile);
-
-  drawLetterMaskTile(letterPx);
-  drawFunctionTile(); // ✅ 用 tileSize 映射到 xMin/xMax，不再 clamp
-}
-
-function ensureTiles(sz) {
-  if (tileSize === sz && functionTile && maskTile) return;
-  tileSize = sz;
-
-  functionTile = createGraphics(tileSize, tileSize);
-  functionTile.pixelDensity(1);
-
-  maskTile = createGraphics(tileSize, tileSize);
-  maskTile.pixelDensity(1);
-
-  needsUpdate = true;
+  drawLetterMask(plotX, plotY, renderSize, basePlotSize);
+  drawFunctionLayer(plotX, plotY, renderSize, basePlotSize);
 }
 
 function calculateDifference(x, y) {
@@ -414,35 +428,17 @@ function calculateDifference(x, y) {
   return leftSide - rightSide;
 }
 
-/* ✅ 遮罩：用 textWidth + ascent/descent 算“真实中心” */
-function drawLetterMaskTile(letterPx) {
-  maskTile.clear();
-  maskTile.noStroke();
-  maskTile.fill(255);
-
-  const txt = (glyphChar && glyphChar.length) ? glyphChar.slice(0,2) : "O";
-
-  maskTile.push();
-  maskTile.translate(tileSize/2, tileSize/2);
-
-  if (glyphFont) maskTile.textFont(glyphFont);
-  maskTile.textSize(letterPx);
-  maskTile.textAlign(LEFT, BASELINE);
-
-  const w = maskTile.textWidth(txt);
-  const asc = maskTile.textAscent();
-  const desc = maskTile.textDescent();
-  const baselineY = (asc - desc) / 2;
-
-  maskTile.text(txt, -w/2, baselineY);
-  maskTile.pop();
+/* ✅ 关键：函数映射用 basePlotSize（函数尺度不变），renderSize 只是扩大计算区域 */
+function mapToDomain(dx, basePlotSize, minV, maxV) {
+  // dx: 相对中心的像素偏移（-renderSize/2..+renderSize/2）
+  return map(dx, -basePlotSize/2, basePlotSize/2, minV, maxV);
 }
 
-/* ✅ 纹理层：整块 tile 映射到 xMin..xMax / yMin..yMax（跟 Processing 的 map 思路一致） */
-function drawFunctionTile() {
-  functionTile.clear();
-  functionTile.loadPixels();
-  maskTile.loadPixels();
+function drawFunctionLayer(plotX, plotY, renderSize, basePlotSize) {
+  functionLayer.clear();
+  functionLayer.loadPixels();
+
+  letterMask.loadPixels();
 
   const lt = lineThickness / 10.0;
 
@@ -450,25 +446,75 @@ function drawFunctionTile() {
   const cg = floor(green(currentColor));
   const cb = floor(blue(currentColor));
 
-  for (let sx = 0; sx < tileSize; sx++) {
-    const xVal = map(sx, 0, tileSize, xMin, xMax);
-    for (let sy = 0; sy < tileSize; sy++) {
-      const yVal = map(sy, tileSize, 0, yMin, yMax);
+  const W = functionLayer.width;
+  const H = functionLayer.height;
+
+  for (let sx = 0; sx < renderSize; sx++) {
+    const dx = sx - renderSize/2;
+    const xVal = mapToDomain(dx, basePlotSize, xMin, xMax);
+
+    for (let sy = 0; sy < renderSize; sy++) {
+      const dy = (renderSize/2 - sy);
+      const yVal = mapToDomain(dy, basePlotSize, yMin, yMax);
+
       const diff = calculateDifference(xVal, yVal);
 
-      const idx = (sy * tileSize + sx) * 4;
-      const maskA = maskTile.pixels[idx + 3];
+      const px = plotX + sx;
+      const py = plotY + sy;
+      if (px < 0 || px >= W || py < 0 || py >= H) continue;
 
+      const idx = (py * W + px) * 4;
+      const maskA = letterMask.pixels[idx + 3];
       if (maskA > 0 && abs(diff) < lt) {
-        functionTile.pixels[idx]     = cr;
-        functionTile.pixels[idx + 1] = cg;
-        functionTile.pixels[idx + 2] = cb;
-        functionTile.pixels[idx + 3] = 255;
+        functionLayer.pixels[idx]     = cr;
+        functionLayer.pixels[idx + 1] = cg;
+        functionLayer.pixels[idx + 2] = cb;
+        functionLayer.pixels[idx + 3] = 255;
       }
     }
   }
 
-  functionTile.updatePixels();
+  functionLayer.updatePixels();
+}
+
+/* ✅ 遮罩：用字体绘制文字，并用 textBounds 做“真正几何中心对齐” */
+function drawLetterMask(plotX, plotY, renderSize, basePlotSize) {
+  letterMask.clear();
+  letterMask.noStroke();
+  letterMask.fill(255);
+
+  const centerX = width / 2;
+  const centerY = height / 2;
+
+  const letterSize = basePlotSize * letterSizeSliderValue;
+
+  letterMask.push();
+  letterMask.translate(centerX, centerY);
+
+  if (glyphFont) letterMask.textFont(glyphFont);
+  letterMask.textSize(letterSize);
+  letterMask.textAlign(CENTER, CENTER);
+
+  const txt = (glyphChar && glyphChar.length) ? glyphChar.slice(0, 2) : "O";
+
+  // 多字符：左右排列（保持你之前那种输入两位的逻辑）
+  const chars = txt.split("");
+  const spacing = letterSize * 0.75;
+
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
+    const offX = (chars.length === 1) ? 0 : (i === 0 ? -spacing/2 : spacing/2);
+
+    if (glyphFont && glyphFont.textBounds) {
+      const b = glyphFont.textBounds(ch, 0, 0, letterSize);
+      // 把 bbox 的中心对齐到 (offX, 0)
+      letterMask.text(ch, offX - b.x - b.w/2, -b.y - b.h/2);
+    } else {
+      letterMask.text(ch, offX, 0);
+    }
+  }
+
+  letterMask.pop();
 }
 
 /* =================== 右下角预览与信息（保留） =================== */
@@ -500,6 +546,7 @@ function displayFunctionWithAxis() {
   text("x", axisSize/2, 15);
   pop();
 
+  // heatmap 点阵（同你之前的逻辑）
   const resolution = 2;
   const c1 = color(140);
   const c2 = color(140, 1);
@@ -516,6 +563,7 @@ function displayFunctionWithAxis() {
     }
   }
 
+  // 文本
   noStroke();
   fill(0);
   useUIFont();
@@ -528,24 +576,27 @@ function displayFunctionWithAxis() {
   text(functionInfo, axisX, axisY - 130);
 }
 
-/* =================== Randomize =================== */
+/* =================== Randomize（同风格 + 保留纹理味道） =================== */
 function randomizeParams() {
+  // sliders
   sliders[0].val = random(0.15, 0.85);
   sliders[1].val = random(0.10, 0.90);
   sliders[2].val = random(0.10, 0.95);
   sliders[3].val = random(0.10, 0.90);
 
+  // a
   a = random(-2, 3);
   daSign = random() < 0.5 ? -1 : +1;
 
-  hueV = random(0, 360);
-  satV = random(40, 100);
-  briV = random(40, 100);
+  // color
+  hue = random(0, 360);
+  sat = random(40, 100);
+  bri = random(40, 100);
   buildSBGraphic();
   updateCurrentColor(true);
 }
 
-/* =================== 颜色模块（同 path） =================== */
+/* =================== 颜色模块（完全照 path.html） =================== */
 function buildHueGraphic() {
   const w = max(1, floor(COLOR_HUE.w));
   const h = max(1, floor(COLOR_HUE.h));
@@ -584,7 +635,7 @@ function buildSBGraphic() {
     for (let x = 0; x < w; x++) {
       let sVal = map(x, 0, w - 1, 0, 100);
       let bVal = map(y, 0, h - 1, 100, 0);
-      let c = sbGraphic.color(hueV, sVal, bVal);
+      let c = sbGraphic.color(hue, sVal, bVal);
       let idx = (y * w + x) * 4;
       sbGraphic.pixels[idx]     = red(c);
       sbGraphic.pixels[idx + 1] = green(c);
@@ -605,7 +656,7 @@ function drawColorPanel() {
   image(sbGraphic, COLOR_MAIN.x, COLOR_MAIN.y, COLOR_MAIN.w, COLOR_MAIN.h);
   image(hueGraphic, COLOR_HUE.x, COLOR_HUE.y, COLOR_HUE.w, COLOR_HUE.h);
 
-  let huePosY = map(hueV, 0, 360, 0, COLOR_HUE.h);
+  let huePosY = map(hue, 0, 360, 0, COLOR_HUE.h);
   stroke(255);
   strokeWeight(2);
   let hx = COLOR_HUE.x;
@@ -613,8 +664,8 @@ function drawColorPanel() {
   line(hx - 4, hy, hx, hy);
   line(hx + COLOR_HUE.w, hy, hx + COLOR_HUE.w + 4, hy);
 
-  let sx = map(satV, 0, 100, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w);
-  let sy = map(briV, 100, 0, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h);
+  let sx = map(sat, 0, 100, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w);
+  let sy = map(bri, 100, 0, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h);
   noFill();
   stroke(255);
   strokeWeight(2);
@@ -643,8 +694,8 @@ function handleColorClick() {
       mouseY >= COLOR_MAIN.y && mouseY <= COLOR_MAIN.y + COLOR_MAIN.h) {
     let sx = constrain(mouseX, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w);
     let sy = constrain(mouseY, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h);
-    satV = map(sx, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w, 0, 100);
-    briV = map(sy, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h, 100, 0);
+    sat = map(sx, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w, 0, 100);
+    bri = map(sy, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h, 100, 0);
     updateCurrentColor(true);
     return true;
   }
@@ -652,7 +703,7 @@ function handleColorClick() {
   if (mouseX >= COLOR_HUE.x && mouseX <= COLOR_HUE.x + COLOR_HUE.w &&
       mouseY >= COLOR_HUE.y && mouseY <= COLOR_HUE.y + COLOR_HUE.h) {
     let hy = constrain(mouseY, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h);
-    hueV = map(hy, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h, 0, 360);
+    hue = map(hy, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h, 0, 360);
     buildSBGraphic();
     updateCurrentColor(true);
     return true;
@@ -665,6 +716,8 @@ function handleColorClick() {
       if (recentColors[i]) {
         currentColor = color(recentColors[i]);
         addRecentColor(currentColor);
+        syncHSBFromCurrentColor();
+        buildSBGraphic();
       }
       return true;
     }
@@ -675,7 +728,7 @@ function handleColorClick() {
 function updateCurrentColor(addRecent=true) {
   push();
   colorMode(HSB, 360, 100, 100);
-  currentColor = color(hueV, satV, briV);
+  currentColor = color(hue, sat, bri);
   pop();
   if (addRecent) addRecentColor(currentColor);
 }
@@ -691,7 +744,17 @@ function colorsEqual(c1, c2) {
   return red(c1) === red(c2) && green(c1) === green(c2) && blue(c1) === blue(c2);
 }
 
-/* =================== 交互 =================== */
+function syncHSBFromCurrentColor() {
+  // 用 RGB 推回 HSB（p5 内置 hue/saturation/brightness 依赖 colorMode）
+  push();
+  colorMode(HSB, 360, 100, 100);
+  hue = hue(currentColor);
+  sat = saturation(currentColor);
+  bri = brightness(currentColor);
+  pop();
+}
+
+/* =================== 交互（按钮 + 色盘 + slider + randomize） =================== */
 function mousePressed() {
   if (pauseButton.hover()) {
     isPlaying = !isPlaying;
@@ -703,6 +766,7 @@ function mousePressed() {
     saveCanvas("FontTexture", "png");
     return;
   }
+
   if (randomizeButton.hover()) {
     randomizeParams();
     return;
@@ -717,7 +781,7 @@ function mouseReleased() {
   for (let s of sliders) s.state = false;
 }
 
-/* =================== UI：CapButton / Slider =================== */
+/* =================== UI：CapButton / Slider（同 path.html） =================== */
 function rectToCapButton(rect, label) {
   const cx = rect.x + rect.w / 2;
   const cy = rect.y + rect.h / 2;
@@ -735,7 +799,7 @@ class CapButton {
       mouseX >= this.x - this.w / 2 &&
       mouseX <= this.x + this.w / 2 &&
       mouseY >= this.y - this.h / 2 &&
-      mouseY <= this.y + this.w / 2
+      mouseY <= this.y + this.h / 2
     );
   }
   display() {
@@ -803,6 +867,7 @@ class Slider {
   }
 }
 
+/* =================== 字体使用（同 path.html 逻辑） =================== */
 function useUIFont() {
   if (fontLoaded && uiFont) textFont(uiFont);
   else textFont("system-ui");
