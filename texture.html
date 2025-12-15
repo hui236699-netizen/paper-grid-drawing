@@ -91,7 +91,7 @@ let yMin = -5, yMax = 5;
 
 let rangeSliderValue = 5;
 let thicknessSliderValue = 4;
-let letterSizeSliderValue = 0.72;   // 0~1 映射后会变
+let letterSizeSliderValue = 0.72;
 let animationSpeedSliderValue = 0.02;
 
 let needsUpdate = true;
@@ -107,6 +107,21 @@ let plotX = 0, plotY = 0;
 
 /* =================== helpers =================== */
 function clamp(v, lo, hi) { return max(lo, min(hi, v)); }
+
+/* =========================================================
+   ✅ 关键修复 1：字体在第一帧前加载完（避免 1 秒后跳一下）
+   ========================================================= */
+function preload() {
+  try {
+    glyphFont = loadFont(FONT_PATH);
+    uiFont = glyphFont;
+    fontLoaded = true;
+  } catch (e) {
+    glyphFont = null;
+    uiFont = null;
+    fontLoaded = false;
+  }
+}
 
 /* =================== layout（保持 path 的左栏节奏） =================== */
 let layout = null;
@@ -255,8 +270,6 @@ function setup() {
   }
   sliders[3].val = 0.03;
 
-  tryLoadFonts();
-
   needsUpdate = true;
 }
 
@@ -309,7 +322,7 @@ function draw() {
 
   drawGrid();
 
-  // ✅ 纹理永远以画布中心对齐
+  // ✅ 纹理永远以画布中心对齐显示
   push();
   imageMode(CENTER);
   translate(width/2, height/2);
@@ -318,7 +331,6 @@ function draw() {
 
   displayFunctionWithAxis();
 
-  // 动画推进（往返）
   if (isPlaying) {
     a += da;
     if (a > 3 || a < -2) {
@@ -328,7 +340,6 @@ function draw() {
     }
   }
 
-  // 左侧栏覆盖
   noStroke();
   fill("#1F1E24");
   rect(0, 0, cw, height);
@@ -339,12 +350,10 @@ function draw() {
   pauseButton.str = isPlaying ? "Pause" : "Play";
   pauseButton.display();
   saveButton.display();
-
   randomizeButton.display();
 
   for (let s of sliders) s.run();
 
-  // 每帧更新（保持 Processing 味道）
   needsUpdate = true;
 }
 
@@ -357,37 +366,37 @@ function drawGrid() {
   for (let y = 0; y <= height; y += step) line(0, y, width, y);
 }
 
-/* =================== 参数映射（✅ Letter Size 是中心缩放） =================== */
+/* =================== 参数映射（Letter Size 范围更大一点） =================== */
 function updateParameters() {
   rangeSliderValue = map(sliders[0].val, 0, 1, 2, 10);
   thicknessSliderValue = map(sliders[1].val, 0, 1, 1, 10);
 
-  // ✅ 重点：把可调范围缩小（不会“大到出屏”）
-  // 你还想更小就把 0.92 再改成 0.85/0.88
-  letterSizeSliderValue = map(sliders[2].val, 0, 1, 0.45, 0.92);
+  // ✅ 你要范围大一点：上限从 0.92 提到 1.08
+  letterSizeSliderValue = map(sliders[2].val, 0, 1, 0.45, 1.08);
 
   animationSpeedSliderValue = map(sliders[3].val, 0, 1, 0.01, 0.1);
 
   if (isPlaying) da = daSign * animationSpeedSliderValue;
 }
 
-/* =================== ✅ 核心：永远居中的 plot + mask =================== */
+/* =================== ✅ 核心：plot 永远居中 + mask 用同一中心 =================== */
 function updateVisualization() {
   xMin = yMin = -rangeSliderValue;
   xMax = yMax = rangeSliderValue;
 
-  // plotSize 固定上限，避免性能/黑屏
-  const maxPlot = 520; // 接近 Processing 的 500
+  const maxPlot = 620;  // ✅ 放大一点，配合更大的 Letter Size
   const minPlot = 320;
 
-  const safe = min(width, height) * 0.72;
-  plotSize = floor(clamp(safe, minPlot, maxPlot));
+  // 更稳的“安全 plot”：永远在画布内，且以画布中心对齐
+  const safeMax = min(width, height) - 40;
+  const base = min(width, height) * 0.75;
+  plotSize = floor(clamp(base, minPlot, min(maxPlot, safeMax)));
 
-  // ✅ 不管左栏：严格以画布中心对齐
-  plotX = floor(width/2 - plotSize/2);
-  plotY = floor(height/2 - plotSize/2);
+  // ✅ 用 round 确保像素对齐一致（减少 1px 偏差）
+  plotX = round(width/2 - plotSize/2);
+  plotY = round(height/2 - plotSize/2);
 
-  drawLetterMaskAtCanvasCenter(plotSize);
+  drawLetterMaskAtPlotCenter(plotX, plotY, plotSize);
   drawFunctionLayer(plotX, plotY, plotSize);
 }
 
@@ -434,26 +443,23 @@ function drawFunctionLayer(px0, py0, size) {
   functionLayer.updatePixels();
 }
 
-/* =================== ✅ 遮罩：不用 textBounds，避免 1 秒后消失 =================== */
-function drawLetterMaskAtCanvasCenter(size) {
+/* =================== ✅ 遮罩：严格用 plot 的中心（保证和纹理同心） =================== */
+function drawLetterMaskAtPlotCenter(px0, py0, size) {
   letterMask.clear();
   letterMask.push();
 
-  // ✅ 永远以画布中心对齐（不是 plot 的中心，而是 canvas 的中心）
-  letterMask.translate(width/2, height/2);
+  const cx = px0 + size/2;
+  const cy = py0 + size/2;
 
-  // 文字样式
+  letterMask.translate(cx, cy);
+
   letterMask.noStroke();
   letterMask.fill(255);
 
-  // ✅ 关键：CENTER/CENTER 直接中心对齐，不会“字体加载后跳位/消失”
   letterMask.textAlign(CENTER, CENTER);
-
-  // 字体：能加载就用你的字体，否则 fallback
   if (glyphFont) letterMask.textFont(glyphFont);
   else letterMask.textFont("system-ui");
 
-  // Letter Size = 以中心缩放
   const ts = size * letterSizeSliderValue;
   letterMask.textSize(ts);
 
@@ -807,23 +813,6 @@ class Slider {
 }
 
 /* =================== fonts =================== */
-function tryLoadFonts() {
-  loadFont(
-    FONT_PATH,
-    (f) => {
-      uiFont = f;
-      glyphFont = f;
-      fontLoaded = true;
-      needsUpdate = true;
-    },
-    () => {
-      uiFont = null;
-      glyphFont = null;
-      fontLoaded = false;
-      needsUpdate = true;
-    }
-  );
-}
 function useUIFont() {
   if (fontLoaded && uiFont) textFont(uiFont);
   else textFont("system-ui");
