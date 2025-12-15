@@ -301,7 +301,7 @@ function draw() {
 
   if (showGrid) drawGrid();
 
-  /* ✅ 关键：贴到“右侧网格区域”的几何中心 */
+  /* ✅ 贴到“右侧网格区域”的几何中心 */
   const centerX = cw + (width - cw) / 2;
   const centerY = height / 2;
 
@@ -372,7 +372,7 @@ function updateParameters() {
   if (isPlaying) da = daSign * animationSpeedSliderValue;
 }
 
-/* =================== ✅ 纹理更新：tile 自动变大 + 真正中心对齐 =================== */
+/* =================== ✅ 纹理更新：不 clamp，避免“两瓣/冻结边缘” =================== */
 function updateVisualization() {
   xMin = yMin = -rangeSliderValue;
   xMax = yMax = rangeSliderValue;
@@ -381,18 +381,18 @@ function updateVisualization() {
   const availW = max(240, (width - cw) - 120);
   const availH = max(240, height - 120);
 
-  const plotSize = floor(min(500, availW, availH));               // 保持“纹理数学空间”的基准尺寸
-  const letterPx = plotSize * letterSizeSliderValue;              // 你 slider 的真实字母尺寸
+  const plotSize = floor(min(500, availW, availH));
+  const letterPx = plotSize * letterSizeSliderValue;
 
-  const pad = 60;                                                 // ✅ 给字母额外留边，避免 O 被裁
-  const wantTile = floor(max(plotSize, letterPx) + pad);
-  const maxTile = floor(min(availW, availH));                     // 不让 tile 大过屏幕可用区
-  const newTile = clamp(wantTile, 200, maxTile);
+  const pad = 80; // ✅ 给大字母留边，避免被裁（O 最明显）
+  const wantTile = floor(letterPx + pad);
+  const maxTile = floor(min(availW, availH));
+  const newTile = clamp(wantTile, 220, maxTile);
 
   ensureTiles(newTile);
 
-  drawLetterMaskTile(plotSize, letterPx);
-  drawFunctionTile(plotSize);
+  drawLetterMaskTile(letterPx);
+  drawFunctionTile(); // ✅ 用 tileSize 映射到 xMin/xMax，不再 clamp
 }
 
 function ensureTiles(sz) {
@@ -415,7 +415,7 @@ function calculateDifference(x, y) {
 }
 
 /* ✅ 遮罩：用 textWidth + ascent/descent 算“真实中心” */
-function drawLetterMaskTile(plotSize, letterPx) {
+function drawLetterMaskTile(letterPx) {
   maskTile.clear();
   maskTile.noStroke();
   maskTile.fill(255);
@@ -432,14 +432,14 @@ function drawLetterMaskTile(plotSize, letterPx) {
   const w = maskTile.textWidth(txt);
   const asc = maskTile.textAscent();
   const desc = maskTile.textDescent();
-  const baselineY = (asc - desc) / 2;       // ✅ 让包围盒中心落在 y=0
+  const baselineY = (asc - desc) / 2;
 
   maskTile.text(txt, -w/2, baselineY);
   maskTile.pop();
 }
 
-/* ✅ 纹理层：只在遮罩内写像素；纹理映射保持 plotSize 尺度（不随 tileSize 乱变） */
-function drawFunctionTile(plotSize) {
+/* ✅ 纹理层：整块 tile 映射到 xMin..xMax / yMin..yMax（跟 Processing 的 map 思路一致） */
+function drawFunctionTile() {
   functionTile.clear();
   functionTile.loadPixels();
   maskTile.loadPixels();
@@ -451,15 +451,9 @@ function drawFunctionTile(plotSize) {
   const cb = floor(blue(currentColor));
 
   for (let sx = 0; sx < tileSize; sx++) {
-    let dx = sx - tileSize/2;
-    dx = constrain(dx, -plotSize/2, plotSize/2);  // ✅ 保持原来 plotSize 的数学尺度
-    const xVal = map(dx, -plotSize/2, plotSize/2, xMin, xMax);
-
+    const xVal = map(sx, 0, tileSize, xMin, xMax);
     for (let sy = 0; sy < tileSize; sy++) {
-      let dy = (tileSize/2 - sy);
-      dy = constrain(dy, -plotSize/2, plotSize/2);
-      const yVal = map(dy, -plotSize/2, plotSize/2, yMin, yMax);
-
+      const yVal = map(sy, tileSize, 0, yMin, yMax);
       const diff = calculateDifference(xVal, yVal);
 
       const idx = (sy * tileSize + sx) * 4;
@@ -741,7 +735,7 @@ class CapButton {
       mouseX >= this.x - this.w / 2 &&
       mouseX <= this.x + this.w / 2 &&
       mouseY >= this.y - this.h / 2 &&
-      mouseY <= this.y + this.h / 2
+      mouseY <= this.y + this.w / 2
     );
   }
   display() {
