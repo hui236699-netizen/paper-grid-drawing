@@ -18,6 +18,7 @@ let showGrid = true;
 let selectedIndex = -1;
 let moveStartGrid = null;
 let moveOrigXY = null;
+let moveDidChange = false; // ✅ 只有真的移动了才清 redo
 
 // 资源
 let icons = new Array(10);
@@ -53,6 +54,25 @@ function clamp(v, lo, hi) {
 }
 function sign1(v) {
   return v >= 0 ? 1 : -1;
+}
+
+// ✅ 清空 redo 栈（你的 undoStack 在这里承担 redo 功能）
+function clearRedo() {
+  undoStack = [];
+}
+
+// ✅ 限制主画布 DPR，避免超高 DPR 设备性能暴涨
+function setCanvasDPR() {
+  pixelDensity(min(window.devicePixelRatio || 1, 2));
+  smooth();
+}
+
+// ✅ 右侧网格区域的“可用格子数”
+function gridCols() {
+  return max(1, floor((width - cw) / cellSize));
+}
+function gridRows() {
+  return max(1, floor(height / cellSize));
 }
 
 // 鼠标 -> 网格坐标（强吸附：floor）
@@ -344,8 +364,7 @@ function rectToCapButton(rect, label) {
 // =================== setup / resize ===================
 function setup() {
   createCanvas(windowWidth, windowHeight);
-  pixelDensity(window.devicePixelRatio || 1);
-  smooth();
+  setCanvasDPR();
 
   currentColor = color("#482BCC");
   recentColors = defaultRecentHex.map(h => color(h));
@@ -356,8 +375,7 @@ function setup() {
 
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
-  pixelDensity(window.devicePixelRatio || 1);
-  smooth();
+  setCanvasDPR();
   layoutUI();
 }
 
@@ -461,7 +479,7 @@ function addNewShape() {
   const norm = normalizeBoxToShape(box);
 
   shapes.push(new Shape(norm.x, norm.y, norm.w, norm.h, currentShape, currentColor));
-  undoStack = [];
+  clearRedo(); // ✅ 新增后清 redo
 }
 
 // =================== 新颜色面板（重写 + 修复黑屏） ===================
@@ -610,8 +628,11 @@ function addRecentColor(c) {
   if (recentColors.length > 5) recentColors.length = 5;
 }
 
-function colorsEqual(c1, c2) {
-  return red(c1) === red(c2) && green(c1) === green(c2) && blue(c1) === blue(c2);
+// ✅ 容差比较：避免 HSB->RGB 舍入导致“看起来一样但不相等”
+function colorsEqual(c1, c2, eps = 1) {
+  return abs(red(c1) - red(c2)) <= eps &&
+         abs(green(c1) - green(c2)) <= eps &&
+         abs(blue(c1) - blue(c2)) <= eps;
 }
 
 // =================== 鼠标交互（左侧颜色拖动 + 右侧绘制/移动） ===================
@@ -637,6 +658,7 @@ function mousePressed() {
     if (hit >= 0) {
       selectedIndex = hit;
       isMoving = true;
+      moveDidChange = false;                 // ✅ 重置
       moveStartGrid = { x: gx, y: gy };
       moveOrigXY = { x: shapes[hit].x, y: shapes[hit].y };
       return;
@@ -645,7 +667,7 @@ function mousePressed() {
     selectedIndex = -1;
     isDragging = true;
     dragStart = createVector(gx, gy);
-    dragEnd = dragStart.copy();
+    dragEnd = dragStart.copy(); // ✅ 点一下也能生成 1×1（保留你的需求）
   }
 }
 
@@ -655,20 +677,27 @@ function mouseDragged() {
     return;
   }
 
-  // 移动：严格按格子
+  // 移动：严格按格子 + ✅ 不允许拖出右侧网格可视范围
   if (isMoving && selectedIndex >= 0 && selectedIndex < shapes.length) {
     const { gx, gy } = mouseToGrid();
     const dx = gx - moveStartGrid.x;
     const dy = gy - moveStartGrid.y;
 
-    let nx = max(0, moveOrigXY.x + dx);
-    let ny = max(0, moveOrigXY.y + dy);
+    // 仅当真的有位移时标记（避免“点一下选中”也清 redo）
+    if (dx !== 0 || dy !== 0) moveDidChange = true;
 
-    nx = round(nx);
-    ny = round(ny);
+    const s = shapes[selectedIndex];
+    const maxGX = gridCols() - s.w;
+    const maxGY = gridRows() - s.h;
 
-    shapes[selectedIndex].x = nx;
-    shapes[selectedIndex].y = ny;
+    let nx = moveOrigXY.x + dx;
+    let ny = moveOrigXY.y + dy;
+
+    nx = clamp(round(nx), 0, max(0, maxGX));
+    ny = clamp(round(ny), 0, max(0, maxGY));
+
+    s.x = nx;
+    s.y = ny;
     return;
   }
 
@@ -691,12 +720,17 @@ function mouseReleased() {
     isMoving = false;
     moveStartGrid = null;
     moveOrigXY = null;
+
+    // ✅ 只有发生位移才清 redo，避免“只是点选”也把 redo 清没
+    if (moveDidChange) clearRedo();
+    moveDidChange = false;
+
     return;
   }
 
   if (isDragging) {
     isDragging = false;
-    addNewShape();
+    addNewShape(); // ✅ 保留：点一下也会生成 1×1
   }
 }
 
@@ -712,7 +746,7 @@ function redo() {
 }
 function clearShapes() {
   shapes = [];
-  undoStack = [];
+  clearRedo();
   selectedIndex = -1;
 }
 
@@ -908,6 +942,7 @@ function keyPressed() {
   if ((keyCode === BACKSPACE || keyCode === DELETE) && selectedIndex >= 0) {
     shapes.splice(selectedIndex, 1);
     selectedIndex = -1;
+    clearRedo(); // ✅ 删除属于“新动作”，清 redo 更一致
     return false;
   }
 
