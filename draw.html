@@ -1,139 +1,34 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Grid Builder · 字体游乐场</title>
+  <title>Grid Shape Drawer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
   <style>
-    :root{
-      --bg:#eeeeee;
-      --fg:#111;
-      --muted:#666;
-      --card: rgba(255,255,255,.88);
-      --border: rgba(0,0,0,.12);
-    }
-
     html, body {
       margin: 0;
       padding: 0;
-      height:100%;
-      background: var(--bg);
-      color: var(--fg);
-      /* p5 画布通常全屏，这里禁掉页面滚动 */
-      overflow: hidden;
-      font-family: ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, "PingFang SC";
-    }
-
-    /* 顶部浮层工具条（不影响画布） */
-    .topbar{
-      position: fixed;
-      top: 14px;
-      left: 14px;
-      right: 14px;
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-      z-index: 20;
-      pointer-events: none; /* 让画布可交互 */
-    }
-
-    .panel{
-      pointer-events: auto;
-      display:flex;
-      align-items:center;
-      gap:10px;
-      padding:10px 12px;
-      border-radius: 999px;
-      background: var(--card);
-      border: 1px solid var(--border);
-      backdrop-filter: blur(10px);
-    }
-
-    a{ color:inherit; text-decoration:none; }
-    .btn{
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      padding:8px 12px;
-      border-radius:999px;
-      border:1px solid rgba(0,0,0,.18);
-      background:#fff;
-      font-weight:700;
-      font-size: 13px;
-      user-select:none;
-      cursor:pointer;
-    }
-    .btn:hover{ transform: translateY(-1px); }
-
-    .hint{
-      font-size: 12px;
-      color: var(--muted);
-      white-space: nowrap;
-    }
-
-    /* 如果 p5 或 sketch 加载失败，给个兜底提示 */
-    .fallback{
-      position: fixed;
-      inset: 0;
-      display:none;
-      place-items:center;
-      padding: 24px;
-      z-index: 30;
-    }
-    .fallback .box{
-      max-width: 720px;
       width: 100%;
-      background: #fff;
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      padding: 18px;
-      line-height: 1.6;
+      height: 100%;
+      background: #eeeeee;
+      overflow: hidden;
+      touch-action: none; /* 防止移动端拖动画布时页面滚动 */
     }
-    .fallback code{ background:#f6f6f6; padding:2px 6px; border-radius:8px; }
+
+    canvas {
+      display: block; /* 去掉 canvas 底部 4px 空隙 */
+    }
   </style>
 
-  <!-- p5.js CDN，一定要在 sketch.js 前面 -->
+  <!-- p5.js CDN（必须在 sketch.js 前） -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
 </head>
 
 <body>
-  <!-- 浮层：返回 + 简短提示 -->
-  <div class="topbar">
-    <div class="panel">
-      <a class="btn" href="index.html" aria-label="返回首页">← 返回首页</a>
-      <span class="hint">Grid Builder（全屏画布）</span>
-    </div>
-
-    <div class="panel">
-      <span class="hint">提示：如果你有快捷键/操作说明，可以写在这里</span>
-    </div>
-  </div>
-
-  <!-- p5 默认会把 canvas 插到 body 里；你也可以在 sketch.js 用 createCanvas 后 parent 到 main -->
   <main id="app"></main>
 
-  <!-- 加载失败兜底 -->
-  <div class="fallback" id="fallback">
-    <div class="box">
-      <h3 style="margin:0 0 8px;">页面没有成功加载画布</h3>
-      <p style="margin:0 0 10px;color:#444;">
-        可能原因：<code>sketch.js</code> 路径错误、p5 CDN 被拦截、或脚本报错。
-      </p>
-      <p style="margin:0;">
-        你可以打开浏览器开发者工具（Console）查看报错信息，或把报错内容贴给我我帮你定位。
-      </p>
-    </div>
-  </div>
-
   <!-- 你的绘图逻辑 -->
-  <script>
-    // 若 p5 没加载到，显示兜底提示
-    if (typeof window.p5 === "undefined") {
-      document.getElementById("fallback").style.display = "grid";
-    }
-  </script>
-  <script src="sketch.js" onerror="document.getElementById('fallback').style.display='grid'"></script>
+  <script src="sketch.js"></script>
 </body>
 </html>
