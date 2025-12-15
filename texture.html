@@ -269,11 +269,11 @@ function setup() {
     sliders.push(new Slider(cw/2, y + layout.sliderH/2, 200, layout.sliderH, sliderName[i], 0.5));
   }
 
-  // ✅ 默认值：Range & Thickness = 3/4；Speed 在中上但不疯狂
-  sliders[0].val = 0.75;  // Function Range
-  sliders[1].val = 0.75;  // Line Thickness
-  sliders[2].val = 0.55;  // Letter Size（适中）
-  sliders[3].val = 0.62;  // Speed（中上）
+  // ✅ 默认值：Range & Thickness = 3/4；Speed 在中上
+  sliders[0].val = 0.75;
+  sliders[1].val = 0.75;
+  sliders[2].val = 0.55;
+  sliders[3].val = 0.62;
 
   needsUpdate = true;
 }
@@ -382,8 +382,8 @@ function updateParameters() {
   // Letter Size：稍大一点点范围
   letterScale = map(sliders[2].val, 0, 1, 0.50, 1.45);
 
-  // Speed：中上，但不太快（上限略收）
-  animationSpeedSliderValue = map(sliders[3].val, 0, 1, 0.015, 0.105);
+  // Speed：整体允许略快一点（上限抬一点点）
+  animationSpeedSliderValue = map(sliders[3].val, 0, 1, 0.02, 0.14);
 
   if (isPlaying) da = daSign * animationSpeedSliderValue;
 }
@@ -493,7 +493,7 @@ function drawLetterMaskAtPlotCenter(px0, py0, size, textSizePx) {
   letterMask.pop();
 }
 
-/* =================== 右下角预览与信息（✅更深的 heatmap） =================== */
+/* =================== 右下角预览与信息（✅再压深一档） =================== */
 function displayFunctionWithAxis() {
   const axisSize = 250;
   const margin = 50;
@@ -522,10 +522,10 @@ function displayFunctionWithAxis() {
   text("x", axisSize/2, 15);
   pop();
 
-  // ✅ 更深：更黑 + 更不透明（整体更压）
+  // ✅ 再深一档：完全黑 + 更高 alpha、更强映射
   const resolution = 2;
-  const c1 = color(10);        // 深灰/近黑
-  const c2 = color(10, 55);    // 末端也别太透明
+  const c1 = color(0);
+  const c2 = color(0, 95);
 
   strokeWeight(1);
   for (let x = 0; x < axisSize; x += resolution) {
@@ -533,7 +533,7 @@ function displayFunctionWithAxis() {
       const xVal = map(x, 0, axisSize, -5, 5);
       const yVal = map(y, axisSize, 0, -5, 5);
       const diff = calculateDifference(xVal, yVal);
-      const cc = lerpColor(c1, c2, map(abs(diff), 0, 1, 0, 3.2));
+      const cc = lerpColor(c1, c2, map(abs(diff), 0, 1, 0, 4.0));
       stroke(cc);
       point(axisX + x, axisY + y);
     }
@@ -697,9 +697,8 @@ function colorsEqual(c1, c2) {
   return red(c1) === red(c2) && green(c1) === green(c2) && blue(c1) === blue(c2);
 }
 
-/* =================== ✅ Randomize（更随机、更分散，但稳定好看） =================== */
+/* =================== ✅ Randomize（更随机、更分散；速度更快一点但稳定） =================== */
 function randomizeParams() {
-  // 加权分段随机：让每次差异更大，不会“都很像”
   const pickBand = (bands) => {
     let sum = 0;
     for (const b of bands) sum += b.w;
@@ -711,44 +710,38 @@ function randomizeParams() {
     return random(bands[bands.length - 1].lo, bands[bands.length - 1].hi);
   };
 
-  // Range：低/中/高都能出，整体偏中高
   sliders[0].val = pickBand([
-    { w: 0.20, lo: 0.20, hi: 0.42 },
-    { w: 0.45, lo: 0.42, hi: 0.78 },
-    { w: 0.35, lo: 0.78, hi: 0.98 }
+    { w: 0.18, lo: 0.20, hi: 0.42 },
+    { w: 0.42, lo: 0.42, hi: 0.78 },
+    { w: 0.40, lo: 0.78, hi: 0.98 }
   ]);
 
-  // Thickness：更分散，允许偏细也允许很粗
   sliders[1].val = pickBand([
-    { w: 0.22, lo: 0.12, hi: 0.35 },
-    { w: 0.43, lo: 0.35, hi: 0.70 },
-    { w: 0.35, lo: 0.70, hi: 0.98 }
+    { w: 0.20, lo: 0.12, hi: 0.35 },
+    { w: 0.40, lo: 0.35, hi: 0.70 },
+    { w: 0.40, lo: 0.70, hi: 0.98 }
   ]);
 
-  // Letter：更随机，但避免极端导致太撑（少量概率给到大字）
   sliders[2].val = pickBand([
-    { w: 0.25, lo: 0.25, hi: 0.45 },
-    { w: 0.55, lo: 0.45, hi: 0.82 },
-    { w: 0.20, lo: 0.82, hi: 0.95 }
+    { w: 0.22, lo: 0.25, hi: 0.45 },
+    { w: 0.56, lo: 0.45, hi: 0.82 },
+    { w: 0.22, lo: 0.82, hi: 0.95 }
   ]);
 
-  // ✅ Speed：中上为主，但不太快（严格卡住上限带）
+  // ✅ Randomize 速度更快：整体右移（偏快区间）
   sliders[3].val = pickBand([
-    { w: 0.25, lo: 0.35, hi: 0.52 },
-    { w: 0.55, lo: 0.52, hi: 0.75 },
-    { w: 0.20, lo: 0.75, hi: 0.85 }
+    { w: 0.18, lo: 0.55, hi: 0.68 },
+    { w: 0.55, lo: 0.68, hi: 0.86 },
+    { w: 0.27, lo: 0.86, hi: 0.96 }
   ]);
 
-  // a：避免接近 0 太“没劲”，但左右两侧都能出
   if (random() < 0.5) a = random(-2.0, -0.55);
   else a = random(0.55, 3.0);
 
   daSign = random([+1, -1]);
   if (isPlaying) da = daSign * animationSpeedSliderValue;
 
-  // 颜色：更随机，但尽量保证能看清（大多偏饱和偏亮，少量给“低饱和”）
   if (random() < 0.15) {
-    // 15%：低饱和（偏灰），但亮度不低
     hue = random(0, 360);
     sat = random(0, 25);
     bri = random(65, 100);
