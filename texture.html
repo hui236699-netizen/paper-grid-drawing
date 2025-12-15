@@ -273,12 +273,12 @@ function setup() {
     sliders.push(new Slider(cw/2, y + layout.sliderH/2, 200, layout.sliderH, sliderName[i], 0.5));
   }
 
-  /* ✅ 你要：默认 Function Range / Line Thickness 大一些（约 3/4 位置） */
+  /* 默认更靠右：Function Range / Line Thickness */
   sliders[0].val = 0.75;
   sliders[1].val = 0.75;
 
-  /* 保持原样：Animation Speed 仍然 0.03 */
-  sliders[3].val = 0.03;
+  /* ✅ 初始 speed 调高一点（更明显） */
+  sliders[3].val = 0.25;
 
   needsUpdate = true;
 }
@@ -332,7 +332,6 @@ function draw() {
 
   drawGrid();
 
-  // ✅ 纹理永远以画布中心对齐显示
   push();
   imageMode(CENTER);
   translate(width/2, height/2);
@@ -379,9 +378,11 @@ function drawGrid() {
 /* =================== 参数映射 =================== */
 function updateParameters() {
   rangeSliderValue = map(sliders[0].val, 0, 1, 2, 10);
-  thicknessSliderValue = map(sliders[1].val, 0, 1, 1, 10);
 
-  /* ✅ Letter Size 范围再大一点（更大但会自动放大 plot 去包住它） */
+  /* ✅ Line Thickness：最小更大一点，最大也更大一点 */
+  thicknessSliderValue = map(sliders[1].val, 0, 1, 2, 12);
+
+  /* Letter Size */
   letterScale = map(sliders[2].val, 0, 1, 0.45, 1.25);
 
   animationSpeedSliderValue = map(sliders[3].val, 0, 1, 0.01, 0.1);
@@ -389,7 +390,7 @@ function updateParameters() {
   if (isPlaying) da = daSign * animationSpeedSliderValue;
 }
 
-/* =================== ✅ 核心：plot 永远居中；并随 letterScale 扩张避免裁切 =================== */
+/* =================== plot 居中 + 防裁切 =================== */
 function updateVisualization() {
   xMin = yMin = -rangeSliderValue;
   xMax = yMax = rangeSliderValue;
@@ -398,12 +399,10 @@ function updateVisualization() {
   const minPlot = 320;
   const maxPlot = 860;
 
-  // 基准 plot：决定“字形大小”的参照（不随 letterScale 抖动）
   const base = min(width, height) * 0.75;
   basePlotSize = floor(clamp(base, minPlot, safeMax));
 
-  // ✅ 纹理计算的 plotSize：随 letterScale 增长来包住更大的字
-  const padFactor = 0.86; // 越小 => plot 更愿意变大来包字
+  const padFactor = 0.86;
   const grow = max(1, letterScale / padFactor);
   plotSize = floor(clamp(basePlotSize * grow, minPlot, min(maxPlot, safeMax)));
 
@@ -459,7 +458,7 @@ function drawFunctionLayer(px0, py0, size) {
   functionLayer.updatePixels();
 }
 
-/* =================== ✅ 遮罩：用 textBounds 把字形包围盒中心对齐到 plot 中心（消“偏下”） =================== */
+/* =================== 遮罩：textBounds 精确居中 =================== */
 function drawLetterMaskAtPlotCenter(px0, py0, size, textSizePx) {
   letterMask.clear();
   letterMask.push();
@@ -478,7 +477,6 @@ function drawLetterMaskAtPlotCenter(px0, py0, size, textSizePx) {
     letterMask.textSize(textSizePx);
 
     const b = glyphFont.textBounds(s, 0, 0, textSizePx);
-
     const tx = -(b.x + b.w/2);
     const ty = -(b.y + b.h/2);
 
@@ -523,9 +521,10 @@ function displayFunctionWithAxis() {
   text("x", axisSize/2, 15);
   pop();
 
+  /* ✅ 右下角函数图像更深 */
   const resolution = 2;
-  const c1 = color(140);
-  const c2 = color(140, 1);
+  const c1 = color(60);
+  const c2 = color(60, 180);
 
   strokeWeight(1);
   for (let x = 0; x < axisSize; x += resolution) {
@@ -551,7 +550,7 @@ function displayFunctionWithAxis() {
   text(functionInfo, axisX, axisY - 130);
 }
 
-/* =================== 颜色模块（path 同款） =================== */
+/* =================== 颜色模块 =================== */
 function buildHueGraphic() {
   const w = max(1, floor(COLOR_HUE.w));
   const h = max(1, floor(COLOR_HUE.h));
@@ -604,10 +603,8 @@ function buildSBGraphic() {
 function drawColorPanel() {
   noTint();
 
-  /* ✅ 删除颜色选择模块背后的矩形背景（就是你说不该有的那块） */
-  // noStroke();
-  // fill(20,20,24);
-  // rect(8, 8, cw-16, COLOR_PANEL_H, BTN_R);
+  /* ✅ 不画色盘背后的矩形背景 */
+  // noStroke(); fill(20,20,24); rect(8, 8, cw-16, COLOR_PANEL_H, BTN_R);
 
   imageMode(CORNER);
   image(sbGraphic, COLOR_MAIN.x, COLOR_MAIN.y, COLOR_MAIN.w, COLOR_MAIN.h);
