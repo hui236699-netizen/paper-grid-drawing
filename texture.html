@@ -375,14 +375,8 @@ function drawGrid() {
 /* =================== 参数映射 =================== */
 function updateParameters() {
   rangeSliderValue = map(sliders[0].val, 0, 1, 2, 10);
-
-  // Thickness：最小值更大一点、最大值也更大一点
   thicknessSliderValue = map(sliders[1].val, 0, 1, 2.0, 16.0);
-
-  // Letter Size：稍大一点点范围
   letterScale = map(sliders[2].val, 0, 1, 0.50, 1.45);
-
-  // Speed：整体允许略快一点（上限抬一点点）
   animationSpeedSliderValue = map(sliders[3].val, 0, 1, 0.02, 0.14);
 
   if (isPlaying) da = daSign * animationSpeedSliderValue;
@@ -397,11 +391,9 @@ function updateVisualization() {
   const minPlot = 320;
   const maxPlot = 920;
 
-  // 基准 plot
   const base = min(width, height) * 0.75;
   basePlotSize = floor(clamp(base, minPlot, safeMax));
 
-  // 随 letterScale 增长来包住更大的字
   const padFactor = 0.86;
   const grow = max(1, letterScale / padFactor);
   plotSize = floor(clamp(basePlotSize * grow, minPlot, min(maxPlot, safeMax)));
@@ -477,7 +469,6 @@ function drawLetterMaskAtPlotCenter(px0, py0, size, textSizePx) {
     letterMask.textSize(textSizePx);
 
     const b = glyphFont.textBounds(s, 0, 0, textSizePx);
-
     const tx = -(b.x + b.w/2);
     const ty = -(b.y + b.h/2);
 
@@ -493,7 +484,7 @@ function drawLetterMaskAtPlotCenter(px0, py0, size, textSizePx) {
   letterMask.pop();
 }
 
-/* =================== 右下角预览与信息（✅再压深一档） =================== */
+/* =================== 右下角预览与信息 =================== */
 function displayFunctionWithAxis() {
   const axisSize = 250;
   const margin = 50;
@@ -522,7 +513,6 @@ function displayFunctionWithAxis() {
   text("x", axisSize/2, 15);
   pop();
 
-  // ✅ 再深一档：完全黑 + 更高 alpha、更强映射
   const resolution = 2;
   const c1 = color(0);
   const c2 = color(0, 95);
@@ -551,7 +541,7 @@ function displayFunctionWithAxis() {
   text(functionInfo, axisX, axisY - 130);
 }
 
-/* =================== 颜色模块（✅不画色盘后面的矩形背景） =================== */
+/* =================== 颜色模块 =================== */
 function buildHueGraphic() {
   const w = max(1, floor(COLOR_HUE.w));
   const h = max(1, floor(COLOR_HUE.h));
@@ -603,7 +593,6 @@ function buildSBGraphic() {
 
 function drawColorPanel() {
   noTint();
-
   imageMode(CORNER);
   image(sbGraphic, COLOR_MAIN.x, COLOR_MAIN.y, COLOR_MAIN.w, COLOR_MAIN.h);
   image(hueGraphic, COLOR_HUE.x, COLOR_HUE.y, COLOR_HUE.w, COLOR_HUE.h);
@@ -697,7 +686,7 @@ function colorsEqual(c1, c2) {
   return red(c1) === red(c2) && green(c1) === green(c2) && blue(c1) === blue(c2);
 }
 
-/* =================== ✅ Randomize（更随机、更分散；速度更快一点但稳定） =================== */
+/* =================== ✅ Randomize（只随机参数，不改变颜色） =================== */
 function randomizeParams() {
   const pickBand = (bands) => {
     let sum = 0;
@@ -728,7 +717,6 @@ function randomizeParams() {
     { w: 0.22, lo: 0.82, hi: 0.95 }
   ]);
 
-  // ✅ Randomize 速度更快：整体右移（偏快区间）
   sliders[3].val = pickBand([
     { w: 0.18, lo: 0.55, hi: 0.68 },
     { w: 0.55, lo: 0.68, hi: 0.86 },
@@ -741,25 +729,7 @@ function randomizeParams() {
   daSign = random([+1, -1]);
   if (isPlaying) da = daSign * animationSpeedSliderValue;
 
-  if (random() < 0.15) {
-    hue = random(0, 360);
-    sat = random(0, 25);
-    bri = random(65, 100);
-  } else {
-    hue = random(0, 360);
-    sat = pickBand([
-      { w: 0.30, lo: 40, hi: 70 },
-      { w: 0.70, lo: 70, hi: 100 }
-    ]);
-    bri = pickBand([
-      { w: 0.25, lo: 55, hi: 75 },
-      { w: 0.75, lo: 75, hi: 100 }
-    ]);
-  }
-
-  buildSBGraphic();
-  updateCurrentColor(true);
-
+  // ✅ 关键：不改 hue/sat/bri，不 rebuildSBGraphic，不 updateCurrentColor，不动 recent
   needsUpdate = true;
 }
 
