@@ -91,7 +91,7 @@ let rangeSliderValue = 5;
 let thicknessSliderValue = 4;
 let letterScale = 0.72;
 
-/* ✅ 速度基础值（略慢一点） */
+/* ✅ 速度基础值 */
 let animationSpeedSliderValue = 0.07;
 
 let needsUpdate = true;
@@ -109,9 +109,23 @@ let plotX = 0, plotY = 0;
 /* =================== helpers =================== */
 function clamp(v, lo, hi) { return max(lo, min(hi, v)); }
 function r01(lo, hi) { return random(lo, hi); }
+function gauss(mu, sigma) { return mu + randomGaussian() * sigma; }
 
-/* =================== Randomize 对立交替（✅新增） =================== */
-let randomizeOpposeFlip = false; // false->稀疏小字, true->稠密大字（每次点击翻转）
+function sampleBand(bands){
+  // bands: [{w, lo, hi}, ...]
+  let sum = 0;
+  for (const b of bands) sum += b.w;
+  let r = random(sum);
+  for (const b of bands) {
+    r -= b.w;
+    if (r <= 0) return random(b.lo, b.hi);
+  }
+  const last = bands[bands.length - 1];
+  return random(last.lo, last.hi);
+}
+
+/* =================== Randomize：记住上一次，强制差异大 =================== */
+let lastRand = null; // {r,t,l,s,a}
 
 /* =================== preload 字体 =================== */
 function preload() {
@@ -377,12 +391,12 @@ function drawGrid() {
 function updateParameters() {
   rangeSliderValue = map(sliders[0].val, 0, 1, 2, 10);
 
-  /* ✅ Thickness 最大值调小到原来的 4/5：16 -> 12.8 */
+  /* ✅ Thickness 全局最大值调小到原来的 4/5：16 -> 12.8 */
   thicknessSliderValue = map(sliders[1].val, 0, 1, 2.0, 12.8);
 
   letterScale = map(sliders[2].val, 0, 1, 0.50, 1.45);
 
-  /* 速度区间保持“稍微慢一点点” */
+  /* 速度区间（你之前觉得“略快/略慢”的那版） */
   animationSpeedSliderValue = map(sliders[3].val, 0, 1, 0.055, 0.26);
 
   if (isPlaying) da = daSign * animationSpeedSliderValue;
@@ -693,39 +707,100 @@ function colorsEqual(c1, c2) {
 }
 
 /* ============================================================
-   ✅ Randomize：强制 Range/LetterSize 对立交替（连点两次差异巨大）
-   ✅ thickness 随机上限：<= 0.70
-   ✅ a 随机起点播放 + 不改颜色
+   ✅ Randomize：随机但美观 + 差别大（避免死板）
+   - Range/LetterSize：负相关偏好（带噪声）
+   - 参数有“审美分布”（bands）
+   - 跟上一次太像就自动重抽（保证连点两次差异也大）
+   - thickness <= 0.70；颜色不变；a 随机起点播放
    ============================================================ */
 function randomizeParams() {
-  randomizeOpposeFlip = !randomizeOpposeFlip;
+  const propose = () => {
+    // Range：低/高为主，中间少量（避免死板但又不平庸）
+    const rVal = sampleBand([
+      { w: 0.46, lo: 0.06, hi: 0.22 },  // 小 range（稠密）
+      { w: 0.10, lo: 0.35, hi: 0.58 },  // 少量中间（更自然）
+      { w: 0.44, lo: 0.78, hi: 0.98 }   // 大 range（稀疏）
+    ]);
 
-  if (randomizeOpposeFlip) {
-    // 稠密大字：Range 小 + Letter 大
-    sliders[0].val = r01(0.03, 0.18);
-    sliders[2].val = r01(0.80, 0.98);
-    sliders[1].val = r01(0.45, 0.70);   // thickness <= 0.70
-  } else {
-    // 稀疏小字：Range 大 + Letter 小
-    sliders[0].val = r01(0.82, 0.98);
-    sliders[2].val = r01(0.25, 0.55);
-    sliders[1].val = r01(0.05, 0.30);   // 细一点
+    // Letter：对立关系 + 柔和噪声（避免“机械反相”）
+    let lVal = gauss(1.0 - rVal, 0.10);
+    lVal = clamp(lVal, 0.25, 0.98);
+
+    // Thickness：根据风格偏好分布（仍然 <= 0.70）
+    // 稠密大字：更愿意中粗；稀疏小字：更愿意偏细
+    let tVal;
+    if (rVal < 0.30) {
+      tVal = sampleBand([
+        { w: 0.55, lo: 0.28, hi: 0.55 },
+        { w: 0.45, lo: 0.55, hi: 0.70 }
+      ]);
+    } else if (rVal > 0.72) {
+      tVal = sampleBand([
+        { w: 0.65, lo: 0.08, hi: 0.30 },
+        { w: 0.35, lo: 0.30, hi: 0.45 }
+      ]);
+    } else {
+      tVal = sampleBand([
+        { w: 0.60, lo: 0.18, hi: 0.42 },
+        { w: 0.40, lo: 0.42, hi: 0.62 }
+      ]);
+    }
+    tVal = min(tVal, 0.70);
+
+    // Speed：稍快但不炸（仍沿用你觉得合适的整体节奏）
+    const sVal = sampleBand([
+      { w: 0.20, lo: 0.66, hi: 0.78 },
+      { w: 0.55, lo: 0.78, hi: 0.90 },
+      { w: 0.25, lo: 0.90, hi: 0.96 }
+    ]);
+
+    // a：随机起点开始播放（不固定）
+    let a0;
+    if (random() < 0.50) a0 = -2 + r01(0.00, 0.80);
+    else a0 =  3 - r01(0.00, 0.80);
+
+    return { r: rVal, l: lVal, t: tVal, s: sVal, a: a0 };
+  };
+
+  const distScore = (p, q) => {
+    // slider 空间的差异度（给 Range/Letter 更高权重）
+    return (
+      1.15 * abs(p.r - q.r) +
+      1.15 * abs(p.l - q.l) +
+      0.85 * abs(p.t - q.t) +
+      0.70 * abs(p.s - q.s) +
+      0.35 * (abs(p.a - q.a) / 5.0)
+    );
+  };
+
+  let cand = null;
+  const tries = 10;
+
+  for (let k = 0; k < tries; k++) {
+    const p = propose();
+    if (!lastRand) { cand = p; break; }
+
+    // ✅ 差异阈值：保证“连点两次”也明显不同
+    const d = distScore(p, lastRand);
+    if (d > 1.05) { cand = p; break; }
+    cand = p; // 兜底：一直不满足也用最后一次
   }
 
-  // 速度随机（稍慢一点点的版本）
-  sliders[3].val = (random() < 0.88) ? r01(0.80, 0.94) : r01(0.68, 0.80);
+  // 应用
+  sliders[0].val = cand.r;
+  sliders[2].val = cand.l;
+  sliders[1].val = cand.t;
+  sliders[3].val = cand.s;
 
-  // a 随机起点开始播放（不固定）
-  if (random() < 0.50) a = -2 + r01(0.00, 0.75);
-  else a =  3 - r01(0.00, 0.75);
-
+  a = cand.a;
   daSign = random([+1, -1]);
 
   const newSpeed = map(sliders[3].val, 0, 1, 0.055, 0.26);
   animationSpeedSliderValue = newSpeed;
   da = isPlaying ? (daSign * newSpeed) : 0;
 
-  // ✅ 不改颜色（不动 hue/sat/bri/currentColor）
+  // ✅ 不改颜色
+  lastRand = cand;
   needsUpdate = true;
 }
 
