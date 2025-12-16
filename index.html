@@ -32,7 +32,7 @@
       width: 100%;
       padding: 36px var(--edge);
       background:#fff;
-      overflow:hidden; /* 让背景公式不会跑出第一屏 */
+      overflow:hidden;
     }
 
     /* ✅ 背景公式层（最底层） */
@@ -44,7 +44,7 @@
     }
     .formula{
       position:absolute;
-      font-size:12px;           /* 跟左上角同一字号 */
+      font-size:12px;
       line-height:1.35;
       color:#111;
       opacity:0;
@@ -52,15 +52,7 @@
       transform: translateZ(0);
     }
     .formula.show{ opacity:1; transition: opacity 120ms linear; }
-    .formula.fade{ opacity:0; transition: opacity 180ms ease; }
-
-    .cursor{
-      display:inline-block;
-      margin-left:2px;
-      width:8px;
-      animation: blink 0.8s step-end infinite;
-    }
-    @keyframes blink { 50% { opacity: 0; } }
+    .formula.fade{ opacity:0; transition: opacity 220ms ease; }
 
     .topnote{
       position:absolute;
@@ -74,11 +66,12 @@
       z-index:2;
     }
 
+    /* 右上角轮播：边距不变，再小一点点 */
     .corner{
       position:absolute;
       right:var(--edge);
       top:var(--top);
-      width: 260px;
+      width: 240px;          /* 260 -> 240 */
       aspect-ratio: 1 / 1;
       border-radius: 16px;
       overflow:hidden;
@@ -93,7 +86,7 @@
       transform: translateZ(0);
     }
     @media (max-width: 980px){
-      .corner{ width: 160px; border-radius: 14px; }
+      .corner{ width: 150px; border-radius: 14px; } /* 160 -> 150 */
     }
 
     .hero{
@@ -112,7 +105,7 @@
       width: 100%;
       height: auto;
       display:block;
-      max-width: none; /* 关键：吃满左右边距 */
+      max-width: none;
     }
 
     /* ======= 下面原来那页：三张卡片进三个网页（保留） ======= */
@@ -188,9 +181,7 @@
 </head>
 
 <body>
-  <!-- ======= 第一屏：封面 ======= -->
   <section class="cover" id="cover">
-    <!-- ✅ 背景公式最底层容器 -->
     <div class="bg-formulas" id="bgFormulas" aria-hidden="true"></div>
 
     <div class="topnote" id="topnote">
@@ -202,13 +193,11 @@
       <img id="cornerImg" alt="cover-rotating">
     </div>
 
-    <!-- 你的 Font(X)=Y 大图（请确保路径存在） -->
     <div class="hero" id="heroBox">
       <img src="assets/hero/title.png" alt="Font(X)=Y">
     </div>
   </section>
 
-  <!-- ======= 下面原来那页：三张卡片进三个网页（保留） ======= -->
   <section id="choose" class="section">
     <div class="wrap">
       <h2>Choose a Method</h2>
@@ -252,9 +241,7 @@
   <script>
     document.getElementById("y").textContent = new Date().getFullYear();
 
-    /* ==========================
-       右上角轮播：12张，每1秒切换
-       ========================== */
+    /* 右上角轮播：12张，每1秒切换 */
     const coverImgs = [
       "assets/cover/01-07.png",
       "assets/cover/01-08.png",
@@ -279,13 +266,11 @@
       cornerImgEl.src = coverImgs[ci];
     }, 1000);
 
-    /* ==========================================
-       背景公式（最底层）：随机 1~3 条，打字出现
-       - 打完停 0.5s
+    /* 背景公式：随机 1~3 条，打字出现（无光标）
+       - 打完停 1 秒
        - 淡出消失
-       - 随机时间出现
-       - 不会出现在 左上/右上/底部大图 的区域下面
-       ========================================== */
+       - 更分散 + 不靠边 + 不遮挡三块区域
+    */
     const FORMULAS = [
       "x + y = y + x",
       "a(x + b) = ax + ab",
@@ -329,24 +314,17 @@
     function rectInCover(el){
       const cr = cover.getBoundingClientRect();
       const r = el.getBoundingClientRect();
-      return {
-        x: r.left - cr.left,
-        y: r.top  - cr.top,
-        w: r.width,
-        h: r.height
-      };
+      return { x: r.left - cr.left, y: r.top - cr.top, w: r.width, h: r.height };
     }
-
     function inflateRect(rc, pad){
       return { x: rc.x - pad, y: rc.y - pad, w: rc.w + pad*2, h: rc.h + pad*2 };
     }
-
     function overlaps(a, b){
       return !(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y);
     }
 
     function getExcludedRects(){
-      const pad = 18; // ✅ 避让余量
+      const pad = 22;
       const list = [];
       if (topnote) list.push(inflateRect(rectInCover(topnote), pad));
       if (cornerBox) list.push(inflateRect(rectInCover(cornerBox), pad));
@@ -354,7 +332,6 @@
       return list;
     }
 
-    // 先用隐藏元素测量最终宽高（用于找不重叠的位置）
     function measureFormulaSize(text){
       const tmp = document.createElement("div");
       tmp.className = "formula";
@@ -368,38 +345,60 @@
       return { w: r.width, h: r.height };
     }
 
+    // ✅ 分散度评分：离已有元素中心越远越好
+    function distanceScore(cx, cy){
+      if (active.length === 0) return 1e9;
+      let best = 1e9;
+      for (const a of active){
+        const ax = a.rect.x + a.rect.w/2;
+        const ay = a.rect.y + a.rect.h/2;
+        const d = Math.hypot(cx - ax, cy - ay);
+        if (d < best) best = d;
+      }
+      return best; // 越大越分散
+    }
+
     function findPosition(w, h){
       const cr = cover.getBoundingClientRect();
-      const edgePad = 18;
+
+      // ✅ 不靠边：安全边距（更大一点）
+      const safe = Math.max(32, Math.floor(Math.min(cr.width, cr.height) * 0.06));
 
       const excluded = getExcludedRects();
 
-      for (let t = 0; t < 60; t++){
-        const x = randi(edgePad, Math.max(edgePad + 1, Math.floor(cr.width  - w - edgePad)));
-        const y = randi(edgePad, Math.max(edgePad + 1, Math.floor(cr.height - h - edgePad)));
+      let best = null;
+      let bestScore = -1;
+
+      // ✅ 采样更多候选点，从中挑“最分散”的那个
+      const tries = 120;
+      for (let t = 0; t < tries; t++){
+        const x = randi(safe, Math.max(safe + 1, Math.floor(cr.width  - w - safe)));
+        const y = randi(safe, Math.max(safe + 1, Math.floor(cr.height - h - safe)));
 
         const cand = { x, y, w, h };
 
-        // 不压住三个主要区域
-        let bad = excluded.some(er => overlaps(cand, er));
-        if (bad) continue;
+        // 不压住三大区域
+        if (excluded.some(er => overlaps(cand, er))) continue;
 
-        // 不和当前公式互相重叠（稍微留点空隙）
-        bad = active.some(a => overlaps(cand, inflateRect(a.rect, 10)));
-        if (bad) continue;
+        // 不和已有公式重叠（留空隙）
+        if (active.some(a => overlaps(cand, inflateRect(a.rect, 14)))) continue;
 
-        return { x, y };
+        // 评分：尽量分散
+        const cx = x + w/2;
+        const cy = y + h/2;
+        const score = distanceScore(cx, cy);
+
+        if (score > bestScore){
+          bestScore = score;
+          best = { x, y };
+        }
       }
 
-      // 实在找不到：就随便放（但仍然尽量不出界）
-      return {
-        x: edgePad,
-        y: edgePad
-      };
+      // 找不到就退一步
+      return best || { x: safe, y: safe };
     }
 
     function pickFormulaText(){
-      // 同一时间不重复
       const used = new Set(active.map(a => a.text));
       const pool = FORMULAS.filter(f => !used.has(f));
       return pool.length ? choice(pool) : choice(FORMULAS);
@@ -418,69 +417,52 @@
       el.style.top  = pos.y + "px";
       bg.appendChild(el);
 
-      // 记录占位（用最终尺寸）
       const info = { text, el, rect: { x: pos.x, y: pos.y, w: size.w, h: size.h } };
       active.push(info);
 
-      // 渐入
       requestAnimationFrame(() => el.classList.add("show"));
 
-      // 打字
-      const cursor = document.createElement("span");
-      cursor.className = "cursor";
-      cursor.textContent = "▍";
-
+      // 打字（无光标）
       let i = 0;
-      const speed = rand(18, 34); // 打字速度
+      const speed = rand(18, 34);
+
       const timer = setInterval(() => {
         i++;
-        const typed = text.slice(0, i);
-        el.textContent = typed;
-        el.appendChild(cursor);
+        el.textContent = text.slice(0, i);
 
         if (i >= text.length){
           clearInterval(timer);
 
-          // 打完停 0.5s，再消失
+          // ✅ 打完停 1 秒
           setTimeout(() => {
-            el.textContent = text; // 去掉光标
             el.classList.add("fade");
-
             setTimeout(() => {
-              // 移除
               const idx = active.indexOf(info);
               if (idx >= 0) active.splice(idx, 1);
-              if (el.parentNode) el.parentNode.removeChild(el);
-            }, 220);
-          }, 500);
+              el.remove();
+            }, 240);
+          }, 1000);
         }
       }, speed);
     }
 
     function schedule(){
-      // 保证屏幕通常至少有 1 条：如果空了，间隔更短
       const delay = (active.length === 0)
-        ? randi(120, 380)
-        : randi(320, 1200);
+        ? randi(160, 520)
+        : randi(420, 1400);
 
       setTimeout(() => {
-        // 每次随机生成 1~3 的目标，但永远不超过 3
-        const want = randi(1, 4);
+        const want = randi(1, 4);             // 1~3
         const toAdd = Math.min(3 - active.length, want);
-
-        for (let k = 0; k < toAdd; k++){
-          spawnOne();
-        }
+        for (let k = 0; k < toAdd; k++) spawnOne();
         schedule();
       }, delay);
     }
 
-    // 重新排版时：清空重来，避免压住元素
     window.addEventListener("resize", () => {
       active.splice(0).forEach(a => a.el?.remove());
     });
 
-    // 开始
     schedule();
   </script>
 </body>
