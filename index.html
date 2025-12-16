@@ -17,7 +17,6 @@
     }
     a{ color:inherit; text-decoration:none; }
 
-    /* ======= Cover (第一屏) ======= */
     :root{
       --edge: 44px;
       --top: 28px;
@@ -35,7 +34,6 @@
       overflow:hidden;
     }
 
-    /* ✅ 背景公式层（最底层） */
     .bg-formulas{
       position:absolute;
       inset:0;
@@ -66,12 +64,11 @@
       z-index:2;
     }
 
-    /* 右上角轮播：边距不变，再小一点点 */
     .corner{
       position:absolute;
       right:var(--edge);
       top:var(--top);
-      width: 240px;          /* 260 -> 240 */
+      width: 240px;
       aspect-ratio: 1 / 1;
       border-radius: 16px;
       overflow:hidden;
@@ -86,7 +83,7 @@
       transform: translateZ(0);
     }
     @media (max-width: 980px){
-      .corner{ width: 150px; border-radius: 14px; } /* 160 -> 150 */
+      .corner{ width: 150px; border-radius: 14px; }
     }
 
     .hero{
@@ -108,7 +105,6 @@
       max-width: none;
     }
 
-    /* ======= 下面原来那页：三张卡片进三个网页（保留） ======= */
     .wrap{
       width:min(1200px, calc(100% - 48px));
       margin:0 auto;
@@ -296,7 +292,26 @@
       "∫sinx dx = -cosx + C",
       "∫cosx dx = sinx + C",
       "x^m × x^n = x^(m + n)",
-      "(xy)^n = x^n y^n"
+      "(xy)^n = x^n y^n",
+
+      /* ✅ 你新增的复杂公式 */
+      "y = ax³ + bx² + cx + d + (e x)/(f + x²)",
+      "y = sin(kx + φ) + cos(mx - θ) + tan(nx)",
+      "x = [ -b ± √(b² - 4ac + 8de - 2fg) ] / (2a + 3h)",
+      "y = a e^(kx) + b ln(cx + d) + c √(ex² + fx + g)",
+      "y = (x² - 3x + 2)(2x³ + 5x - 7)/(x + 4)(x² - 1)",
+      "(x - a)² + (y - b)² + (z - c)² + 2(x - a)(y - b) = r²",
+      "y = k1 x + b1 + k2 x² + b2 √x + k3/(x + b3)",
+      "sin(2x + 3)cos(4x - 5) = [sin(6x - 2) + sin(-2x + 8)]/2",
+      "log_a(bx² + cx + d) - log_a(ex + f) = log_a[(bx² + cx + d)/(ex + f)]",
+      "y = a tan²x + b secx + c cotx + d cscx",
+      "x³ + 2x²y + 3xy² + 4y³ + 5x + 6y + 7 = 0",
+      "y = √(ax² + bx + c) + (dx + e)/(fx² + gx + h)",
+      "(x² + y²)² = 4axy + 2bx² - 3cy² + dx - ey",
+      "y = a sin²(kx) + b cos²(mx) + c sin(kx)cos(mx)",
+      "(x - a)(x - b)(x - c) + (y - d)(y - e)(y - f) = gxy",
+      "y = (ax³ + bx² + cx + d)^(1/3) + (ex² + fx + g)^(2/3)",
+      "y = e^(kx + m)sin(nx + p) + ln(qx² + rx + s) + √(tx + u)"
     ];
 
     const cover = document.getElementById("cover");
@@ -345,7 +360,6 @@
       return { w: r.width, h: r.height };
     }
 
-    // ✅ 分散度评分：离已有元素中心越远越好
     function distanceScore(cx, cy){
       if (active.length === 0) return 1e9;
       let best = 1e9;
@@ -355,35 +369,27 @@
         const d = Math.hypot(cx - ax, cy - ay);
         if (d < best) best = d;
       }
-      return best; // 越大越分散
+      return best;
     }
 
     function findPosition(w, h){
       const cr = cover.getBoundingClientRect();
-
-      // ✅ 不靠边：安全边距（更大一点）
       const safe = Math.max(32, Math.floor(Math.min(cr.width, cr.height) * 0.06));
-
       const excluded = getExcludedRects();
 
       let best = null;
       let bestScore = -1;
 
-      // ✅ 采样更多候选点，从中挑“最分散”的那个
-      const tries = 120;
+      const tries = 140;
       for (let t = 0; t < tries; t++){
         const x = randi(safe, Math.max(safe + 1, Math.floor(cr.width  - w - safe)));
         const y = randi(safe, Math.max(safe + 1, Math.floor(cr.height - h - safe)));
 
         const cand = { x, y, w, h };
 
-        // 不压住三大区域
         if (excluded.some(er => overlaps(cand, er))) continue;
-
-        // 不和已有公式重叠（留空隙）
         if (active.some(a => overlaps(cand, inflateRect(a.rect, 14)))) continue;
 
-        // 评分：尽量分散
         const cx = x + w/2;
         const cy = y + h/2;
         const score = distanceScore(cx, cy);
@@ -394,7 +400,6 @@
         }
       }
 
-      // 找不到就退一步
       return best || { x: safe, y: safe };
     }
 
@@ -422,7 +427,6 @@
 
       requestAnimationFrame(() => el.classList.add("show"));
 
-      // 打字（无光标）
       let i = 0;
       const speed = rand(18, 34);
 
@@ -433,7 +437,6 @@
         if (i >= text.length){
           clearInterval(timer);
 
-          // ✅ 打完停 1 秒
           setTimeout(() => {
             el.classList.add("fade");
             setTimeout(() => {
@@ -441,7 +444,7 @@
               if (idx >= 0) active.splice(idx, 1);
               el.remove();
             }, 240);
-          }, 1000);
+          }, 1000); // ✅ 停 1 秒
         }
       }, speed);
     }
@@ -452,7 +455,7 @@
         : randi(420, 1400);
 
       setTimeout(() => {
-        const want = randi(1, 4);             // 1~3
+        const want = randi(1, 4);
         const toAdd = Math.min(3 - active.length, want);
         for (let k = 0; k < toAdd; k++) spawnOne();
         schedule();
