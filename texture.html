@@ -67,7 +67,6 @@ let COLOR_HUE  = null;
 let sbGraphic, hueGraphic;
 
 let RECENT_RECTS = [];
-/* ✅ recent 5 个（第一个黑色） */
 const defaultRecentHex = ["#000000", "#482BCC", "#FF04A5", "#FFE900", "#8CE255"];
 let recentColors = [];
 const RECENT_BIAS_X = 6;
@@ -92,7 +91,9 @@ let yMin = -5, yMax = 5;
 let rangeSliderValue = 5;
 let thicknessSliderValue = 4;
 let letterScale = 0.72;
-let animationSpeedSliderValue = 0.02;
+
+/* ✅ 速度会更快（上限抬高） */
+let animationSpeedSliderValue = 0.06;
 
 let needsUpdate = true;
 let isPlaying = true;
@@ -108,6 +109,7 @@ let plotX = 0, plotY = 0;
 
 /* =================== helpers =================== */
 function clamp(v, lo, hi) { return max(lo, min(hi, v)); }
+function r01(lo, hi) { return random(lo, hi); }
 
 /* =========================================================
    ✅ preload 字体：减少加载导致的“跳一下 / 黑屏”
@@ -269,11 +271,11 @@ function setup() {
     sliders.push(new Slider(cw/2, y + layout.sliderH/2, 200, layout.sliderH, sliderName[i], 0.5));
   }
 
-  // ✅ 默认值
+  // ✅ 默认值（速度默认就比以前快一点）
   sliders[0].val = 0.75;
   sliders[1].val = 0.75;
   sliders[2].val = 0.55;
-  sliders[3].val = 0.62;
+  sliders[3].val = 0.70;
 
   needsUpdate = true;
 }
@@ -327,7 +329,6 @@ function draw() {
 
   drawGrid();
 
-  // ✅ 纹理永远以画布中心对齐显示
   push();
   imageMode(CENTER);
   translate(width/2, height/2);
@@ -360,7 +361,7 @@ function draw() {
 
   for (let s of sliders) s.run();
 
-  // 保持你原来的“持续变化/持续刷新”节奏
+  // 维持你原来的节奏：持续刷新
   needsUpdate = true;
 }
 
@@ -378,7 +379,9 @@ function updateParameters() {
   rangeSliderValue = map(sliders[0].val, 0, 1, 2, 10);
   thicknessSliderValue = map(sliders[1].val, 0, 1, 2.0, 16.0);
   letterScale = map(sliders[2].val, 0, 1, 0.50, 1.45);
-  animationSpeedSliderValue = map(sliders[3].val, 0, 1, 0.02, 0.14);
+
+  /* ✅ 速度整体抬高：更快更明显 */
+  animationSpeedSliderValue = map(sliders[3].val, 0, 1, 0.05, 0.26);
 
   if (isPlaying) da = daSign * animationSpeedSliderValue;
 }
@@ -688,49 +691,47 @@ function colorsEqual(c1, c2) {
 }
 
 /* ============================================================
-   ✅ Randomize：变化更明显 + 从随机起点开始播放 + 不改变颜色
-   - 极端分布：更容易抽到“很小/很大”
-   - a：直接跳到靠近边界，纹理变化更显著（但起点仍是随机的，不固定）
-   - 不动 hue/sat/bri/currentColor/recent
+   ✅ Randomize：更明显 + 更快 + a 随机起点播放 + 不改颜色
+   - 用“模式化随机”，一次就跳到完全不同风格
    ============================================================ */
 function randomizeParams() {
-  // 更偏“极端”的随机：大概率落在两端，小概率在中间
-  const pickExtreme01 = (pExtreme = 0.78) => {
-    if (random() < pExtreme) {
-      return random() < 0.5 ? random(0.02, 0.22) : random(0.78, 0.98);
-    }
-    return random(0.30, 0.70);
-  };
-
-  // 让 Range/Thickness/LetterSize 差异更明显
-  sliders[0].val = pickExtreme01(0.80); // Range
-  sliders[1].val = pickExtreme01(0.82); // Thickness
-  sliders[2].val = pickExtreme01(0.72); // Letter Size
-
-  // Speed：偏快更多一点（视觉变化更强）
-  sliders[3].val = (random() < 0.65) ? random(0.70, 0.98) : random(0.10, 0.55);
-
-  // ✅ 每次从“随机 a 起点”开始播放（不是固定从同一个点）
-  //    但为了明显变化：起点更常靠近边界（仍然是随机的）
-  if (random() < 0.50) {
-    // 靠近 -2，但不是固定 -2
-    a = -2 + random(0.00, 0.45);
+  // 三种非常不同的视觉模式，让“一点就变化很大”
+  const mode = random();
+  if (mode < 0.34) {
+    // 模式 A：稠密/厚重（小 range + 粗线 + 大字）
+    sliders[0].val = r01(0.03, 0.18);   // Range 小
+    sliders[1].val = r01(0.80, 0.98);   // Thickness 大
+    sliders[2].val = r01(0.78, 0.98);   // Letter 大
+  } else if (mode < 0.68) {
+    // 模式 B：稀疏/锐利（大 range + 细线 + 小字）
+    sliders[0].val = r01(0.82, 0.98);   // Range 大
+    sliders[1].val = r01(0.05, 0.25);   // Thickness 小
+    sliders[2].val = r01(0.25, 0.55);   // Letter 小/中
   } else {
-    // 靠近 3，但不是固定 3
-    a =  3 - random(0.00, 0.45);
+    // 模式 C：夸张/强冲突（大 range + 粗线 + 大字）
+    sliders[0].val = r01(0.75, 0.98);
+    sliders[1].val = r01(0.70, 0.98);
+    sliders[2].val = r01(0.70, 0.98);
   }
+
+  // ✅ Randomize 速度更快：大多数情况下直接抽高值
+  sliders[3].val = (random() < 0.85) ? r01(0.82, 0.98) : r01(0.60, 0.82);
+
+  // ✅ 每次从“随机 a 起点”开始播放（不固定）
+  //    为了变化明显：更偏向靠近边界，但起点仍是随机的
+  if (random() < 0.50) a = -2 + r01(0.00, 0.75);
+  else a =  3 - r01(0.00, 0.75);
 
   // 方向随机
   daSign = random([+1, -1]);
 
-  // 立即用“新 speed”计算 da（避免等到下一帧才同步）
-  const newSpeed = map(sliders[3].val, 0, 1, 0.02, 0.14);
+  // 立刻按新的 slider speed 同步 da（速度更快）
+  const newSpeed = map(sliders[3].val, 0, 1, 0.05, 0.26);
   animationSpeedSliderValue = newSpeed;
   da = isPlaying ? (daSign * newSpeed) : 0;
 
-  // ✅ 不改变颜色：不改 hue/sat/bri，不 rebuildSBGraphic，不 updateCurrentColor，不动 recent
+  // ✅ 不改颜色：不动 hue/sat/bri/currentColor/recent，不 rebuildSBGraphic，不 updateCurrentColor
 
-  // 强制立刻刷新
   needsUpdate = true;
 }
 
