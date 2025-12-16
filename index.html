@@ -25,15 +25,23 @@
       :root{ --edge: 18px; --top: 14px; }
     }
 
+    /* ======= Cover (第一屏) ======= */
     .cover{
       position: relative;
       min-height: 100vh;
       width: 100%;
       padding: 36px var(--edge);
-      background:#fff;
       overflow:hidden;
+
+      /* ✅ 非常浅点格背景（只在封面） */
+      background-color:#fff;
+      background-image:
+        radial-gradient(circle, rgba(0,0,0,0.06) 0.7px, transparent 0.8px);
+      background-size: 18px 18px;
+      background-position: 0 0;
     }
 
+    /* ✅ 背景公式层（最底层） */
     .bg-formulas{
       position:absolute;
       inset:0;
@@ -46,8 +54,15 @@
       line-height:1.35;
       color:#111;
       opacity:0;
-      white-space:pre;
+      white-space:pre;            /* 允许 \n 换行 */
       transform: translateZ(0);
+
+      /* ✅ 防止长行撑爆：有换行更美，没有也不至于超夸张 */
+      max-width: min(560px, calc(100vw - 160px));
+      word-break: break-word;
+    }
+    @media (max-width: 980px){
+      .formula{ max-width: min(440px, calc(100vw - 90px)); }
     }
     .formula.show{ opacity:1; transition: opacity 120ms linear; }
     .formula.fade{ opacity:0; transition: opacity 220ms ease; }
@@ -64,6 +79,7 @@
       z-index:2;
     }
 
+    /* 右上角轮播：边距不变，稍微小一点点 */
     .corner{
       position:absolute;
       right:var(--edge);
@@ -105,12 +121,13 @@
       max-width: none;
     }
 
+    /* ======= 下面原来那页：三张卡片进三个网页（保留） ======= */
     .wrap{
       width:min(1200px, calc(100% - 48px));
       margin:0 auto;
     }
 
-    .section{ padding: 56px 0 84px; }
+    .section{ padding: 56px 0 84px; background:#fff; }
     .section h2{
       margin:0 0 6px;
       font-size: 24px;
@@ -172,6 +189,7 @@
       padding: 18px 0 26px;
       color: #888;
       font-size: 12px;
+      background:#fff;
     }
   </style>
 </head>
@@ -263,6 +281,7 @@
     }, 1000);
 
     /* 背景公式：随机 1~3 条，打字出现（无光标）
+       - 超过 36 字符：随机拆 2 行或 3 行
        - 打完停 1 秒
        - 淡出消失
        - 更分散 + 不靠边 + 不遮挡三块区域
@@ -294,7 +313,6 @@
       "x^m × x^n = x^(m + n)",
       "(xy)^n = x^n y^n",
 
-      /* ✅ 你新增的复杂公式 */
       "y = ax³ + bx² + cx + d + (e x)/(f + x²)",
       "y = sin(kx + φ) + cos(mx - θ) + tan(nx)",
       "x = [ -b ± √(b² - 4ac + 8de - 2fg) ] / (2a + 3h)",
@@ -320,7 +338,7 @@
     const cornerBox = document.getElementById("cornerBox");
     const heroBox = document.getElementById("heroBox");
 
-    const active = []; // {text, el, rect:{x,y,w,h}}
+    const active = []; // {raw, text, el, rect:{x,y,w,h}}
 
     const rand = (a, b) => a + Math.random() * (b - a);
     const randi = (a, b) => Math.floor(rand(a, b));
@@ -403,16 +421,81 @@
       return best || { x: safe, y: safe };
     }
 
-    function pickFormulaText(){
-      const used = new Set(active.map(a => a.text));
+    function pickFormulaRaw(){
+      const used = new Set(active.map(a => a.raw));
       const pool = FORMULAS.filter(f => !used.has(f));
       return pool.length ? choice(pool) : choice(FORMULAS);
+    }
+
+    /* ✅ 超过 36 字符：随机拆 2 行或 3 行（尽量在“好断点”断开） */
+    function formatFormula(raw){
+      const s = (raw || "").trim();
+      if (s.length <= 36) return s;
+
+      const lines = (Math.random() < 0.55) ? 2 : 3; // 随机 2 / 3 行
+      const target = Math.floor(s.length / lines);
+
+      const breakChars = new Set([" ", "+", "-", "=", ")", "(", "/", "*", "×", "±", "−", "·"]);
+      const window = 14;
+
+      function bestBreak(from, near){
+        let best = -1;
+        let bestScore = 1e9;
+
+        const lo = Math.max(from + 10, near - window);
+        const hi = Math.min(s.length - 10, near + window);
+
+        for (let i = lo; i <= hi; i++){
+          const ch = s[i];
+          if (!breakChars.has(ch)) continue;
+
+          // 尽量在空格/运算符后断（视觉更像“完整表达式块”）
+          const cut = (ch === " ") ? i : (i + 1);
+
+          const dist = Math.abs(cut - near);
+          const score = dist;
+
+          if (score < bestScore){
+            bestScore = score;
+            best = cut;
+          }
+        }
+
+        // 找不到就硬切
+        if (best === -1) best = Math.min(s.length - 10, Math.max(from + 10, near));
+        return best;
+      }
+
+      const cuts = [];
+      let start = 0;
+
+      if (lines === 2){
+        const c1 = bestBreak(start, target);
+        cuts.push(c1);
+      } else {
+        const c1 = bestBreak(start, target);
+        cuts.push(c1);
+        const c2 = bestBreak(c1, c1 + target);
+        cuts.push(c2);
+      }
+
+      const parts = [];
+      let prev = 0;
+      for (const c of cuts){
+        parts.push(s.slice(prev, c).trim());
+        prev = c;
+      }
+      parts.push(s.slice(prev).trim());
+
+      return parts.filter(Boolean).join("\n");
     }
 
     function spawnOne(){
       if (active.length >= 3) return;
 
-      const text = pickFormulaText();
+      const raw = pickFormulaRaw();
+      const text = formatFormula(raw);
+
       const size = measureFormulaSize(text);
       const pos = findPosition(size.w, size.h);
 
@@ -422,7 +505,7 @@
       el.style.top  = pos.y + "px";
       bg.appendChild(el);
 
-      const info = { text, el, rect: { x: pos.x, y: pos.y, w: size.w, h: size.h } };
+      const info = { raw, text, el, rect: { x: pos.x, y: pos.y, w: size.w, h: size.h } };
       active.push(info);
 
       requestAnimationFrame(() => el.classList.add("show"));
@@ -444,7 +527,7 @@
               if (idx >= 0) active.splice(idx, 1);
               el.remove();
             }, 240);
-          }, 1000); // ✅ 停 1 秒
+          }, 1000); // 停 1 秒
         }
       }, speed);
     }
@@ -455,7 +538,7 @@
         : randi(420, 1400);
 
       setTimeout(() => {
-        const want = randi(1, 4);
+        const want = randi(1, 4);            // 1~3
         const toAdd = Math.min(3 - active.length, want);
         for (let k = 0; k < toAdd; k++) spawnOne();
         schedule();
