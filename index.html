@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -17,66 +17,23 @@
     }
     a{ color:inherit; text-decoration:none; }
 
-    /* Top bar */
-    header{
-      position:sticky;
-      top:0;
-      background: rgba(255,255,255,.92);
-      backdrop-filter: blur(10px);
-      border-bottom: 1px solid rgba(0,0,0,.08);
-      z-index:10;
-    }
-    .nav{
-      width:min(1200px, calc(100% - 48px));
-      margin:0 auto;
-      height:64px;
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-    }
-    .brand{
-      display:flex;
-      align-items:center;
-      gap:10px;
-      font-weight:800;
-    }
-    .dot{ width:10px;height:10px;border-radius:999px; background:#111; }
-
-    .nav-actions{ display:flex; gap:10px; align-items:center; }
-    .btn{
-      padding:10px 14px;
-      border:1px solid rgba(0,0,0,.18);
-      border-radius:999px;
-      font-weight:700;
-      transition:.15s ease;
-      user-select:none;
-      background:#fff;
-    }
-    .btn:hover{ transform: translateY(-1px); }
-    .btn.primary{
-      background:#111;
-      color:#fff;
-      border-color:#111;
-    }
-
     .wrap{
       width:min(1200px, calc(100% - 48px));
       margin:0 auto;
     }
 
     /* =========================
-       封面（上面那个网页）
+       封面（上方大块）
        ========================= */
     .cover{
       position: relative;
       padding: 26px 0 0;
-      min-height: calc(100vh - 64px);
+      min-height: 100vh;
       background:#fff;
       overflow:hidden;
     }
 
-    /* 上方 8 张图：2 行 4 列（你可以以后按素材调布局） */
+    /* 8 格：2 行 × 4 列 */
     .cover-top{
       width:min(1200px, calc(100% - 48px));
       margin: 0 auto;
@@ -92,10 +49,11 @@
 
     .cover-tile{
       aspect-ratio: 1 / 1;
-      border-radius: 24px;
+      border-radius: 26px;
       overflow:hidden;
       background: #f2f2f2;
       border: 1px solid rgba(0,0,0,.08);
+      position: relative;
       display:flex;
       align-items:center;
       justify-content:center;
@@ -105,9 +63,15 @@
       height:100%;
       object-fit: contain;
       display:block;
+      background:#fff;
+      transition: opacity .25s ease, transform .25s ease;
+    }
+    .cover-tile.is-swapping img{
+      opacity: 0.0;
+      transform: scale(0.98);
     }
 
-    /* 中间“字标/标题”区域（你可以用图片 or 文本） */
+    /* 中间字标区域：你之后可以换成图片 */
     .cover-mid{
       width:min(1200px, calc(100% - 48px));
       margin: 0 auto;
@@ -118,28 +82,18 @@
     }
     .cover-wordmark{
       width:min(980px, 96%);
-      border-radius: 20px;
+      border-radius: 22px;
       overflow:hidden;
       display:flex;
       align-items:center;
       justify-content:center;
-      padding: 10px 0;
-    }
-    .cover-wordmark img{
-      width:100%;
-      height:auto;
-      display:block;
-    }
-
-    /* 如果你暂时没有 wordmark.png，就显示文本版 */
-    .cover-wordmark.fallback{
       padding: 22px 0;
       font-weight: 900;
       letter-spacing: .02em;
       font-size: clamp(28px, 5vw, 64px);
     }
 
-    /* 渐变带：封面 -> 下方卡片（A 方案） */
+    /* A 方案：封面到底部的渐变带（连接上下两个页面的感觉） */
     .cover::after{
       content:"";
       position:absolute;
@@ -160,24 +114,16 @@
     }
 
     /* =========================
-       下方菜单卡片区
+       下方菜单区（保留你原来的卡片入口）
        ========================= */
     .section{
       position: relative;
       padding: 26px 0 84px;
     }
     .section h2{
-      margin:0 0 6px;
+      margin:0 0 18px;
       font-size: 24px;
       letter-spacing:-.01em;
-    }
-
-    /* ✅ 你要删除的小文字，就是这里（已删除 HTML，不用这段也没关系） */
-    .section .sub{
-      margin:0 0 18px;
-      color:#666;
-      font-size: 13px;
-      line-height:1.6;
     }
 
     .grid{
@@ -234,52 +180,30 @@
 </head>
 
 <body>
-  <header>
-    <div class="nav">
-      <div class="brand">
-        <span class="dot"></span>
-        <span>字体游乐场</span>
-      </div>
-
-      <div class="nav-actions">
-        <a class="btn" href="#choose">探索</a>
-        <a class="btn primary" href="draw.html">开放式构建器</a>
-      </div>
-    </div>
-  </header>
-
   <main>
-    <!-- ✅ 上面那个网页：封面 -->
+    <!-- 封面 -->
     <section class="cover">
-      <div class="cover-top">
-        <!-- 你之后把素材放到 assets/cover/ 并命名 top-1.png ~ top-8.png -->
-        <div class="cover-tile"><img src="assets/cover/top-1.png" alt="cover tile 1"></div>
-        <div class="cover-tile"><img src="assets/cover/top-2.png" alt="cover tile 2"></div>
-        <div class="cover-tile"><img src="assets/cover/top-3.png" alt="cover tile 3"></div>
-        <div class="cover-tile"><img src="assets/cover/top-4.png" alt="cover tile 4"></div>
-        <div class="cover-tile"><img src="assets/cover/top-5.png" alt="cover tile 5"></div>
-        <div class="cover-tile"><img src="assets/cover/top-6.png" alt="cover tile 6"></div>
-        <div class="cover-tile"><img src="assets/cover/top-7.png" alt="cover tile 7"></div>
-        <div class="cover-tile"><img src="assets/cover/top-8.png" alt="cover tile 8"></div>
+      <div class="cover-top" id="coverGrid">
+        <!-- 8 个格子（2x4） -->
+        <div class="cover-tile"><img data-slot="0" alt="cover slot 1"></div>
+        <div class="cover-tile"><img data-slot="1" alt="cover slot 2"></div>
+        <div class="cover-tile"><img data-slot="2" alt="cover slot 3"></div>
+        <div class="cover-tile"><img data-slot="3" alt="cover slot 4"></div>
+        <div class="cover-tile"><img data-slot="4" alt="cover slot 5"></div>
+        <div class="cover-tile"><img data-slot="5" alt="cover slot 6"></div>
+        <div class="cover-tile"><img data-slot="6" alt="cover slot 7"></div>
+        <div class="cover-tile"><img data-slot="7" alt="cover slot 8"></div>
       </div>
 
       <div class="cover-mid">
-        <!-- 如果你有字标图片：assets/cover/wordmark.png -->
-        <!-- 没有的话可以先把 img 这行注释掉，启用下面 fallback 文本 -->
-        <div class="cover-wordmark">
-          <img src="assets/cover/wordmark.png" alt="FONT wordmark">
-        </div>
-
-        <!-- 文本 fallback（需要就取消注释上面 img，注释掉这一行） -->
-        <!-- <div class="cover-wordmark fallback">FONT (X) ∿ Y</div> -->
+        <div class="cover-wordmark">FONT PLAYGROUND</div>
       </div>
     </section>
 
-    <!-- ✅ 下方：原来的菜单页面 -->
+    <!-- 菜单区 -->
     <section id="choose" class="section">
       <div class="wrap">
         <h2>Choose a Method</h2>
-        <!-- ✅ 已删除：Click an image to enter. -->
 
         <div class="grid">
           <a class="item" href="draw.html">
@@ -287,47 +211,4 @@
               <img src="assets/home/blocks.png" alt="Font building blocks">
             </div>
             <div class="note">
-              Experiment with building modular glyphs using mathematical gridsand geometric patterns
-            </div>
-          </a>
-
-          <a class="item" href="path.html">
-            <div class="thumb">
-              <img src="assets/home/path.png" alt="Font Path Method">
-            </div>
-            <div class="note">
-              Experiment with building modular glyphs using mathematical gridsand geometric patterns
-            </div>
-          </a>
-
-          <a class="item" href="texture.html">
-            <div class="thumb">
-              <img src="assets/home/texture.png" alt="Font Texture Method">
-            </div>
-            <div class="note">
-              Experiment with building modular glyphs using mathematical gridsand geometric patterns
-            </div>
-          </a>
-        </div>
-      </div>
-    </section>
-
-    <footer>
-      <div class="wrap">© <span id="y"></span> Font Playground</div>
-    </footer>
-  </main>
-
-  <script>
-    document.getElementById("y").textContent = new Date().getFullYear();
-    document.querySelectorAll('a[href^="#"]').forEach(a=>{
-      a.addEventListener("click", (e)=>{
-        const id = a.getAttribute("href");
-        const el = document.querySelector(id);
-        if(!el) return;
-        e.preventDefault();
-        el.scrollIntoView({behavior:"smooth", block:"start"});
-      });
-    });
-  </script>
-</body>
-</html>
+              Experiment with building modular glyphs using mathematical gridsand
