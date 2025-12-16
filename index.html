@@ -33,12 +33,13 @@
       padding: 36px var(--edge);
       overflow:hidden;
 
-      /* ✅ 非常浅点格背景（封面） */
-      background-color:#fff;
+      /* ✅ 更明显但仍然很浅的点格（两层） */
+      background-color:#fbfbfb;
       background-image:
-        radial-gradient(circle, rgba(0,0,0,0.06) 0.7px, transparent 0.8px);
-      background-size: 18px 18px;
-      background-position: 0 0;
+        radial-gradient(circle, rgba(0,0,0,0.12) 1.1px, transparent 1.2px),
+        radial-gradient(circle, rgba(0,0,0,0.06) 1.0px, transparent 1.1px);
+      background-size: 18px 18px, 56px 56px;
+      background-position: 0 0, 8px 10px;
     }
 
     /* ✅ 背景公式层（最底层） */
@@ -54,10 +55,9 @@
       line-height:1.35;
       color:#111;
       opacity:0;
-      white-space:pre;            /* 允许 \n 换行 */
+      white-space:pre; /* 允许 \n 换行 */
       transform: translateZ(0);
 
-      /* 防止太长撑破 */
       max-width: min(620px, calc(100vw - 160px));
       word-break: break-word;
     }
@@ -84,7 +84,7 @@
       position:absolute;
       right:var(--edge);
       top:var(--top);
-      width: 240px;
+      width: 220px; /* ✅ 你说再小一点点 */
       aspect-ratio: 1 / 1;
       border-radius: 16px;
       overflow:hidden;
@@ -208,6 +208,7 @@
     </div>
 
     <div class="hero" id="heroBox">
+      <!-- ✅ 你的大标题图（是照片）放这里：改成你的真实路径 -->
       <img src="assets/hero/title.png" alt="Font(X)=Y">
     </div>
   </section>
@@ -348,14 +349,13 @@
     const cornerBox = document.getElementById("cornerBox");
     const heroBox = document.getElementById("heroBox");
 
-    const MAX_ACTIVE = 4;          // ✅ 最多 4 个
-    const LINE_TRIGGER = 36;       // 超过 36 字符才考虑断行
+    const MAX_ACTIVE = 4;
+    const LINE_TRIGGER = 36;
 
-    // ✅ 这条用来决定“谁要强制两行”
     const TWO_LINE_REFERENCE = "sin(x + y) = sinx cosy + cosx siny";
     const TWO_LINE_LEN = TWO_LINE_REFERENCE.length;
 
-    const active = []; // {raw, text, el, rect:{x,y,w,h}}
+    const active = [];
 
     const rand = (a, b) => a + Math.random() * (b - a);
     const randi = (a, b) => Math.floor(rand(a, b));
@@ -382,31 +382,21 @@
       return list;
     }
 
-    /* ✅ soft avoid：你说的“右上角动画和底部标题中间”那一块
-       不完全禁止，只是降低命中概率，避免“老在那儿” */
     function getSoftAvoidRect(){
       const cr = cover.getBoundingClientRect();
       const cb = cornerBox.getBoundingClientRect();
       const hb = heroBox.getBoundingClientRect();
 
-      const cornerIn = {
-        x: cb.left - cr.left, y: cb.top - cr.top, w: cb.width, h: cb.height
-      };
-      const heroIn = {
-        x: hb.left - cr.left, y: hb.top - cr.top, w: hb.width, h: hb.height
-      };
+      const cornerIn = { x: cb.left - cr.left, y: cb.top - cr.top, w: cb.width, h: cb.height };
+      const heroIn   = { x: hb.left - cr.left, y: hb.top - cr.top, w: hb.width, h: hb.height };
 
-      // 大致取“右侧中段”区域
       const x0 = Math.max(cornerIn.x - 40, cr.width * 0.55);
       const x1 = cr.width - Math.max(28, cr.width * 0.07);
 
       const y0 = cornerIn.y + cornerIn.h + 10;
       const y1 = heroIn.y - 10;
 
-      const w = Math.max(1, x1 - x0);
-      const h = Math.max(1, y1 - y0);
-
-      return { x: x0, y: y0, w, h };
+      return { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) };
     }
 
     function measureFormulaSize(text){
@@ -434,7 +424,7 @@
       return best;
     }
 
-    /* ===== 美观断行：尽量在“合理断点”断 ===== */
+    /* ===== 美观断行 ===== */
     const breakChars = new Set([" ", "+", "-", "=", ")", "(", "/", "*", "×", "±", "−", "·", ","]);
     function findBreakIndex(s, from, near){
       const window = 18;
@@ -448,16 +438,13 @@
         const ch = s[i];
         if (!breakChars.has(ch)) continue;
 
-        // 更像“排版”：空格处断更自然；运算符断则放到上一行末尾
         const cut = (ch === " ") ? i : (i + 1);
 
-        // 轻微偏好：尽量在空格/等号附近断
         let bias = 0;
         if (ch === " ") bias -= 0.6;
         if (ch === "=") bias -= 0.4;
 
         const score = Math.abs(cut - near) + bias;
-
         if (score < bestScore){
           bestScore = score;
           best = cut;
@@ -497,20 +484,12 @@
     function formatFormula(raw){
       const s = (raw || "").trim();
 
-      // ✅ 新加这批：强制三行
-      if (FORCE_3LINES.includes(raw)) {
-        return splitIntoLines(s, 3);
-      }
+      if (FORCE_3LINES.includes(raw)) return splitIntoLines(s, 3);
 
-      // ✅ 已有的：只要“比 reference 更长” → 强制两行
-      if (s.length > TWO_LINE_LEN) {
-        return splitIntoLines(s, 2);
-      }
+      if (s.length > TWO_LINE_LEN) return splitIntoLines(s, 2);
 
-      // 其它：超过 36 才考虑随机 1/2 行（这里保持更干净：不强制）
       if (s.length <= LINE_TRIGGER) return s;
 
-      // 偶尔也给两行，增加节奏（较少）
       if (Math.random() < 0.25) return splitIntoLines(s, 2);
       return s;
     }
@@ -539,7 +518,6 @@
         if (excluded.some(er => overlaps(cand, er))) continue;
         if (active.some(a => overlaps(cand, inflateRect(a.rect, 14)))) continue;
 
-        // ✅ 软避让：落在该区域就降低分数（不是直接禁止）
         const inSoft = overlaps(cand, soft);
         const penalty = inSoft ? 0.55 : 1.0;
 
@@ -577,7 +555,7 @@
       requestAnimationFrame(() => el.classList.add("show"));
 
       let i = 0;
-      const speed = rand(16, 32); // 打字速度
+      const speed = rand(16, 32);
 
       const timer = setInterval(() => {
         i++;
@@ -593,19 +571,17 @@
               if (idx >= 0) active.splice(idx, 1);
               el.remove();
             }, 240);
-          }, 1000); // 停 1 秒
+          }, 1000);
         }
       }, speed);
     }
 
     function schedule(){
-      // ✅ 更随机：间隔范围扩大一点，避免“卡在某个位置一直刷新”
       const delay = (active.length === 0)
         ? randi(140, 700)
         : randi(320, 1900);
 
       setTimeout(() => {
-        // 1~4（但受 MAX_ACTIVE 限制）
         const want = randi(1, 5);
         const toAdd = Math.min(MAX_ACTIVE - active.length, want);
         for (let k = 0; k < toAdd; k++) spawnOne();
