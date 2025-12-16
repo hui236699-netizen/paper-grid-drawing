@@ -57,7 +57,8 @@ let glyphInput;
 const DEFAULT_GLYPH = "O";
 let glyphChar = DEFAULT_GLYPH;
 
-/* =================== 颜色模块（✅默认黑色） =================== */
+/* =================== 颜色模块（path 同款） =================== */
+/* ✅ 默认黑色 */
 let hue = 0, sat = 0, bri = 0;
 let currentColor;
 
@@ -66,6 +67,7 @@ let COLOR_HUE  = null;
 let sbGraphic, hueGraphic;
 
 let RECENT_RECTS = [];
+/* ✅ recent 5 个（第一个黑色） */
 const defaultRecentHex = ["#000000", "#482BCC", "#FF04A5", "#FFE900", "#8CE255"];
 let recentColors = [];
 const RECENT_BIAS_X = 6;
@@ -90,9 +92,7 @@ let yMin = -5, yMax = 5;
 let rangeSliderValue = 5;
 let thicknessSliderValue = 4;
 let letterScale = 0.72;
-
-/* ✅ 速度基础值 */
-let animationSpeedSliderValue = 0.07;
+let animationSpeedSliderValue = 0.02;
 
 let needsUpdate = true;
 let isPlaying = true;
@@ -109,42 +109,10 @@ let plotX = 0, plotY = 0;
 /* =================== helpers =================== */
 function clamp(v, lo, hi) { return max(lo, min(hi, v)); }
 function r01(lo, hi) { return random(lo, hi); }
-function gauss(mu, sigma) { return mu + randomGaussian() * sigma; }
 
-function sampleBand(bands){
-  let sum = 0;
-  for (const b of bands) sum += b.w;
-  let r = random(sum);
-  for (const b of bands) {
-    r -= b.w;
-    if (r <= 0) return random(b.lo, b.hi);
-  }
-  const last = bands[bands.length - 1];
-  return random(last.lo, last.hi);
-}
-
-/* ============================================================
-   ✅ 艺术“坐标变形”（Randomize 驱动）
-   ============================================================ */
-let warpRot = 0;     // radians
-let warpSkew = 0;    // x += k*y
-let warpAspect = 1;  // x*=a, y/=a
-
-function warpPoint(x, y){
-  let xx = x * warpAspect;
-  let yy = y / warpAspect;
-  xx = xx + warpSkew * yy;
-
-  const c = cos(warpRot), s = sin(warpRot);
-  const rx = xx * c - yy * s;
-  const ry = xx * s + yy * c;
-  return { x: rx, y: ry };
-}
-
-/* =================== Randomize：记住上一次，强制差异大 =================== */
-let lastRand = null; // {r,t,l,s,a,wr,ws,wa}
-
-/* =================== preload 字体 =================== */
+/* =========================================================
+   ✅ preload 字体：减少加载导致的“跳一下 / 黑屏”
+   ========================================================= */
 function preload() {
   glyphFont = loadFont(
     FONT_PATH,
@@ -252,6 +220,7 @@ function setup() {
   letterMask = createGraphics(windowWidth, windowHeight);
   letterMask.pixelDensity(1);
 
+  // ✅ 默认 currentColor = 黑色；recent 也初始化
   recentColors = defaultRecentHex.map(h => color(h));
   updateCurrentColor(false);
 
@@ -262,6 +231,7 @@ function setup() {
   pauseButton = rectToCapButton(FUNC_RECTS.pause, "Pause");
   saveButton  = rectToCapButton(FUNC_RECTS.save,  "Save");
 
+  // 输入框：默认空，但画面默认显示 O
   glyphChar = DEFAULT_GLYPH;
   glyphInput = createInput("");
   glyphInput.addClass("glyphInput");
@@ -293,16 +263,20 @@ function setup() {
     true
   );
 
+  // sliders
   sliders = [];
   for (let i = 0; i < 4; i++) {
     const y = layout.firstSliderY + i * layout.sliderGap;
-    sliders.push(new Slider(cw/2, y + layout.sliderH/2, 200, layout.slider.sliderH, sliderName[i], 0.5));
+    sliders.push(new Slider(cw/2, y + layout.sliderH/2, 200, layout.sliderH, sliderName[i], 0.5));
   }
 
+  // 初始默认
   sliders[0].val = 0.75;
   sliders[1].val = 0.65;
   sliders[2].val = 0.55;
-  sliders[3].val = 0.40; // ✅ 初始也放在 2/5
+
+  // ✅ speed 初始就放在 2/5
+  sliders[3].val = 0.40;
 
   needsUpdate = true;
 }
@@ -356,6 +330,7 @@ function draw() {
 
   drawGrid();
 
+  // ✅ 纹理永远以画布中心对齐显示
   push();
   imageMode(CENTER);
   translate(width/2, height/2);
@@ -373,6 +348,7 @@ function draw() {
     }
   }
 
+  // 左侧栏
   noStroke();
   fill("#1F1E24");
   rect(0, 0, cw, height);
@@ -403,17 +379,17 @@ function drawGrid() {
 function updateParameters() {
   rangeSliderValue = map(sliders[0].val, 0, 1, 2, 10);
 
-  /* ✅ Thickness 全局最大值：12.8（原来 16 的 4/5） */
+  /* ✅ Thickness 最大值改成 12.8（原来的 4/5） */
   thicknessSliderValue = map(sliders[1].val, 0, 1, 2.0, 12.8);
 
   letterScale = map(sliders[2].val, 0, 1, 0.50, 1.45);
 
-  animationSpeedSliderValue = map(sliders[3].val, 0, 1, 0.055, 0.26);
+  animationSpeedSliderValue = map(sliders[3].val, 0, 1, 0.02, 0.14);
 
   if (isPlaying) da = daSign * animationSpeedSliderValue;
 }
 
-/* =================== plot & 渲染 =================== */
+/* =================== 核心：plot 永远居中；并随 letterScale 扩张避免裁切 =================== */
 function updateVisualization() {
   xMin = yMin = -rangeSliderValue;
   xMax = yMax = rangeSliderValue;
@@ -456,7 +432,7 @@ function drawFunctionLayer(px0, py0, size) {
   const cb = floor(blue(currentColor));
 
   for (let sx = 0; sx < size; sx++) {
-    const xVal0 = map(sx, 0, size, xMin, xMax);
+    const xVal = map(sx, 0, size, xMin, xMax);
     const px = px0 + sx;
     if (px < 0 || px >= width) continue;
 
@@ -464,10 +440,8 @@ function drawFunctionLayer(px0, py0, size) {
       const py = py0 + sy;
       if (py < 0 || py >= height) continue;
 
-      const yVal0 = map(sy, size, 0, yMin, yMax);
-
-      const wp = warpPoint(xVal0, yVal0);
-      const diff = calculateDifference(wp.x, wp.y);
+      const yVal = map(sy, size, 0, yMin, yMax);
+      const diff = calculateDifference(xVal, yVal);
 
       const idx = (py * width + px) * 4;
       const maskA = letterMask.pixels[idx + 3];
@@ -483,6 +457,7 @@ function drawFunctionLayer(px0, py0, size) {
   functionLayer.updatePixels();
 }
 
+/* =================== 遮罩：textBounds 居中 =================== */
 function drawLetterMaskAtPlotCenter(px0, py0, size, textSizePx) {
   letterMask.clear();
   letterMask.push();
@@ -501,6 +476,7 @@ function drawLetterMaskAtPlotCenter(px0, py0, size, textSizePx) {
     letterMask.textSize(textSizePx);
 
     const b = glyphFont.textBounds(s, 0, 0, textSizePx);
+
     const tx = -(b.x + b.w/2);
     const ty = -(b.y + b.h/2);
 
@@ -516,7 +492,7 @@ function drawLetterMaskAtPlotCenter(px0, py0, size, textSizePx) {
   letterMask.pop();
 }
 
-/* =================== 右下角预览（略） =================== */
+/* =================== 右下角预览与信息（保持你原版） =================== */
 function displayFunctionWithAxis() {
   const axisSize = 250;
   const margin = 50;
@@ -552,10 +528,9 @@ function displayFunctionWithAxis() {
   strokeWeight(1);
   for (let x = 0; x < axisSize; x += resolution) {
     for (let y = 0; y < axisSize; y += resolution) {
-      const xVal0 = map(x, 0, axisSize, -5, 5);
-      const yVal0 = map(y, axisSize, 0, -5, 5);
-      const wp = warpPoint(xVal0, yVal0);
-      const diff = calculateDifference(wp.x, wp.y);
+      const xVal = map(x, 0, axisSize, -5, 5);
+      const yVal = map(y, axisSize, 0, -5, 5);
+      const diff = calculateDifference(xVal, yVal);
       const cc = lerpColor(c1, c2, map(abs(diff), 0, 1, 0, 4.0));
       stroke(cc);
       point(axisX + x, axisY + y);
@@ -574,15 +549,17 @@ function displayFunctionWithAxis() {
   text(functionInfo, axisX, axisY - 130);
 }
 
-/* =================== 颜色模块（保留） =================== */
-function buildHueGraphic(){ /* ...同你原版... */ 
+/* =================== 颜色模块（✅不画色盘后面的矩形背景） =================== */
+function buildHueGraphic() {
   const w = max(1, floor(COLOR_HUE.w));
   const h = max(1, floor(COLOR_HUE.h));
+
   hueGraphic = createGraphics(w, h);
   hueGraphic.pixelDensity(1);
   hueGraphic.colorMode(HSB, 360, 100, 100);
   hueGraphic.noStroke();
   hueGraphic.loadPixels();
+
   for (let y = 0; y < h; y++) {
     let hh = map(y, 0, h - 1, 0, 360);
     let c = hueGraphic.color(hh, 100, 100);
@@ -596,14 +573,17 @@ function buildHueGraphic(){ /* ...同你原版... */
   }
   hueGraphic.updatePixels();
 }
-function buildSBGraphic(){ 
+
+function buildSBGraphic() {
   const w = max(1, floor(COLOR_MAIN.w));
   const h = max(1, floor(COLOR_MAIN.h));
+
   sbGraphic = createGraphics(w, h);
   sbGraphic.pixelDensity(1);
   sbGraphic.colorMode(HSB, 360, 100, 100);
   sbGraphic.noStroke();
   sbGraphic.loadPixels();
+
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       let sVal = map(x, 0, w - 1, 0, 100);
@@ -618,28 +598,38 @@ function buildSBGraphic(){
   }
   sbGraphic.updatePixels();
 }
-function drawColorPanel(){ /* ...同你原版... */ 
+
+function drawColorPanel() {
   noTint();
+
   imageMode(CORNER);
   image(sbGraphic, COLOR_MAIN.x, COLOR_MAIN.y, COLOR_MAIN.w, COLOR_MAIN.h);
   image(hueGraphic, COLOR_HUE.x, COLOR_HUE.y, COLOR_HUE.w, COLOR_HUE.h);
+
   let huePosY = map(hue, 0, 360, 0, COLOR_HUE.h);
-  stroke(255); strokeWeight(2);
-  let hx = COLOR_HUE.x, hy = COLOR_HUE.y + huePosY;
+  stroke(255);
+  strokeWeight(2);
+  let hx = COLOR_HUE.x;
+  let hy = COLOR_HUE.y + huePosY;
   line(hx - 4, hy, hx, hy);
   line(hx + COLOR_HUE.w, hy, hx + COLOR_HUE.w + 4, hy);
+
   let sx = map(sat, 0, 100, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w);
   let sy = map(bri, 100, 0, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h);
-  noFill(); stroke(255); strokeWeight(2);
+  noFill();
+  stroke(255);
+  strokeWeight(2);
   circle(sx, sy, 10);
 }
-function drawRecentColors(){ /* ...同你原版... */ 
+
+function drawRecentColors() {
   for (let i = 0; i < RECENT_RECTS.length; i++) {
     const r = RECENT_RECTS[i];
     stroke(40);
     strokeWeight(1);
     fill(recentColors[i] || color(0));
     rect(r.x, r.y, r.w, r.h, 6);
+
     if (recentColors[i] && colorsEqual(recentColors[i], currentColor)) {
       noFill();
       stroke(255);
@@ -648,7 +638,8 @@ function drawRecentColors(){ /* ...同你原版... */
     }
   }
 }
-function handleColorClick(){ /* ...同你原版... */
+
+function handleColorClick() {
   if (mouseX >= COLOR_MAIN.x && mouseX <= COLOR_MAIN.x + COLOR_MAIN.w &&
       mouseY >= COLOR_MAIN.y && mouseY <= COLOR_MAIN.y + COLOR_MAIN.h) {
     let sx = constrain(mouseX, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w);
@@ -659,6 +650,7 @@ function handleColorClick(){ /* ...同你原版... */
     needsUpdate = true;
     return true;
   }
+
   if (mouseX >= COLOR_HUE.x && mouseX <= COLOR_HUE.x + COLOR_HUE.w &&
       mouseY >= COLOR_HUE.y && mouseY <= COLOR_HUE.y + COLOR_HUE.h) {
     let hy = constrain(mouseY, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h);
@@ -668,6 +660,7 @@ function handleColorClick(){ /* ...同你原版... */
     needsUpdate = true;
     return true;
   }
+
   for (let i = 0; i < RECENT_RECTS.length; i++) {
     const r = RECENT_RECTS[i];
     if (mouseX >= r.x && mouseX <= r.x + r.w &&
@@ -682,112 +675,82 @@ function handleColorClick(){ /* ...同你原版... */
   }
   return false;
 }
-function updateCurrentColor(addRecent=true){
+
+function updateCurrentColor(addRecent=true) {
   push();
   colorMode(HSB, 360, 100, 100);
   currentColor = color(hue, sat, bri);
   pop();
   if (addRecent) addRecentColor(currentColor);
 }
-function addRecentColor(c){
+
+function addRecentColor(c) {
   let nc = color(c);
   recentColors = recentColors.filter(rc => !colorsEqual(rc, nc));
   recentColors.unshift(nc);
   if (recentColors.length > 5) recentColors.length = 5;
 }
-function colorsEqual(c1, c2){
+
+function colorsEqual(c1, c2) {
   return red(c1) === red(c2) && green(c1) === green(c2) && blue(c1) === blue(c2);
 }
 
 /* ============================================================
-   ✅ Randomize：Speed 固定 = 2/5（0.4）
+   ✅ Randomize（关键改动）
+   1) 颜色不变（不碰 hue/sat/bri/currentColor）
+   2) speed 固定 = 0.4（五分之二）
+   3) thickness randomize 最大不超过 0.70（滑块值）
+   4) Range 与 Letter Size 反向组合：一次大字+小Range，下一次小字+大Range
+   5) a 从随机起点开始播放
    ============================================================ */
+let randFlip = false;
+
 function randomizeParams() {
-  const FIXED_SPEED = 0.4; // ✅ 五分之二
+  const FIXED_SPEED = 0.40;   // ✅ 五分之二
+  randFlip = !randFlip;
 
-  const propose = () => {
-    const rVal = sampleBand([
-      { w: 0.44, lo: 0.06, hi: 0.22 },
-      { w: 0.12, lo: 0.32, hi: 0.62 },
-      { w: 0.44, lo: 0.78, hi: 0.98 }
-    ]);
+  // 两种风格交替，但仍保留随机美观
+  let rangeVal, letterVal;
 
-    const gamma = random(0.70, 1.35);
-    let lBase = pow(1.0 - rVal, gamma);
-    let lVal = gauss(lBase, 0.10);
-    lVal = clamp(lVal, 0.25, 0.98);
-
-    let tVal;
-    if (rVal < 0.28) {
-      tVal = sampleBand([
-        { w: 0.60, lo: 0.28, hi: 0.52 },
-        { w: 0.40, lo: 0.52, hi: 0.70 }
-      ]);
-    } else if (rVal > 0.72) {
-      tVal = sampleBand([
-        { w: 0.70, lo: 0.08, hi: 0.30 },
-        { w: 0.30, lo: 0.30, hi: 0.45 }
-      ]);
-    } else {
-      tVal = sampleBand([
-        { w: 0.60, lo: 0.18, hi: 0.40 },
-        { w: 0.40, lo: 0.40, hi: 0.62 }
-      ]);
-    }
-    tVal = min(tVal, 0.70);
-
-    let a0;
-    if (random() < 0.50) a0 = -2 + r01(0.00, 0.85);
-    else a0 =  3 - r01(0.00, 0.85);
-
-    const dense = (rVal < 0.30);
-    const airy  = (rVal > 0.75);
-
-    const rot = dense ? r01(-0.18, 0.18) : airy ? r01(-0.42, 0.42) : r01(-0.30, 0.30);
-    const skew = dense ? r01(-0.16, 0.16) : airy ? r01(-0.30, 0.30) : r01(-0.22, 0.22);
-    const aspect = dense ? r01(0.88, 1.18) : airy ? r01(0.74, 1.34) : r01(0.82, 1.26);
-
-    return { r:rVal, l:lVal, t:tVal, s:FIXED_SPEED, a:a0, wr:rot, ws:skew, wa:aspect };
-  };
-
-  const distScore = (p, q) => (
-    1.10 * abs(p.r - q.r) +
-    1.10 * abs(p.l - q.l) +
-    0.80 * abs(p.t - q.t) +
-    /* ✅ speed 固定就不靠它拉开差异 */
-    0.80 * abs(p.wr - q.wr) +
-    0.60 * abs(p.ws - q.ws) +
-    0.55 * abs(p.wa - q.wa) +
-    0.25 * (abs(p.a - q.a) / 5.0)
-  );
-
-  let cand = null;
-  const tries = 12;
-
-  for (let k = 0; k < tries; k++) {
-    const p = propose();
-    if (!lastRand) { cand = p; break; }
-    const d = distScore(p, lastRand);
-    if (d > 1.18) { cand = p; break; }
-    cand = p;
+  if (randFlip) {
+    // 大字 + 小Range
+    rangeVal  = r01(0.10, 0.28);
+    letterVal = r01(0.72, 0.95);
+  } else {
+    // 小字 + 大Range
+    rangeVal  = r01(0.78, 0.98);
+    letterVal = r01(0.25, 0.48);
   }
 
-  sliders[0].val = cand.r;
-  sliders[2].val = cand.l;
-  sliders[1].val = cand.t;
-  sliders[3].val = cand.s; // ✅ 永远 0.4
+  // thickness：<= 0.70，且根据风格略调（更美观）
+  let thickVal;
+  if (randFlip) {
+    // 大字通常别太粗
+    thickVal = r01(0.20, 0.52);
+  } else {
+    // 小字可以稍厚一点，但硬顶到 0.70
+    thickVal = r01(0.35, 0.70);
+  }
+  thickVal = min(thickVal, 0.70);
 
-  a = cand.a;
-  warpRot = cand.wr;
-  warpSkew = cand.ws;
-  warpAspect = cand.wa;
+  sliders[0].val = rangeVal;
+  sliders[2].val = letterVal;
+  sliders[1].val = thickVal;
+
+  // ✅ speed 固定
+  sliders[3].val = FIXED_SPEED;
+
+  // ✅ a 从随机起点开始（不固定）
+  // 尽量避开“太平”的中间段，让变化明显
+  if (random() < 0.5) a = r01(-2.0, -0.55);
+  else a = r01(0.55, 3.0);
 
   daSign = random([+1, -1]);
-  const newSpeed = map(sliders[3].val, 0, 1, 0.055, 0.26);
-  animationSpeedSliderValue = newSpeed;
-  da = isPlaying ? (daSign * newSpeed) : 0;
 
-  lastRand = cand;
+  // 立刻更新速度（基于滑块映射）
+  animationSpeedSliderValue = map(sliders[3].val, 0, 1, 0.02, 0.14);
+  da = isPlaying ? (daSign * animationSpeedSliderValue) : 0;
+
   needsUpdate = true;
 }
 
