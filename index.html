@@ -10,200 +10,104 @@
     html,body{ height:100%; }
     body{
       margin:0;
-      font-family: ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, "PingFang SC";
+      background:#fff;
       color:#111;
-      background:#fff;
-      overflow-x:hidden;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, "PingFang SC";
+      overflow:hidden; /* 封面一屏就够 */
     }
-    a{ color:inherit; text-decoration:none; }
 
-    /* =========================
-       COVER (top "page")
-       ========================= */
-    .cover{
+    .page{
+      height:100vh;
+      width:100vw;
       position:relative;
-      min-height:100vh;
-      padding: 34px 56px 0;
-      background:#fff;
+      padding: 36px 44px;
     }
     @media (max-width: 980px){
-      .cover{ padding: 22px 18px 0; }
+      .page{ padding: 18px 18px; }
     }
 
-    .cover-grid{
-      width: min(1600px, 100%);
-      margin: 0 auto;
-      display:grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 26px;
-      align-items: stretch;
+    /* 左上角小字 */
+    .topnote{
+      position:absolute;
+      left:44px;
+      top:28px;
+      font-size:12px;
+      line-height:1.35;
+      color:#111;
+      max-width: 360px;
+      opacity:.9;
     }
-    @media (max-width: 1100px){
-      .cover-grid{ grid-template-columns: repeat(2, 1fr); gap: 18px; }
+    @media (max-width: 980px){
+      .topnote{ left:18px; top:14px; max-width: 70vw; }
     }
 
-    .cover-slot{
+    /* 右上角轮播框 */
+    .corner{
+      position:absolute;
+      right:44px;
+      top:28px;
+      width: 280px;
       aspect-ratio: 1 / 1;
-      border-radius: 36px;
-      border: 1.6px solid rgba(0,0,0,.14);
+      border-radius: 16px;
       overflow:hidden;
       background:#fff;
-      box-shadow: 0 1px 0 rgba(0,0,0,.02);
+      border: 0px solid rgba(0,0,0,.12);
     }
-    .cover-slot img{
+    .corner img{
       width:100%;
       height:100%;
-      display:block;
       object-fit: cover;
-      background:#fff;
-      /* 避免图片切换抖动 */
+      display:block;
       transform: translateZ(0);
     }
-
-    /* 中间“过渡渐变带”（像你参考图那种） */
-    .mid-gradient{
-      position: absolute;
-      left: 0;
-      right: 0;
-      top: 48%;
-      height: 520px;
-      pointer-events:none;
-      z-index: 2;
-      background: linear-gradient(
-        to bottom,
-        rgba(0,0,0,0.00) 0%,
-        rgba(0,0,0,0.55) 18%,
-        rgba(0,0,0,0.96) 52%,
-        rgba(0,0,0,0.40) 80%,
-        rgba(0,0,0,0.00) 100%
-      );
-      filter: blur(0px);
-    }
-
-    /* =========================
-       CHOOSE (bottom "page")
-       ========================= */
-    .choose{
-      position:relative;
-      background:#fff;
-      padding: 160px 0 96px; /* 顶部留出空间给渐变带“压下来”的感觉 */
-    }
     @media (max-width: 980px){
-      .choose{ padding: 120px 0 72px; }
+      .corner{ right:18px; top:14px; width: 170px; border-radius: 14px; }
     }
 
-    .wrap{
-      width:min(1200px, calc(100% - 48px));
-      margin:0 auto;
-    }
-
-    .choose-grid{
-      display:grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 44px;
-      align-items:start;
-    }
-    @media (max-width: 980px){
-      .choose-grid{ grid-template-columns: 1fr; gap: 34px; }
-    }
-
-    .item{
+    /* 大标题图（Font(X)=Y 那张图） */
+    .hero{
+      position:absolute;
+      left:0; right:0;
+      bottom: 42px;
       display:flex;
-      flex-direction:column;
-      align-items:center;
-      gap:12px;
-    }
-
-    .thumb{
-      width:100%;
-      aspect-ratio: 3 / 4.7;
-      border-radius: 54px;
-      border: 1.6px solid rgba(0,0,0,.25);
-      overflow:hidden;
-      background:#fff;
-      display:flex;
-      align-items:center;
       justify-content:center;
+      padding: 0 44px;
     }
-    .thumb img{
-      width:100%;
-      height:100%;
-      object-fit: cover;
+    @media (max-width: 980px){
+      .hero{ bottom: 20px; padding: 0 18px; }
+    }
+    .hero img{
+      width: min(1200px, 92vw);
+      height: auto;
       display:block;
-      background:#fff;
-    }
-
-    .note{
-      font-size: 12px;
-      line-height: 1.35;
-      color:#111;
-      text-align:center;
-      max-width: 44ch;
     }
   </style>
 </head>
 
 <body>
+  <main class="page">
 
-  <!-- 封面（8格图） -->
-  <section class="cover">
-    <div class="cover-grid" id="coverGrid">
-      <!-- 初始占位：JS 会自动换成 assets/cover/01-07.png ... -->
-      <div class="cover-slot"><img data-slot="0" alt="cover slot 1"></div>
-      <div class="cover-slot"><img data-slot="1" alt="cover slot 2"></div>
-      <div class="cover-slot"><img data-slot="2" alt="cover slot 3"></div>
-      <div class="cover-slot"><img data-slot="3" alt="cover slot 4"></div>
-      <div class="cover-slot"><img data-slot="4" alt="cover slot 5"></div>
-      <div class="cover-slot"><img data-slot="5" alt="cover slot 6"></div>
-      <div class="cover-slot"><img data-slot="6" alt="cover slot 7"></div>
-      <div class="cover-slot"><img data-slot="7" alt="cover slot 8"></div>
+    <!-- 左上角小字（不想要就我帮你删） -->
+    <div class="topnote">
+      Experiment with building modular glyphs using<br/>
+      mathematical grids and geometric patterns
     </div>
 
-    <!-- 中间渐变过渡带 -->
-    <div class="mid-gradient" aria-hidden="true"></div>
-  </section>
-
-  <!-- 下面的入口卡片（你原本做好的那块） -->
-  <section id="choose" class="choose">
-    <div class="wrap">
-      <div class="choose-grid">
-        <a class="item" href="draw.html">
-          <div class="thumb">
-            <img src="assets/home/blocks.png" alt="Font building blocks">
-          </div>
-          <div class="note">
-            Experiment with building modular glyphs using mathematical grids and geometric patterns
-          </div>
-        </a>
-
-        <a class="item" href="path.html">
-          <div class="thumb">
-            <img src="assets/home/path.png" alt="Font Path Method">
-          </div>
-          <div class="note">
-            Experiment with building modular glyphs using mathematical grids and geometric patterns
-          </div>
-        </a>
-
-        <a class="item" href="texture.html">
-          <div class="thumb">
-            <img src="assets/home/texture.png" alt="Font Texture Method">
-          </div>
-          <div class="note">
-            Experiment with building modular glyphs using mathematical grids and geometric patterns
-          </div>
-        </a>
-      </div>
+    <!-- 右上角：1秒切换一张 -->
+    <div class="corner">
+      <img id="cornerImg" alt="cover-rotating">
     </div>
-  </section>
+
+    <!-- 底部中间：你的 Font(X)=Y 大图（上传到 assets/hero/title.png） -->
+    <div class="hero">
+      <img src="assets/hero/title.png" alt="Font(X)=Y">
+    </div>
+
+  </main>
 
   <script>
-    // =========================
-    // Cover images rotation
-    // =========================
-
-    // 你的 12 张封面图（已上传到 assets/cover/）
-    const coverImages = [
+    // 右上角轮播：12张，每1秒切换
+    const imgs = [
       "assets/cover/01-07.png",
       "assets/cover/01-08.png",
       "assets/cover/01-09.png",
@@ -218,59 +122,17 @@
       "assets/cover/01-18.png"
     ];
 
-    // 8 个 slot 的 <img>
-    const slots = Array.from(document.querySelectorAll('[data-slot]'));
+    const el = document.getElementById("cornerImg");
+    let i = 0;
 
-    // 你给的顺序（2×3 的那个）：
-    // 第一行第一个，第二行第二个，第一行第三个，第二行第一个，第一行第二个，第二行第三个
-    // 这里扩展到 2×4：最后再补“第一行第四个、第二行第四个”
-    // slot 编号（2行×4列）：
-    // 0 1 2 3
-    // 4 5 6 7
-    const updateOrder = [0, 5, 2, 4, 1, 6, 3, 7];
-    let orderPtr = 0;
+    // 先显示第一张
+    el.src = imgs[0];
 
-    // 当前每个 slot 用的是哪张图（保证同一秒不会重复）
-    const current = new Array(slots.length).fill(null);
-
-    function pickRandom(list){
-      return list[Math.floor(Math.random() * list.length)];
-    }
-
-    // 初始化：先随机塞满 8 张（不重复）
-    (function initCover(){
-      const pool = [...coverImages];
-      // 洗牌
-      for(let i = pool.length - 1; i > 0; i--){
-        const j = Math.floor(Math.random() * (i + 1));
-        [pool[i], pool[j]] = [pool[j], pool[i]];
-      }
-      for(let i = 0; i < slots.length; i++){
-        current[i] = pool[i % pool.length];
-        slots[i].src = current[i];
-      }
-    })();
-
-    function step(){
-      const slotIndex = updateOrder[orderPtr % updateOrder.length];
-      orderPtr++;
-
-      // 可选图片 = 不在当前 8 张里面的
-      const used = new Set(current);
-      const candidates = coverImages.filter(src => !used.has(src));
-
-      // 12 张图 > 8 格，所以 candidates 一定有（至少 4 张）
-      const nextSrc = candidates.length ? pickRandom(candidates) : pickRandom(coverImages);
-
-      current[slotIndex] = nextSrc;
-
-      // 切换图片（直接换，不做淡入淡出；你要淡入我也可以加）
-      slots[slotIndex].src = nextSrc;
-    }
-
-    // 每 1 秒换一格
-    setInterval(step, 1000);
+    // 每秒切换一张（循环）
+    setInterval(() => {
+      i = (i + 1) % imgs.length;
+      el.src = imgs[i];
+    }, 1000);
   </script>
-
 </body>
 </html>
