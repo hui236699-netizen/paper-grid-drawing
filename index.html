@@ -27,8 +27,8 @@
        ========================= */
     .cover{
       position: relative;
-      padding: 26px 0 0;
       min-height: 100vh;
+      padding: 22px 0 0;
       background:#fff;
       overflow:hidden;
     }
@@ -41,7 +41,7 @@
       grid-template-columns: repeat(4, 1fr);
       gap: 26px;
       align-items:stretch;
-      padding-top: 12px;
+      padding-top: 10px;
     }
     @media (max-width: 980px){
       .cover-top{ grid-template-columns: repeat(2, 1fr); gap:18px; }
@@ -51,8 +51,8 @@
       aspect-ratio: 1 / 1;
       border-radius: 26px;
       overflow:hidden;
-      background: #f2f2f2;
-      border: 1px solid rgba(0,0,0,.08);
+      background: #fff;
+      border: 1px solid rgba(0,0,0,.10);
       position: relative;
       display:flex;
       align-items:center;
@@ -71,11 +71,11 @@
       transform: scale(0.98);
     }
 
-    /* 中间字标区域：你之后可以换成图片 */
+    /* 中间字标区域（你之后可换成图片） */
     .cover-mid{
       width:min(1200px, calc(100% - 48px));
       margin: 0 auto;
-      padding: 24px 0 18px;
+      padding: 22px 0 10px;
       display:flex;
       align-items:center;
       justify-content:center;
@@ -83,17 +83,18 @@
     .cover-wordmark{
       width:min(980px, 96%);
       border-radius: 22px;
-      overflow:hidden;
       display:flex;
       align-items:center;
       justify-content:center;
-      padding: 22px 0;
+      padding: 18px 0;
       font-weight: 900;
       letter-spacing: .02em;
       font-size: clamp(28px, 5vw, 64px);
+      color:#111;
+      background: transparent;
     }
 
-    /* A 方案：封面到底部的渐变带（连接上下两个页面的感觉） */
+    /* A 方案：封面到底部的“连接渐变带” */
     .cover::after{
       content:"";
       position:absolute;
@@ -105,25 +106,28 @@
       z-index:2;
       background: linear-gradient(
         to bottom,
-        rgba(0,0,0,0.00) 0%,
-        rgba(0,0,0,0.60) 45%,
-        rgba(0,0,0,0.92) 72%,
-        rgba(0,0,0,0.00) 100%
+        rgba(255,255,255,0.00) 0%,
+        rgba(0,0,0,0.35) 45%,
+        rgba(0,0,0,0.65) 70%,
+        rgba(255,255,255,0.00) 100%
       );
       mix-blend-mode: multiply;
     }
 
     /* =========================
-       下方菜单区（保留你原来的卡片入口）
+       下方菜单区（恢复你原来的卡片入口）
        ========================= */
-    .section{
-      position: relative;
-      padding: 26px 0 84px;
-    }
+    .section{ padding: 26px 0 84px; }
     .section h2{
-      margin:0 0 18px;
+      margin:0 0 6px;
       font-size: 24px;
       letter-spacing:-.01em;
+    }
+    .section .sub{
+      margin:0 0 18px;
+      color:#666;
+      font-size: 13px;
+      line-height:1.6;
     }
 
     .grid{
@@ -184,7 +188,6 @@
     <!-- 封面 -->
     <section class="cover">
       <div class="cover-top" id="coverGrid">
-        <!-- 8 个格子（2x4） -->
         <div class="cover-tile"><img data-slot="0" alt="cover slot 1"></div>
         <div class="cover-tile"><img data-slot="1" alt="cover slot 2"></div>
         <div class="cover-tile"><img data-slot="2" alt="cover slot 3"></div>
@@ -200,15 +203,126 @@
       </div>
     </section>
 
-    <!-- 菜单区 -->
+    <!-- 下面你的入口页（保持三卡片） -->
     <section id="choose" class="section">
       <div class="wrap">
         <h2>Choose a Method</h2>
+        <p class="sub">Click an image to enter.</p>
 
         <div class="grid">
           <a class="item" href="draw.html">
             <div class="thumb">
-              <img src="assets/home/blocks.png" alt="Font building blocks">
+              <img src="/assets/home/blocks.png" alt="Font building blocks">
             </div>
             <div class="note">
-              Experiment with building modular glyphs using mathematical gridsand
+              Experiment with building modular glyphs using mathematical gridsand geometric patterns
+            </div>
+          </a>
+
+          <a class="item" href="path.html">
+            <div class="thumb">
+              <img src="/assets/home/path.png" alt="Font Path Method">
+            </div>
+            <div class="note">
+              Experiment with building modular glyphs using mathematical gridsand geometric patterns
+            </div>
+          </a>
+
+          <a class="item" href="texture.html">
+            <div class="thumb">
+              <img src="/assets/home/texture.png" alt="Font Texture Method">
+            </div>
+            <div class="note">
+              Experiment with building modular glyphs using mathematical gridsand geometric patterns
+            </div>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <div class="wrap">© <span id="y"></span> Font Playground</div>
+    </footer>
+  </main>
+
+  <script>
+    document.getElementById("y").textContent = new Date().getFullYear();
+
+    /* =========
+       ✅ 12 张封面图：/assets/cover/01-07.png ~ 01-18.png
+       ========= */
+    const imageFiles = Array.from({ length: 12 }, (_, i) => {
+      const n = String(i + 7).padStart(2, "0"); // 07 ~ 18
+      return `/assets/cover/01-${n}.png`;
+    });
+
+    const slotImgs = Array.from(document.querySelectorAll('img[data-slot]'));
+    const current = new Array(8).fill(null);
+
+    function placeholderDataUrl(label) {
+      const svg = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="800" height="800">
+          <rect width="800" height="800" rx="80" fill="#f2f2f2"/>
+          <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
+            font-family="system-ui, -apple-system" font-weight="800" font-size="68" fill="#b8b8b8">
+            ${label}
+          </text>
+        </svg>`;
+      return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+    }
+
+    // 先绑定 onerror，再设置 src（避免你刚看到的“裂图不被接住”）
+    function setImgSafe(imgEl, src, label){
+      imgEl.onerror = () => { imgEl.src = placeholderDataUrl(label); };
+      // 加一个轻量 cache-bust，避免 Vercel 还在用旧缓存
+      imgEl.src = src + `?v=${Date.now()}`;
+    }
+
+    function initGrid() {
+      for (let i = 0; i < 8; i++) {
+        const src = imageFiles[i % imageFiles.length];
+        current[i] = src;
+        setImgSafe(slotImgs[i], src, `SLOT ${i+1}`);
+      }
+    }
+
+    // 你指定的更新顺序（前 6 个按你说的；后 2 个补齐）
+    // DOM 顺序：第一行 0,1,2,3；第二行 4,5,6,7
+    const updateOrder = [0, 5, 2, 4, 1, 6, 3, 7];
+
+    let orderPtr = 0;
+    let imgPtr = 8;
+
+    function nextUniqueImage(exceptSlotIndex) {
+      const inUse = new Set(current.filter(Boolean));
+      inUse.delete(current[exceptSlotIndex]);
+
+      for (let k = 0; k < imageFiles.length * 3; k++) {
+        const candidate = imageFiles[imgPtr % imageFiles.length];
+        imgPtr++;
+        if (!inUse.has(candidate)) return candidate;
+      }
+      return imageFiles[(imgPtr++) % imageFiles.length];
+    }
+
+    function swapOne() {
+      const slotIndex = updateOrder[orderPtr % updateOrder.length];
+      orderPtr++;
+
+      const tile = slotImgs[slotIndex].closest(".cover-tile");
+      tile.classList.add("is-swapping");
+
+      const newSrc = nextUniqueImage(slotIndex);
+      current[slotIndex] = newSrc;
+
+      setTimeout(() => {
+        setImgSafe(slotImgs[slotIndex], newSrc, `SLOT ${slotIndex+1}`);
+        tile.classList.remove("is-swapping");
+      }, 160);
+    }
+
+    initGrid();
+    setInterval(swapOne, 1000);
+  </script>
+</body>
+</html>
