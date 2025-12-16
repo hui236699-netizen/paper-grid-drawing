@@ -43,12 +43,12 @@
       .topnote{ left:18px; top:14px; max-width: 70vw; }
     }
 
-    /* 右上角轮播框 */
+    /* 右上角轮播框（边距不变，只稍微缩小一点点） */
     .corner{
       position:absolute;
       right:44px;
       top:28px;
-      width: 280px;
+      width: 260px;              /* 原来 280 -> 260（轻微缩小） */
       aspect-ratio: 1 / 1;
       border-radius: 16px;
       overflow:hidden;
@@ -62,41 +62,34 @@
       transform: translateZ(0);
     }
     @media (max-width: 980px){
-      .corner{ right:18px; top:14px; width: 170px; border-radius: 14px; }
+      .corner{ right:18px; top:14px; width: 160px; border-radius: 14px; }
     }
 
-    /* 底部大图 */
+    /* 底部大图：左右边距与 topnote/corner 对齐，并往上挪一点 */
     .hero{
       position:absolute;
-      left:0; right:0;
-      bottom: 42px;
+      left:44px;
+      right:44px;                /* ✅ 与上方左右边距对齐 */
+      bottom: 66px;              /* 原 42 -> 66：整体往上 */
       display:flex;
       justify-content:center;
-      padding: 0 44px;
+      padding: 0;                /* 不再额外加 padding，避免边距不一致 */
     }
     @media (max-width: 980px){
-      .hero{ bottom: 20px; padding: 0 18px; }
+      .hero{
+        left:18px;
+        right:18px;
+        bottom: 34px;
+      }
     }
     .hero img{
-      width: min(1200px, 92vw);
+      width: 100%;               /* ✅ 让它吃满 hero 的左右对齐宽度（更大） */
+      max-width: 1200px;         /* 防止超大屏无限放大，可按需要改大/删掉 */
       height: auto;
       display:block;
     }
 
-    /* ======= 方案A：封面与下方页面之间单独渐变过渡 ======= */
-    .fade-divider{
-      height: 260px;
-      width: 100%;
-      background: linear-gradient(
-        to bottom,
-        rgba(0,0,0,0.00),
-        rgba(0,0,0,0.65),
-        rgba(0,0,0,0.00)
-      );
-      pointer-events:none;
-    }
-
-    /* ======= 你原来的下面页面（保留三张卡片） ======= */
+    /* ======= 你原来的下面页面（三张卡片） ======= */
     .wrap{
       width:min(1200px, calc(100% - 48px));
       margin:0 auto;
@@ -185,9 +178,6 @@
       <img src="assets/hero/title.png" alt="Font(X)=Y">
     </div>
   </section>
-
-  <!-- 渐变过渡（方案A，不会破坏下面布局） -->
-  <div class="fade-divider"></div>
 
   <!-- ======= 下面原来那页：三张卡片进三个网页（保留） ======= -->
   <section id="choose" class="section">
