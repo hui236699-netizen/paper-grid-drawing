@@ -18,37 +18,39 @@
     a{ color:inherit; text-decoration:none; }
 
     /* ======= Cover (第一屏) ======= */
+    :root{
+      --edge: 44px;   /* ✅ 所有左右边距统一用这个；要更大就把 44 改成 36/32 */
+      --top: 28px;
+    }
+    @media (max-width: 980px){
+      :root{ --edge: 18px; --top: 14px; }
+    }
+
     .cover{
       position: relative;
       min-height: 100vh;
       width: 100%;
-      padding: 36px 44px;
+      padding: 36px var(--edge);
       background:#fff;
-    }
-    @media (max-width: 980px){
-      .cover{ padding: 18px 18px; }
     }
 
     .topnote{
       position:absolute;
-      left:44px;
-      top:28px;
+      left:var(--edge);
+      top:var(--top);
       font-size:12px;
       line-height:1.35;
       color:#111;
       max-width: 360px;
       opacity:.9;
     }
-    @media (max-width: 980px){
-      .topnote{ left:18px; top:14px; max-width: 70vw; }
-    }
 
-    /* 右上角轮播框（边距不变，只稍微缩小一点点） */
+    /* 右上角轮播（边距不变，只轻微缩小） */
     .corner{
       position:absolute;
-      right:44px;
-      top:28px;
-      width: 260px;              /* 原来 280 -> 260（轻微缩小） */
+      right:var(--edge);
+      top:var(--top);
+      width: 260px;
       aspect-ratio: 1 / 1;
       border-radius: 16px;
       overflow:hidden;
@@ -62,34 +64,29 @@
       transform: translateZ(0);
     }
     @media (max-width: 980px){
-      .corner{ right:18px; top:14px; width: 160px; border-radius: 14px; }
+      .corner{ width: 160px; border-radius: 14px; }
     }
 
-    /* 底部大图：左右边距与 topnote/corner 对齐，并往上挪一点 */
+    /* 底部大图：左右边距与上方对齐；底部距离保持“你觉得刚好”的位置 */
     .hero{
       position:absolute;
-      left:44px;
-      right:44px;                /* ✅ 与上方左右边距对齐 */
-      bottom: 66px;              /* 原 42 -> 66：整体往上 */
+      left:var(--edge);
+      right:var(--edge);
+      bottom: 42px;              /* ✅ 底部不乱动 */
       display:flex;
       justify-content:center;
-      padding: 0;                /* 不再额外加 padding，避免边距不一致 */
     }
     @media (max-width: 980px){
-      .hero{
-        left:18px;
-        right:18px;
-        bottom: 34px;
-      }
+      .hero{ bottom: 28px; }
     }
     .hero img{
-      width: 100%;               /* ✅ 让它吃满 hero 的左右对齐宽度（更大） */
-      max-width: 1200px;         /* 防止超大屏无限放大，可按需要改大/删掉 */
+      width: 100%;
       height: auto;
       display:block;
+      max-width: none;           /* ✅ 关键：去掉限宽，让它真的吃满左右边距 */
     }
 
-    /* ======= 你原来的下面页面（三张卡片） ======= */
+    /* ======= 下面原来那页：三张卡片进三个网页（保留） ======= */
     .wrap{
       width:min(1200px, calc(100% - 48px));
       margin:0 auto;
@@ -173,7 +170,7 @@
       <img id="cornerImg" alt="cover-rotating">
     </div>
 
-    <!-- 你的 Font(X)=Y 大图：请上传到 assets/hero/title.png -->
+    <!-- 你的 Font(X)=Y 大图：请确保路径存在 -->
     <div class="hero">
       <img src="assets/hero/title.png" alt="Font(X)=Y">
     </div>
@@ -221,10 +218,9 @@
   </footer>
 
   <script>
-    // 年份
     document.getElementById("y").textContent = new Date().getFullYear();
 
-    // 右上角轮播：12张，每1秒切换（循环）
+    // 右上角轮播：12张，每1秒切换
     const imgs = [
       "assets/cover/01-07.png",
       "assets/cover/01-08.png",
@@ -240,7 +236,6 @@
       "assets/cover/01-18.png"
     ];
 
-    // 预加载，避免切换时闪一下/空白
     imgs.forEach(src => { const im = new Image(); im.src = src; });
 
     const el = document.getElementById("cornerImg");
