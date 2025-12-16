@@ -269,7 +269,7 @@ function setup() {
     sliders.push(new Slider(cw/2, y + layout.sliderH/2, 200, layout.sliderH, sliderName[i], 0.5));
   }
 
-  // ✅ 默认值：Range & Thickness = 3/4；Speed 在中上
+  // ✅ 默认值
   sliders[0].val = 0.75;
   sliders[1].val = 0.75;
   sliders[2].val = 0.55;
@@ -360,6 +360,7 @@ function draw() {
 
   for (let s of sliders) s.run();
 
+  // 保持你原来的“持续变化/持续刷新”节奏
   needsUpdate = true;
 }
 
@@ -686,50 +687,50 @@ function colorsEqual(c1, c2) {
   return red(c1) === red(c2) && green(c1) === green(c2) && blue(c1) === blue(c2);
 }
 
-/* =================== ✅ Randomize（只随机参数，不改变颜色） =================== */
+/* ============================================================
+   ✅ Randomize：变化更明显 + 从随机起点开始播放 + 不改变颜色
+   - 极端分布：更容易抽到“很小/很大”
+   - a：直接跳到靠近边界，纹理变化更显著（但起点仍是随机的，不固定）
+   - 不动 hue/sat/bri/currentColor/recent
+   ============================================================ */
 function randomizeParams() {
-  const pickBand = (bands) => {
-    let sum = 0;
-    for (const b of bands) sum += b.w;
-    let r = random(sum);
-    for (const b of bands) {
-      r -= b.w;
-      if (r <= 0) return random(b.lo, b.hi);
+  // 更偏“极端”的随机：大概率落在两端，小概率在中间
+  const pickExtreme01 = (pExtreme = 0.78) => {
+    if (random() < pExtreme) {
+      return random() < 0.5 ? random(0.02, 0.22) : random(0.78, 0.98);
     }
-    return random(bands[bands.length - 1].lo, bands[bands.length - 1].hi);
+    return random(0.30, 0.70);
   };
 
-  sliders[0].val = pickBand([
-    { w: 0.18, lo: 0.20, hi: 0.42 },
-    { w: 0.42, lo: 0.42, hi: 0.78 },
-    { w: 0.40, lo: 0.78, hi: 0.98 }
-  ]);
+  // 让 Range/Thickness/LetterSize 差异更明显
+  sliders[0].val = pickExtreme01(0.80); // Range
+  sliders[1].val = pickExtreme01(0.82); // Thickness
+  sliders[2].val = pickExtreme01(0.72); // Letter Size
 
-  sliders[1].val = pickBand([
-    { w: 0.20, lo: 0.12, hi: 0.35 },
-    { w: 0.40, lo: 0.35, hi: 0.70 },
-    { w: 0.40, lo: 0.70, hi: 0.98 }
-  ]);
+  // Speed：偏快更多一点（视觉变化更强）
+  sliders[3].val = (random() < 0.65) ? random(0.70, 0.98) : random(0.10, 0.55);
 
-  sliders[2].val = pickBand([
-    { w: 0.22, lo: 0.25, hi: 0.45 },
-    { w: 0.56, lo: 0.45, hi: 0.82 },
-    { w: 0.22, lo: 0.82, hi: 0.95 }
-  ]);
+  // ✅ 每次从“随机 a 起点”开始播放（不是固定从同一个点）
+  //    但为了明显变化：起点更常靠近边界（仍然是随机的）
+  if (random() < 0.50) {
+    // 靠近 -2，但不是固定 -2
+    a = -2 + random(0.00, 0.45);
+  } else {
+    // 靠近 3，但不是固定 3
+    a =  3 - random(0.00, 0.45);
+  }
 
-  sliders[3].val = pickBand([
-    { w: 0.18, lo: 0.55, hi: 0.68 },
-    { w: 0.55, lo: 0.68, hi: 0.86 },
-    { w: 0.27, lo: 0.86, hi: 0.96 }
-  ]);
-
-  if (random() < 0.5) a = random(-2.0, -0.55);
-  else a = random(0.55, 3.0);
-
+  // 方向随机
   daSign = random([+1, -1]);
-  if (isPlaying) da = daSign * animationSpeedSliderValue;
 
-  // ✅ 关键：不改 hue/sat/bri，不 rebuildSBGraphic，不 updateCurrentColor，不动 recent
+  // 立即用“新 speed”计算 da（避免等到下一帧才同步）
+  const newSpeed = map(sliders[3].val, 0, 1, 0.02, 0.14);
+  animationSpeedSliderValue = newSpeed;
+  da = isPlaying ? (daSign * newSpeed) : 0;
+
+  // ✅ 不改变颜色：不改 hue/sat/bri，不 rebuildSBGraphic，不 updateCurrentColor，不动 recent
+
+  // 强制立刻刷新
   needsUpdate = true;
 }
 
