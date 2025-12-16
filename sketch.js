@@ -1,9 +1,10 @@
-// =================== 全局设置（响应式 + AI拖拽 + 网格强吸附 + 重写颜色面板） ===================
+// =================== 全局设置（响应式 + 网格强吸附 + 统一拖拽锚点翻转 + Anti-Jitter） ===================
 
 let cw = 240;
 let cellSize = 36;
 
-let dragStart, dragEnd;
+let dragAnchor;          // ✅ 角点锚点（grid int）
+let dragEndFloat;        // ✅ 当前鼠标（grid float）
 let isDragging = false;  // 画新图
 let isMoving = false;    // 移动选中图
 
@@ -18,7 +19,7 @@ let showGrid = true;
 let selectedIndex = -1;
 let moveStartGrid = null;
 let moveOrigXY = null;
-let moveDidChange = false; // ✅ 只有真的移动了才清 redo
+let moveDidChange = false;
 
 // 资源
 let icons = new Array(10);
@@ -48,18 +49,15 @@ let recentColors = [];
 
 let undoButton, clearButton, gridButton, saveButton;
 
+// ✅ 拖拽符号状态（用于 Anti-Jitter：边界附近不抖动）
+let dragSignX = 1;
+let dragSignY = 1;
+
 // =================== 工具函数 ===================
-function clamp(v, lo, hi) {
-  return max(lo, min(hi, v));
-}
-function sign1(v) {
-  return v >= 0 ? 1 : -1;
-}
+function clamp(v, lo, hi) { return max(lo, min(hi, v)); }
 
 // ✅ 清空 redo 栈（你的 undoStack 在这里承担 redo 功能）
-function clearRedo() {
-  undoStack = [];
-}
+function clearRedo() { undoStack = []; }
 
 // ✅ 限制主画布 DPR，避免超高 DPR 设备性能暴涨
 function setCanvasDPR() {
@@ -67,89 +65,94 @@ function setCanvasDPR() {
   smooth();
 }
 
-// ✅ 右侧网格区域的“可用格子数”
-function gridCols() {
-  return max(1, floor((width - cw) / cellSize));
-}
-function gridRows() {
-  return max(1, floor(height / cellSize));
-}
+// ✅ 右侧网格区域可用格子数
+function gridCols() { return max(1, floor((width - cw) / cellSize)); }
+function gridRows() { return max(1, floor(height / cellSize)); }
 
-// 鼠标 -> 网格坐标（强吸附：floor）
-function mouseToGrid() {
+// 鼠标 -> 网格坐标（整数格，强吸附）
+function mouseToGridInt() {
   const gx = floor((mouseX - cw) / cellSize);
   const gy = floor(mouseY / cellSize);
   return { gx, gy };
 }
 
-/**
- * AI矩形工具核心（角点到角点），允许负宽高
- * Shift：锁比例
- * Alt：中心扩张
- */
-function getAIBoxGrid(start, end, useCenter, lockAspect) {
-  let sx = start.x, sy = start.y;
-  let ex = end.x, ey = end.y;
+// ✅ 鼠标 -> 网格坐标（浮点，用于 Anti-Jitter/平滑翻转判断）
+function mouseToGridFloat() {
+  const gx = (mouseX - cw) / cellSize;
+  const gy = mouseY / cellSize;
+  return { gx, gy };
+}
 
-  let w = ex - sx;
-  let h = ey - sy;
+// ✅ Anti-Jitter：根据“死区”更新 dragSignX / dragSignY
+function updateDragSigns(dx, dy) {
+  // 死区像素（越大越稳，但越不灵敏）。你想更“像 Adobe”，8~14 px 都行。
+  const deadPx = 10;
+  const eps = deadPx / cellSize; // 转成 grid 单位
 
-  if (useCenter) {
-    let halfW = abs(w);
-    let halfH = abs(h);
+  // X：在 [-eps, +eps] 内保持上一次符号，不切换
+  if (dx > eps) dragSignX = 1;
+  else if (dx < -eps) dragSignX = -1;
 
-    if (lockAspect) {
-      const m = max(halfW, halfH);
-      halfW = m;
-      halfH = m;
-    }
+  // Y：同理
+  if (dy > eps) dragSignY = 1;
+  else if (dy < -eps) dragSignY = -1;
+}
 
-    return { x: sx - halfW, y: sy - halfH, w: 2 * halfW, h: 2 * halfH };
-  }
+// ✅ 核心：角点锚 + 对角拉伸 + 翻转 + Shift 等比 + Anti-Jitter + 贴网格
+// 返回：{ ax, ay, w, h } 其中 w/h 是“带符号”的格子数（可为负），且最小为 1（带符号）
+function getDragBoxSigned(lockAspect) {
+  const ax = dragAnchor.x;
+  const ay = dragAnchor.y;
+
+  const mx = dragEndFloat.x;
+  const my = dragEndFloat.y;
+
+  // 相对锚点的连续位移（grid float）
+  const dx = mx - ax;
+  const dy = my - ay;
+
+  // 更新符号（含死区）
+  updateDragSigns(dx, dy);
+
+  // 长度（grid int）：用 abs(dx/dy) 的 floor 做吸附，最小 1
+  // 这样“点一下” dx/dy≈0 => length=1，满足你要的 1×1
+  let lenX = max(1, floor(abs(dx)));
+  let lenY = max(1, floor(abs(dy)));
 
   if (lockAspect) {
-    const size = max(abs(w), abs(h));
-    w = sign1(w) * size;
-    h = sign1(h) * size;
+    const s = max(lenX, lenY);
+    lenX = s;
+    lenY = s;
   }
 
-  return { x: sx, y: sy, w, h };
-}
+  let w = dragSignX * lenX;
+  let h = dragSignY * lenY;
 
-function gridBoxToPixel(box) {
-  return { x: box.x * cellSize, y: box.y * cellSize, w: box.w * cellSize, h: box.h * cellSize };
-}
+  // ✅ 限制不出可视网格（保持锚点不动，裁剪 w/h）
+  const cols = gridCols();
+  const rows = gridRows();
 
-// 统一 Shape 存储为正 w/h（并保证整数格）
-function normalizeBoxToShape(box) {
-  let x = box.x;
-  let y = box.y;
-  let w = box.w;
-  let h = box.h;
-
-  if (w < 0) { x = x + w; w = -w; }
-  if (h < 0) { y = y + h; h = -h; }
-
-  x = round(x);
-  y = round(y);
-  w = round(w);
-  h = round(h);
-
-  w = max(1, w);
-  h = max(1, h);
-
-  return { x, y, w, h };
-}
-
-// 命中最上层图形（从后往前）
-function hitTestShape(gx, gy) {
-  for (let i = shapes.length - 1; i >= 0; i--) {
-    const s = shapes[i];
-    const x0 = s.x, y0 = s.y;
-    const x1 = s.x + s.w, y1 = s.y + s.h;
-    if (gx >= x0 && gx < x1 && gy >= y0 && gy < y1) return i;
+  // X 方向裁剪
+  if (w > 0) {
+    // 右下拉：右边界 = ax + w <= cols
+    w = min(w, cols - ax);
+    w = max(1, w); // 保底
+  } else {
+    // 左边翻：左边界 = ax + w >= 0  (w 为负)
+    w = max(w, -ax);
+    w = min(-1, w); // 保底（负）
   }
-  return -1;
+
+  // Y 方向裁剪
+  if (h > 0) {
+    h = min(h, rows - ay);
+    h = max(1, h);
+  } else {
+    h = max(h, -ay);
+    h = min(-1, h);
+  }
+
+  return { ax, ay, w, h };
 }
 
 // =================== 响应式布局（颜色区重写，且强制整数尺寸） ===================
@@ -382,9 +385,7 @@ function windowResized() {
 // =================== draw ===================
 function draw() {
   background(240);
-
-  // ✅ 防 tint 泄漏：每帧先清掉
-  noTint();
+  noTint(); // 防 tint 泄漏
 
   // 右侧画布区域
   push();
@@ -393,8 +394,7 @@ function draw() {
   if (showGrid) drawGrid();
   drawShapes();
 
-  // 选中不画黑框（按你的要求）
-  if (isDragging) drawPreview();
+  if (isDragging) drawPreview(); // ✅ 统一预览逻辑（所有形状一致）
 
   pop();
 
@@ -433,13 +433,15 @@ function drawShapes() {
   for (let s of shapes) s.display();
 }
 
-// =================== 预览（AI式拖拽 + 半透明填充） ===================
+// =================== 统一预览（角点锚 + 翻转 + Shift 等比 + Anti-Jitter） ===================
 function drawPreview() {
-  const useCenter = keyIsDown(ALT);
   const lockAspect = keyIsDown(SHIFT);
+  const box = getDragBoxSigned(lockAspect);
 
-  const box = getAIBoxGrid(dragStart, dragEnd, useCenter, lockAspect);
-  const px = gridBoxToPixel(box);
+  const px = box.ax * cellSize;
+  const py = box.ay * cellSize;
+  const pw = box.w * cellSize;
+  const ph = box.h * cellSize;
 
   const previewFill = color(red(currentColor), green(currentColor), blue(currentColor), 80);
 
@@ -448,48 +450,25 @@ function drawPreview() {
   strokeWeight(3);
   fill(previewFill);
 
-  switch (currentShape) {
-    case 0:
-      rect(px.x, px.y, px.w, px.h);
-      break;
-    case 1:
-      ellipse(px.x + px.w / 2, px.y + px.h / 2, abs(px.w), abs(px.h));
-      break;
-    case 2:
-      drawTriFromBox(px.x, px.y, px.w, px.h);
-      break;
-    case 3:
-      drawParaFromBox(px.x, px.y, px.w, px.h);
-      break;
-    default: {
-      const norm = normalizeBoxToShape(box);
-      drawSvgShape(currentShape, norm.x * cellSize, norm.y * cellSize, norm.w * cellSize, norm.h * cellSize, previewFill);
-      break;
-    }
-  }
+  drawShapeByType(currentShape, px, py, pw, ph, previewFill, true);
 
   pop();
 }
 
-function addNewShape() {
-  const useCenter = keyIsDown(ALT);
+function addNewShapeFromDrag() {
   const lockAspect = keyIsDown(SHIFT);
+  const box = getDragBoxSigned(lockAspect);
 
-  const box = getAIBoxGrid(dragStart, dragEnd, useCenter, lockAspect);
-  const norm = normalizeBoxToShape(box);
-
-  shapes.push(new Shape(norm.x, norm.y, norm.w, norm.h, currentShape, currentColor));
-  clearRedo(); // ✅ 新增后清 redo
+  // ✅ 存储为“锚点 + 带符号 w/h”（这样翻转信息不会丢，SVG 也稳定）
+  shapes.push(new Shape(box.ax, box.ay, box.w, box.h, currentShape, currentColor));
+  clearRedo();
 }
 
 // =================== 新颜色面板（重写 + 修复黑屏） ===================
 function drawColorPanelNew() {
-  // ✅ 防 tint 残留导致色板变黑
   noTint();
-
   const r = 14;
 
-  // 背板
   noStroke();
   fill(38);
   rect(
@@ -500,17 +479,14 @@ function drawColorPanelNew() {
     16
   );
 
-  // SB 边框底
   stroke(70);
   strokeWeight(1);
   fill(20);
   rect(COLOR_MAIN.x, COLOR_MAIN.y, COLOR_MAIN.w, COLOR_MAIN.h, r);
 
-  // ✅ 用 4 参数 image，保证缩放/尺寸一致
   imageMode(CORNER);
   image(sbGraphic, COLOR_MAIN.x, COLOR_MAIN.y, COLOR_MAIN.w, COLOR_MAIN.h);
 
-  // Hue 边框底
   stroke(70);
   strokeWeight(1);
   fill(20);
@@ -628,7 +604,6 @@ function addRecentColor(c) {
   if (recentColors.length > 5) recentColors.length = 5;
 }
 
-// ✅ 容差比较：避免 HSB->RGB 舍入导致“看起来一样但不相等”
 function colorsEqual(c1, c2, eps = 1) {
   return abs(red(c1) - red(c2)) <= eps &&
          abs(green(c1) - green(c2)) <= eps &&
@@ -652,22 +627,31 @@ function mousePressed() {
 
   // 右侧画布区
   if (mouseX > cw && mouseY >= 0 && mouseY <= height) {
-    const { gx, gy } = mouseToGrid();
+    const { gx, gy } = mouseToGridInt();
 
     const hit = hitTestShape(gx, gy);
     if (hit >= 0) {
       selectedIndex = hit;
       isMoving = true;
-      moveDidChange = false;                 // ✅ 重置
+      moveDidChange = false;
       moveStartGrid = { x: gx, y: gy };
       moveOrigXY = { x: shapes[hit].x, y: shapes[hit].y };
       return;
     }
 
     selectedIndex = -1;
+
+    // ✅ 开始绘制：锚点 = 按下格子
     isDragging = true;
-    dragStart = createVector(gx, gy);
-    dragEnd = dragStart.copy(); // ✅ 点一下也能生成 1×1（保留你的需求）
+    dragAnchor = createVector(gx, gy);
+
+    // 初始符号设为正向（不会中心跳变）
+    dragSignX = 1;
+    dragSignY = 1;
+
+    // 初始 end 也设成当前（点一下也能生成 1×1）
+    const f = mouseToGridFloat();
+    dragEndFloat = createVector(f.gx, f.gy);
   }
 }
 
@@ -677,34 +661,49 @@ function mouseDragged() {
     return;
   }
 
-  // 移动：严格按格子 + ✅ 不允许拖出右侧网格可视范围
+  // 移动：严格按格子 + 不出界（支持带符号 w/h 的形状）
   if (isMoving && selectedIndex >= 0 && selectedIndex < shapes.length) {
-    const { gx, gy } = mouseToGrid();
+    const { gx, gy } = mouseToGridInt();
     const dx = gx - moveStartGrid.x;
     const dy = gy - moveStartGrid.y;
-
-    // 仅当真的有位移时标记（避免“点一下选中”也清 redo）
     if (dx !== 0 || dy !== 0) moveDidChange = true;
 
     const s = shapes[selectedIndex];
-    const maxGX = gridCols() - s.w;
-    const maxGY = gridRows() - s.h;
+    const cols = gridCols();
+    const rows = gridRows();
 
-    let nx = moveOrigXY.x + dx;
-    let ny = moveOrigXY.y + dy;
+    // 对于带符号 w/h：允许范围取决于符号
+    // X
+    let minAx, maxAx;
+    if (s.w > 0) { // 右伸
+      minAx = 0;
+      maxAx = cols - s.w;
+    } else {       // 左伸：最左 = ax + w >= 0 => ax >= -w；最右 = ax <= cols
+      minAx = -s.w;
+      maxAx = cols;
+    }
+    // Y
+    let minAy, maxAy;
+    if (s.h > 0) {
+      minAy = 0;
+      maxAy = rows - s.h;
+    } else {
+      minAy = -s.h;
+      maxAy = rows;
+    }
 
-    nx = clamp(round(nx), 0, max(0, maxGX));
-    ny = clamp(round(ny), 0, max(0, maxGY));
+    let nx = clamp(round(moveOrigXY.x + dx), minAx, maxAx);
+    let ny = clamp(round(moveOrigXY.y + dy), minAy, maxAy);
 
     s.x = nx;
     s.y = ny;
     return;
   }
 
-  // 绘制：四向拖拽（AI 逻辑）
+  // 绘制：更新 dragEndFloat（用 float 以便 Anti-Jitter）
   if (isDragging) {
-    const { gx, gy } = mouseToGrid();
-    dragEnd = createVector(gx, gy);
+    const f = mouseToGridFloat();
+    dragEndFloat = createVector(f.gx, f.gy);
   }
 }
 
@@ -720,17 +719,14 @@ function mouseReleased() {
     isMoving = false;
     moveStartGrid = null;
     moveOrigXY = null;
-
-    // ✅ 只有发生位移才清 redo，避免“只是点选”也把 redo 清没
     if (moveDidChange) clearRedo();
     moveDidChange = false;
-
     return;
   }
 
   if (isDragging) {
     isDragging = false;
-    addNewShape(); // ✅ 保留：点一下也会生成 1×1
+    addNewShapeFromDrag(); // ✅ 点一下也生成 1×1（你要的功能保留）
   }
 }
 
@@ -750,40 +746,76 @@ function clearShapes() {
   selectedIndex = -1;
 }
 
-// =================== Shape 类 ===================
+// =================== Shape 命中（支持带符号 w/h） ===================
+function hitTestShape(gx, gy) {
+  for (let i = shapes.length - 1; i >= 0; i--) {
+    const s = shapes[i];
+    const x0 = min(s.x, s.x + s.w);
+    const x1 = max(s.x, s.x + s.w);
+    const y0 = min(s.y, s.y + s.h);
+    const y1 = max(s.y, s.y + s.h);
+    if (gx >= x0 && gx < x1 && gy >= y0 && gy < y1) return i;
+  }
+  return -1;
+}
+
+// =================== Shape 类（存锚点 + 带符号 w/h） ===================
 class Shape {
-  constructor(x, y, w, h, type, c) {
-    this.x = round(x);
-    this.y = round(y);
-    this.w = max(1, round(w));
-    this.h = max(1, round(h));
+  constructor(ax, ay, w, h, type, c) {
+    this.x = round(ax);
+    this.y = round(ay);
+    // ✅ w/h 可为负，但绝不为 0
+    this.w = (w === 0 ? 1 : round(w));
+    this.h = (h === 0 ? 1 : round(h));
     this.type = type;
     this.c = color(c);
   }
 
   display() {
     push();
-    fill(this.c);
     noStroke();
+    fill(this.c);
 
     const px = this.x * cellSize;
     const py = this.y * cellSize;
     const pw = this.w * cellSize;
     const ph = this.h * cellSize;
 
-    switch (this.type) {
-      case 0: rect(px, py, pw, ph); break;
-      case 1: ellipse(px + pw / 2, py + ph / 2, pw, ph); break;
-      case 2: triangle(px + pw / 2, py, px, py + ph, px + pw, py + ph); break;
-      case 3: drawParallelogram(px, py, pw, ph); break;
-      default: drawSvgShape(this.type, px, py, pw, ph, this.c); break;
-    }
+    drawShapeByType(this.type, px, py, pw, ph, this.c, false);
 
     pop();
   }
 }
 
-// =================== 形状辅助（支持预览负宽高） ===================
+// =================== 统一绘制入口（所有图形同一套“锚点 + 带符号 w/h”） ===================
+function drawShapeByType(type, x, y, w, h, col, isPreview) {
+  switch (type) {
+    case 0: // rect
+      rect(x, y, w, h);
+      break;
+
+    case 1: { // ellipse：中心随 w/h 带符号移动，大小取 abs（这样不会中心跳）
+      const cx = x + w / 2;
+      const cy = y + h / 2;
+      ellipse(cx, cy, abs(w), abs(h));
+      break;
+    }
+
+    case 2: // triangle（支持负 w/h）
+      drawTriFromBox(x, y, w, h);
+      break;
+
+    case 3: // parallelogram（支持负 w/h）
+      drawParaFromBox(x, y, w, h);
+      break;
+
+    default: // svg（✅ 支持翻转：负缩放）
+      drawSvgShapeSigned(type, x, y, w, h, col);
+      break;
+  }
+}
+
+// =================== 形状辅助（支持负宽高） ===================
 function drawTriFromBox(x, y, w, h) {
   const x0 = x, y0 = y;
   const x1 = x + w, y1 = y + h;
@@ -811,17 +843,8 @@ function drawParaFromBox(x, y, w, h) {
   endShape(CLOSE);
 }
 
-function drawParallelogram(x, y, w, h) {
-  beginShape();
-  vertex(x + w / 4, y);
-  vertex(x + w, y);
-  vertex(x + (3 * w) / 4, y + h);
-  vertex(x, y + h);
-  endShape(CLOSE);
-}
-
-// =================== SVG 形状（不改 SVG 文件本身） ===================
-function drawSvgShape(type, x, y, w, h, col) {
+// =================== SVG 形状（✅ 统一：锚点 + 带符号 w/h + 负缩放翻转 + Anti-Jitter 无关） ===================
+function drawSvgShapeSigned(type, x, y, w, h, col) {
   const idx = type - 4;
   if (idx < 0 || idx >= svgs.length) return;
   const img = svgs[idx];
@@ -842,10 +865,24 @@ function drawSvgShape(type, x, y, w, h, col) {
     sx = 0; sy = 0; sw = img.width; sh = img.height;
   }
 
+  const signX = w >= 0 ? 1 : -1;
+  const signY = h >= 0 ? 1 : -1;
+
+  const aw = abs(w);
+  const ah = abs(h);
+
   push();
+  // ✅ 以锚点(x,y)为原点做带符号缩放 => 翻转自然出现，且锚点绝不跳
+  translate(x, y);
+  scale(signX, signY);
+
   if (col) tint(col);
   else tint(255);
-  image(img, x, y, w, h, sx, sy, sw, sh);
+
+  // 在局部坐标系里始终画正尺寸（aw/ah），符号由 scale 承担
+  imageMode(CORNER);
+  image(img, 0, 0, aw, ah, sx, sy, sw, sh);
+
   noTint();
   pop();
 }
@@ -942,7 +979,7 @@ function keyPressed() {
   if ((keyCode === BACKSPACE || keyCode === DELETE) && selectedIndex >= 0) {
     shapes.splice(selectedIndex, 1);
     selectedIndex = -1;
-    clearRedo(); // ✅ 删除属于“新动作”，清 redo 更一致
+    clearRedo();
     return false;
   }
 
