@@ -57,8 +57,7 @@ let glyphInput;
 const DEFAULT_GLYPH = "O";
 let glyphChar = DEFAULT_GLYPH;
 
-/* =================== 颜色模块（path 同款） =================== */
-/* ✅ 默认黑色 */
+/* =================== 颜色模块（✅默认黑色） =================== */
 let hue = 0, sat = 0, bri = 0;
 let currentColor;
 
@@ -92,8 +91,8 @@ let rangeSliderValue = 5;
 let thicknessSliderValue = 4;
 let letterScale = 0.72;
 
-/* ✅ 速度会更快一点点 */
-let animationSpeedSliderValue = 0.08;
+/* ✅ 速度基础值（略慢一点） */
+let animationSpeedSliderValue = 0.07;
 
 let needsUpdate = true;
 let isPlaying = true;
@@ -111,9 +110,7 @@ let plotX = 0, plotY = 0;
 function clamp(v, lo, hi) { return max(lo, min(hi, v)); }
 function r01(lo, hi) { return random(lo, hi); }
 
-/* =========================================================
-   ✅ preload 字体：减少加载导致的“跳一下 / 黑屏”
-   ========================================================= */
+/* =================== preload 字体 =================== */
 function preload() {
   glyphFont = loadFont(
     FONT_PATH,
@@ -275,7 +272,7 @@ function setup() {
   sliders[0].val = 0.75;
   sliders[1].val = 0.65;
   sliders[2].val = 0.55;
-  sliders[3].val = 0.78;
+  sliders[3].val = 0.74;   // 默认也略慢一点
 
   needsUpdate = true;
 }
@@ -361,7 +358,6 @@ function draw() {
 
   for (let s of sliders) s.run();
 
-  // 维持持续刷新
   needsUpdate = true;
 }
 
@@ -380,8 +376,8 @@ function updateParameters() {
   thicknessSliderValue = map(sliders[1].val, 0, 1, 2.0, 16.0);
   letterScale = map(sliders[2].val, 0, 1, 0.50, 1.45);
 
-  /* ✅ 再快一点点（整体上移） */
-  animationSpeedSliderValue = map(sliders[3].val, 0, 1, 0.06, 0.30);
+  /* ✅ 关键：整体稍微调慢一点点（原来 0.06~0.30 → 现在 0.055~0.26） */
+  animationSpeedSliderValue = map(sliders[3].val, 0, 1, 0.055, 0.26);
 
   if (isPlaying) da = daSign * animationSpeedSliderValue;
 }
@@ -691,46 +687,42 @@ function colorsEqual(c1, c2) {
 }
 
 /* ============================================================
-   ✅ Randomize：更明显 + 更快一点点 + a 随机起点播放 + 不改颜色
-   ✅ thickness 随机上限：不超过 0.70
+   ✅ Randomize：明显变化 + a 随机起点播放 + 不改颜色
+   ✅ thickness 随机上限：<= 0.70
+   ✅ 速度随机：略慢一点点（比上一版压低）
    ============================================================ */
 function randomizeParams() {
-  // 三种不同模式：一按变化很明显
   const mode = random();
 
   if (mode < 0.34) {
-    // 稠密/厚重（但 thickness <= 0.70）
-    sliders[0].val = r01(0.03, 0.18);   // Range 小
-    sliders[1].val = r01(0.55, 0.70);   // Thickness <= 0.70
-    sliders[2].val = r01(0.78, 0.98);   // Letter 大
+    sliders[0].val = r01(0.03, 0.18);
+    sliders[1].val = r01(0.55, 0.70);   // <= 0.70
+    sliders[2].val = r01(0.78, 0.98);
   } else if (mode < 0.68) {
-    // 稀疏/锐利
-    sliders[0].val = r01(0.82, 0.98);   // Range 大
-    sliders[1].val = r01(0.05, 0.25);   // Thickness 小（自然 <= 0.70）
-    sliders[2].val = r01(0.25, 0.55);   // Letter 小/中
+    sliders[0].val = r01(0.82, 0.98);
+    sliders[1].val = r01(0.05, 0.25);
+    sliders[2].val = r01(0.25, 0.55);
   } else {
-    // 强冲突（但 thickness <= 0.70）
     sliders[0].val = r01(0.75, 0.98);
-    sliders[1].val = r01(0.40, 0.70);   // Thickness <= 0.70
+    sliders[1].val = r01(0.40, 0.70);   // <= 0.70
     sliders[2].val = r01(0.70, 0.98);
   }
 
-  // ✅ Randomize 的速度再快一点点：更偏高值
-  sliders[3].val = (random() < 0.88) ? r01(0.86, 0.98) : r01(0.72, 0.86);
+  // ✅ Randomize 的速度随机区间也压低一点（原来 0.86~0.98 / 0.72~0.86）
+  sliders[3].val = (random() < 0.88) ? r01(0.80, 0.94) : r01(0.68, 0.80);
 
-  // ✅ 每次从“随机 a 起点”开始播放（不固定）
+  // ✅ a 随机起点开始播放（不固定）
   if (random() < 0.50) a = -2 + r01(0.00, 0.75);
   else a =  3 - r01(0.00, 0.75);
 
-  // 方向随机
   daSign = random([+1, -1]);
 
-  // 立刻按新的 slider speed 同步 da（使用新的速度映射）
-  const newSpeed = map(sliders[3].val, 0, 1, 0.06, 0.30);
+  // 用当前速度映射同步 da
+  const newSpeed = map(sliders[3].val, 0, 1, 0.055, 0.26);
   animationSpeedSliderValue = newSpeed;
   da = isPlaying ? (daSign * newSpeed) : 0;
 
-  // ✅ 不改颜色：不动 hue/sat/bri/currentColor/recent，不 rebuildSBGraphic，不 updateCurrentColor
+  // ✅ 不改颜色
   needsUpdate = true;
 }
 
