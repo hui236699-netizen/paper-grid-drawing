@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>Font Path Method</title>
   <style>
     html, body {
@@ -12,12 +12,14 @@
       overflow: hidden;
       height: 100%;
       width: 100%;
+      touch-action: none; /* ✅ 防止移动端滚动/缩放干扰 */
     }
     canvas {
       display: block;
       position: fixed;
       left: 0;
       top: 0;
+      touch-action: none;
     }
 
     /* 输入框：固定在左侧栏里 */
@@ -78,7 +80,7 @@ const functionNames = ["Sin", "Square", "Triangle", "Sawtooth"];
 let glyphInput;
 let glyphChar = "X";
 
-/* =================== 颜色模块（✅完全使用你“上一个正确版本”的位置/样式逻辑） =================== */
+/* =================== 颜色模块（✅色盘 + recent） =================== */
 let hue = 0;
 let sat = 0;
 let bri = 0; // 默认黑
@@ -96,6 +98,10 @@ let recentColors = [];
 
 // 你要“往右一点点”
 const RECENT_BIAS_X = 6;
+
+/* ✅ 新增：颜色拖拽（SB/Hue） */
+let isColorDragging = false;
+let colorDragMode = null; // "sb" | "hue"
 
 /* =================== 功能按钮（只保留 Pause / Save） =================== */
 let pauseButton, saveButton;
@@ -120,8 +126,6 @@ function clamp(v, lo, hi) { return max(lo, min(hi, v)); }
 
 /* ============================================================
    ✅ 新增：单线骨架字库（解决“输入啥都像X”的问题）
-   - 保持你现在的“沿线扰动”味道：我们依旧用 drawParametricCurve 画每段线
-   - X/Y/O 仍走你原来的写法（不改）
    ============================================================ */
 const STICK_FONT = {
   "A": [
@@ -230,7 +234,6 @@ const STICK_FONT = {
 };
 
 function drawStrokeGlyph(strokes) {
-  // strokes: [ [ [x,y], [x,y], ... ], ... ]
   for (const strokePts of strokes) {
     if (!strokePts || strokePts.length < 2) continue;
     for (let i = 0; i < strokePts.length - 1; i++) {
@@ -241,7 +244,7 @@ function drawStrokeGlyph(strokes) {
   }
 }
 
-/* =================== 布局计算（✅色盘完全照你“正确版本”） =================== */
+/* =================== 布局计算 =================== */
 let layout = null;
 
 function computeLayout() {
@@ -344,6 +347,7 @@ function rebuildRecentRects() {
 /* =================== setup =================== */
 function setup() {
   createCanvas(windowWidth, windowHeight);
+  // 主画布可保持 1（你原来就是 1）；如果你未来想更清晰可改成 min(dpr,2)
   pixelDensity(1);
 
   currentColor = color(0);
@@ -356,7 +360,7 @@ function setup() {
   pauseButton = rectToCapButton(FUNC_RECTS.pause, "Pause");
   saveButton  = rectToCapButton(FUNC_RECTS.save,  "Save");
 
-  // ✅ 输入框默认空（placeholder），画面默认仍显示 X
+  // 输入框默认空（placeholder），画面默认仍显示 X
   glyphChar = "X";
   glyphInput = createInput("");
   glyphInput.addClass("glyphInput");
@@ -536,7 +540,7 @@ function drawOneGlyph(ch, offsetX) {
 
   const up = (ch || "").toUpperCase();
 
-  // ✅ 保留你原来的 X / Y / O 逻辑（不动“味道”）
+  // 保留你原来的 X / Y / O 逻辑
   if (up === "X") {
     drawParametricCurve(-70,  110,  70, -110);
     drawParametricCurve( 70,  110, -70, -110);
@@ -550,7 +554,6 @@ function drawOneGlyph(ch, offsetX) {
     drawParametricCircle(0, 0, 90);
   }
   else {
-    // ✅ 关键修复：其它字母不再兜底画 X，而是画对应骨架
     const strokes = STICK_FONT[up] || STICK_FONT["?"];
     drawStrokeGlyph(strokes);
   }
@@ -661,7 +664,7 @@ function drawFunctionDisplay() {
   endShape();
 }
 
-/* =================== 颜色模块（✅完全照你“正确版本”画法） =================== */
+/* =================== 颜色模块（色盘贴图） =================== */
 function buildHueGraphic() {
   const w = max(1, floor(COLOR_HUE.w));
   const h = max(1, floor(COLOR_HUE.h));
@@ -755,26 +758,25 @@ function drawRecentColors() {
   }
 }
 
-function handleColorClick() {
+/* ✅ 把原来“只点一下”的逻辑升级成：按下进入拖拽 + 拖动实时更新 */
+function handleColorPress() {
+  // SB
   if (mouseX >= COLOR_MAIN.x && mouseX <= COLOR_MAIN.x + COLOR_MAIN.w &&
       mouseY >= COLOR_MAIN.y && mouseY <= COLOR_MAIN.y + COLOR_MAIN.h) {
-    let sx = constrain(mouseX, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w);
-    let sy = constrain(mouseY, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h);
-    sat = map(sx, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w, 0, 100);
-    bri = map(sy, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h, 100, 0);
-    updateCurrentColor();
+    isColorDragging = true;
+    colorDragMode = "sb";
+    updateColorByMouse();
     return true;
   }
-
+  // Hue
   if (mouseX >= COLOR_HUE.x && mouseX <= COLOR_HUE.x + COLOR_HUE.w &&
       mouseY >= COLOR_HUE.y && mouseY <= COLOR_HUE.y + COLOR_HUE.h) {
-    let hy = constrain(mouseY, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h);
-    hue = map(hy, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h, 0, 360);
-    buildSBGraphic();
-    updateCurrentColor();
+    isColorDragging = true;
+    colorDragMode = "hue";
+    updateColorByMouse();
     return true;
   }
-
+  // Recent
   for (let i = 0; i < RECENT_RECTS.length; i++) {
     const r = RECENT_RECTS[i];
     if (mouseX >= r.x && mouseX <= r.x + r.w &&
@@ -789,12 +791,31 @@ function handleColorClick() {
   return false;
 }
 
-function updateCurrentColor() {
+function updateColorByMouse() {
+  if (colorDragMode === "sb") {
+    let sx = constrain(mouseX, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w - 1);
+    let sy = constrain(mouseY, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h - 1);
+    sat = map(sx, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w - 1, 0, 100);
+    bri = map(sy, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h - 1, 100, 0);
+    updateCurrentColor(false);
+    return true;
+  }
+  if (colorDragMode === "hue") {
+    let hy = constrain(mouseY, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h - 1);
+    hue = map(hy, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h - 1, 0, 360);
+    buildSBGraphic();
+    updateCurrentColor(false);
+    return true;
+  }
+  return false;
+}
+
+function updateCurrentColor(addRecent = true) {
   push();
   colorMode(HSB, 360, 100, 100);
   currentColor = color(hue, sat, bri);
   pop();
-  addRecentColor(currentColor);
+  if (addRecent) addRecentColor(currentColor);
 }
 
 function addRecentColor(c) {
@@ -804,8 +825,11 @@ function addRecentColor(c) {
   if (recentColors.length > 5) recentColors.length = 5;
 }
 
-function colorsEqual(c1, c2) {
-  return red(c1) === red(c2) && green(c1) === green(c2) && blue(c1) === blue(c2);
+/* ✅ 容差比较，避免“看起来一样但判定不等” */
+function colorsEqual(c1, c2, eps = 1) {
+  return abs(red(c1) - red(c2)) <= eps &&
+         abs(green(c1) - green(c2)) <= eps &&
+         abs(blue(c1) - blue(c2)) <= eps;
 }
 
 /* =================== Randomize =================== */
@@ -828,7 +852,7 @@ function mousePressed() {
 
   if (randomizeButton.hover()) { randomizeParams(); return; }
 
-  if (handleColorClick()) return;
+  if (handleColorPress()) return;
 
   for (let s of sliders) s.click();
 
@@ -837,7 +861,20 @@ function mousePressed() {
   }
 }
 
+/* ✅ 拖拽颜色实时更新 */
+function mouseDragged() {
+  if (isColorDragging) {
+    updateColorByMouse();
+    return;
+  }
+}
+
 function mouseReleased() {
+  if (isColorDragging) {
+    isColorDragging = false;
+    colorDragMode = null;
+    addRecentColor(currentColor);
+  }
   for (let s of sliders) s.state = false;
 }
 
