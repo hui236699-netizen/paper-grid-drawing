@@ -6,27 +6,29 @@
   <title>Font Playground</title>
 
   <style>
-    *{ box-sizing:border-box; }
-    html,body{ height:100%; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body{
       margin:0;
-      background:#fff;
-      color:#111;
       font-family: ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, "PingFang SC";
-      overflow:hidden; /* 封面一屏就够 */
+      color:#111;
+      background:#fff;
+      overflow-x:hidden;
     }
+    a{ color:inherit; text-decoration:none; }
 
-    .page{
-      height:100vh;
-      width:100vw;
-      position:relative;
+    /* ======= Cover (第一屏) ======= */
+    .cover{
+      position: relative;
+      min-height: 100vh;
+      width: 100%;
       padding: 36px 44px;
+      background:#fff;
     }
     @media (max-width: 980px){
-      .page{ padding: 18px 18px; }
+      .cover{ padding: 18px 18px; }
     }
 
-    /* 左上角小字 */
     .topnote{
       position:absolute;
       left:44px;
@@ -51,7 +53,6 @@
       border-radius: 16px;
       overflow:hidden;
       background:#fff;
-      border: 0px solid rgba(0,0,0,.12);
     }
     .corner img{
       width:100%;
@@ -64,7 +65,7 @@
       .corner{ right:18px; top:14px; width: 170px; border-radius: 14px; }
     }
 
-    /* 大标题图（Font(X)=Y 那张图） */
+    /* 底部大图 */
     .hero{
       position:absolute;
       left:0; right:0;
@@ -81,32 +82,159 @@
       height: auto;
       display:block;
     }
+
+    /* ======= 方案A：封面与下方页面之间单独渐变过渡 ======= */
+    .fade-divider{
+      height: 260px;
+      width: 100%;
+      background: linear-gradient(
+        to bottom,
+        rgba(0,0,0,0.00),
+        rgba(0,0,0,0.65),
+        rgba(0,0,0,0.00)
+      );
+      pointer-events:none;
+    }
+
+    /* ======= 你原来的下面页面（保留三张卡片） ======= */
+    .wrap{
+      width:min(1200px, calc(100% - 48px));
+      margin:0 auto;
+    }
+
+    .section{ padding: 56px 0 84px; }
+    .section h2{
+      margin:0 0 6px;
+      font-size: 24px;
+      letter-spacing:-.01em;
+    }
+    .section .sub{
+      margin:0 0 18px;
+      color:#666;
+      font-size: 13px;
+      line-height:1.6;
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap:44px;
+      align-items:start;
+    }
+    @media (max-width: 980px){
+      .grid{ grid-template-columns: 1fr; gap:34px; }
+    }
+
+    .item{
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:12px;
+    }
+
+    .thumb{
+      width:100%;
+      aspect-ratio: 3 / 4.7;
+      border-radius: 54px;
+      border: 1.6px solid rgba(0,0,0,.25);
+      overflow:hidden;
+      background:#fff;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+    .thumb img{
+      width:100%;
+      height:100%;
+      object-fit: cover;
+      display:block;
+      background:#fff;
+    }
+
+    .note{
+      font-size: 12px;
+      line-height: 1.35;
+      color:#111;
+      text-align:center;
+      max-width: 44ch;
+    }
+
+    footer{
+      border-top: 1px solid rgba(0,0,0,.08);
+      padding: 18px 0 26px;
+      color: #888;
+      font-size: 12px;
+    }
   </style>
 </head>
 
 <body>
-  <main class="page">
-
-    <!-- 左上角小字（不想要就我帮你删） -->
+  <!-- ======= 第一屏：封面 ======= -->
+  <section class="cover">
     <div class="topnote">
       Experiment with building modular glyphs using<br/>
       mathematical grids and geometric patterns
     </div>
 
-    <!-- 右上角：1秒切换一张 -->
     <div class="corner">
       <img id="cornerImg" alt="cover-rotating">
     </div>
 
-    <!-- 底部中间：你的 Font(X)=Y 大图（上传到 assets/hero/title.png） -->
+    <!-- 你的 Font(X)=Y 大图：请上传到 assets/hero/title.png -->
     <div class="hero">
       <img src="assets/hero/title.png" alt="Font(X)=Y">
     </div>
+  </section>
 
-  </main>
+  <!-- 渐变过渡（方案A，不会破坏下面布局） -->
+  <div class="fade-divider"></div>
+
+  <!-- ======= 下面原来那页：三张卡片进三个网页（保留） ======= -->
+  <section id="choose" class="section">
+    <div class="wrap">
+      <h2>Choose a Method</h2>
+      <p class="sub">Click an image to enter.</p>
+
+      <div class="grid">
+        <a class="item" href="draw.html">
+          <div class="thumb">
+            <img src="assets/home/blocks.png" alt="Font building blocks">
+          </div>
+          <div class="note">
+            Experiment with building modular glyphs using mathematical grids and geometric patterns
+          </div>
+        </a>
+
+        <a class="item" href="path.html">
+          <div class="thumb">
+            <img src="assets/home/path.png" alt="Font Path Method">
+          </div>
+          <div class="note">
+            Experiment with building modular glyphs using mathematical grids and geometric patterns
+          </div>
+        </a>
+
+        <a class="item" href="texture.html">
+          <div class="thumb">
+            <img src="assets/home/texture.png" alt="Font Texture Method">
+          </div>
+          <div class="note">
+            Experiment with building modular glyphs using mathematical grids and geometric patterns
+          </div>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">© <span id="y"></span> Font Playground</div>
+  </footer>
 
   <script>
-    // 右上角轮播：12张，每1秒切换
+    // 年份
+    document.getElementById("y").textContent = new Date().getFullYear();
+
+    // 右上角轮播：12张，每1秒切换（循环）
     const imgs = [
       "assets/cover/01-07.png",
       "assets/cover/01-08.png",
@@ -122,13 +250,13 @@
       "assets/cover/01-18.png"
     ];
 
+    // 预加载，避免切换时闪一下/空白
+    imgs.forEach(src => { const im = new Image(); im.src = src; });
+
     const el = document.getElementById("cornerImg");
     let i = 0;
-
-    // 先显示第一张
     el.src = imgs[0];
 
-    // 每秒切换一张（循环）
     setInterval(() => {
       i = (i + 1) % imgs.length;
       el.src = imgs[i];
