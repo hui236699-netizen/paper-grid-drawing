@@ -66,10 +66,7 @@
     }
 
     /* Hero */
-    .hero{
-      padding: 56px 0 26px;
-      position: relative; /* ✅ B 方案需要 */
-    }
+    .hero{ padding: 56px 0 26px; }
     h1{
       margin:0 0 10px;
       font-size: clamp(34px, 4.2vw, 56px);
@@ -83,29 +80,12 @@
       font-size: 15px;
       line-height:1.75;
     }
-
-    /* ✅ B 方案：hero 底部暗化渐变 */
-    .hero::after{
-      content:"";
-      position:absolute;
-      left:0;
-      bottom:-60px;
-      width:100%;
-      height:220px;
-      pointer-events:none;
-      z-index:1;
-      background: linear-gradient(
-        to bottom,
-        rgba(0,0,0,0.00),
-        rgba(0,0,0,0.65),
-        rgba(0,0,0,0.00)
-      );
-    }
-
-    /* ✅ hero 内容在渐变之上 */
-    .hero .wrap{
-      position: relative;
-      z-index:2;
+    .hero-cta{
+      margin-top:18px;
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+      align-items:center;
     }
 
     /* Choose section */
@@ -143,7 +123,7 @@
     /* Only keep the small border around the image area */
     .thumb{
       width:100%;
-      aspect-ratio: 3 / 4.7; /* 接近你图里那种竖向卡片比例 */
+      aspect-ratio: 3 / 4.7;
       border-radius: 54px;
       border: 1.6px solid rgba(0,0,0,.25);
       overflow:hidden;
@@ -155,7 +135,7 @@
     .thumb img{
       width:100%;
       height:100%;
-      object-fit: cover; /* 如果你想完整显示改成 contain */
+      object-fit: cover;
       display:block;
       background:#fff;
     }
@@ -173,6 +153,35 @@
       padding: 18px 0 26px;
       color: #888;
       font-size: 12px;
+    }
+
+    /* ====== A 方案：中间黑带渐变（盖住 hero 底部 + 过渡到 choose） ====== */
+    .section{
+      position: relative;
+    }
+
+    .section::before{
+      content:"";
+      position:absolute;
+      left:0;
+      top:-140px;          /* 往上盖住 hero 尾部 */
+      width:100%;
+      height:240px;        /* 黑带高度 */
+      pointer-events:none;
+      z-index:2;
+      background: linear-gradient(
+        to bottom,
+        rgba(0,0,0,0.98) 0%,
+        rgba(0,0,0,0.92) 35%,
+        rgba(0,0,0,0.15) 78%,
+        rgba(0,0,0,0.00) 100%
+      );
+      mix-blend-mode: multiply;
+    }
+
+    .section .wrap{
+      position: relative;
+      z-index:3;
     }
   </style>
 </head>
@@ -200,7 +209,9 @@
           Scroll down to choose a method. The first one opens your grid builder page.
           The other two pages are placeholders for now.
         </p>
+
         <!-- ✅ 已删除：Choose a Method / Go to Grid Builder 两个按钮 -->
+        <!-- <div class="hero-cta"> ... </div> -->
       </div>
     </section>
 
