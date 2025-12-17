@@ -5,19 +5,20 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Font Playground</title>
 
+  <!-- ✅ 防止“打开先跳一下”——先隐藏页面，等滚动就位再显示 -->
   <style>
     body { visibility: hidden; }
   </style>
 
+  <!-- ✅ 滚动控制：默认打开=顶部；只有从子页面 Back 回来才到第二屏 -->
   <script>
     (function () {
+      // 禁止浏览器自动恢复滚动（微信/手机浏览器也尽量兜住）
       if ("scrollRestoration" in history) history.scrollRestoration = "manual";
 
       let settled = false;
 
-      function showBody() {
-        document.body.style.visibility = "visible";
-      }
+      function showBody() { document.body.style.visibility = "visible"; }
 
       function scrollToTopInstant() {
         const prev = document.documentElement.style.scrollBehavior;
@@ -36,6 +37,7 @@
         return true;
       }
 
+      // 用 ?from=method 作为“从 draw/path/texture 返回”的唯一信号
       function clearFromMethodFlag() {
         const url = new URL(location.href);
         url.searchParams.delete("from");
@@ -53,7 +55,7 @@
         if (fromMethod) {
           const ok = scrollToChooseInstant();
           if (ok) {
-            clearFromMethodFlag();
+            clearFromMethodFlag(); // 清掉参数，避免刷新/再次打开仍然跳第二屏
             settled = true;
           }
         } else {
@@ -62,8 +64,10 @@
         }
       }
 
+      // 尽量早地先定位一次
       settleScroll();
 
+      // DOM 完整后再定位一次（避免布局变化导致偏移），最后再显示
       window.addEventListener("DOMContentLoaded", () => {
         requestAnimationFrame(() => {
           settleScroll();
@@ -71,6 +75,7 @@
         });
       });
 
+      // pageshow：处理 iOS/微信 bfcache 恢复
       window.addEventListener("pageshow", (e) => {
         if (e.persisted) settled = false;
         requestAnimationFrame(() => {
@@ -97,6 +102,7 @@
       --edge: clamp(18px, 4vmin, 44px);
       --top:  clamp(14px, 2.6vmin, 28px);
 
+      /* 右上角：稍微小一点（边距不变） */
       --cornerSize: clamp(156px, 20vmin, 286px);
       --cornerRadius: clamp(12px, 2.1vmin, 18px);
 
@@ -114,6 +120,7 @@
       background:#fff;
     }
 
+    /* 背景公式层 */
     .bg-formulas{
       position:absolute;
       inset:0;
@@ -150,6 +157,7 @@
       transition: opacity 220ms ease;
     }
 
+    /* 左上角新模块（位置/边距保持不变） */
     .leftui{
       position:absolute;
       left:var(--edge);
@@ -158,12 +166,14 @@
       max-width: min(520px, calc(100vw - var(--edge) * 2 - var(--cornerSize)));
     }
 
+    /* 小标题图 */
     .leftui .mini-hero{
       width: clamp(180px, 21.5vmin, 320px);
       height: auto;
       display:block;
     }
 
+    /* 四个词 */
     .leftui .words{
       margin-top: 12px;
       font-size: 17px;
@@ -173,6 +183,7 @@
     }
     .leftui .words div{ margin: 3px 0; }
 
+    /* Try now：更强调 */
     .trylink{
       display:inline-flex;
       align-items:center;
@@ -196,6 +207,7 @@
       50%, 100% { opacity: 0.12; }
     }
 
+    /* 右上角轮播 */
     .corner{
       position:absolute;
       right:var(--edge);
@@ -219,7 +231,7 @@
       position:absolute;
       left:var(--edge);
       right:var(--edge);
-      bottom: calc(var(--heroBottom) + 8px);
+      bottom: calc(var(--heroBottom) + 8px); /* ✅ 第一屏底部标题图：稍微往下 */
       display:flex;
       justify-content:center;
       z-index:2;
@@ -296,28 +308,6 @@
       font-size: 12px;
       background:#fff;
     }
-
-    /* ======= 小提示（两屏底部） ======= */
-    .support-note{
-      font-size: 12px;
-      line-height: 1.4;
-      /* ✅ 更浅一点 */
-      color: #bdbdbd;
-      text-align: center;
-    }
-    .support-note.cover-note{
-      position: absolute;
-      left: var(--edge);
-      right: var(--edge);
-      bottom: 14px;
-      z-index: 2;
-      pointer-events: none;
-    }
-    /* ✅ 第二屏：再往下（更靠近 footer 上面） */
-    .support-note.choose-note{
-      margin-top: 110px;  /* 再往下 */
-      padding-bottom: 30px;
-    }
   </style>
 </head>
 
@@ -346,10 +336,6 @@
 
     <div class="hero" id="heroBox">
       <img src="assets/hero/title.png" alt="Font(X)=Y">
-    </div>
-
-    <div class="support-note cover-note">
-      If something isn’t working, try opening and refreshing on a desktop browser.
     </div>
   </section>
 
@@ -383,10 +369,6 @@
           </div>
         </a>
       </div>
-
-      <div class="support-note choose-note">
-        If something isn’t working, try opening and refreshing on a desktop browser.
-      </div>
     </div>
   </section>
 
@@ -397,6 +379,7 @@
   <script>
     document.getElementById("y").textContent = new Date().getFullYear();
 
+    // Try now：平滑滚动到第二屏（不会改 URL，所以刷新/打开仍然默认顶部）
     const tryBtn = document.getElementById("tryBtn");
     tryBtn.addEventListener("click", (e) => {
       e.preventDefault();
@@ -428,15 +411,36 @@
       cornerImgEl.src = coverImgs[ci];
     }, 1000);
 
-    /* ===== 背景公式（保持原逻辑） ===== */
+    /* ===== 背景公式 ===== */
     const BASE_FORMULAS = [
-      "x + y = y + x","a(x + b) = ax + ab","x² - a² = (x + a)(x - a)","(x ± a)² = x² ± 2ax + a²",
-      "x = [-b ± √(b² - 4ac)]/(2a)","y = kx + b","y = ax² + bx + c","sin(x + y) = sinx cosy + cosx siny",
-      "sin²x + cos²x = 1","a^x × a^y = a^(x + y)","log_a x = log_c x / log_c a","(x^n)' = n x^(n - 1)",
-      "∫x^n dx = x^(n + 1)/(n + 1) + C","∫[a,b]x^n dx = b^(n + 1)/(n + 1) - a^(n + 1)/(n + 1)",
-      "y = sinx","y = cosx","y = ln x","y = e^x","ax + by = c","(x - a)² + (y - b)² = r²",
-      "dy/dx = (dy/dt)/(dx/dt)","∫sinx dx = -cosx + C","∫cosx dx = sinx + C","x^m × x^n = x^(m + n)","(xy)^n = x^n y^n",
-      "y = ax³ + bx² + cx + d + (e x)/(f + x²)","y = sin(kx + φ) + cos(mx - θ) + tan(nx)",
+      "x + y = y + x",
+      "a(x + b) = ax + ab",
+      "x² - a² = (x + a)(x - a)",
+      "(x ± a)² = x² ± 2ax + a²",
+      "x = [-b ± √(b² - 4ac)]/(2a)",
+      "y = kx + b",
+      "y = ax² + bx + c",
+      "sin(x + y) = sinx cosy + cosx siny",
+      "sin²x + cos²x = 1",
+      "a^x × a^y = a^(x + y)",
+      "log_a x = log_c x / log_c a",
+      "(x^n)' = n x^(n - 1)",
+      "∫x^n dx = x^(n + 1)/(n + 1) + C",
+      "∫[a,b]x^n dx = b^(n + 1)/(n + 1) - a^(n + 1)/(n + 1)",
+      "y = sinx",
+      "y = cosx",
+      "y = ln x",
+      "y = e^x",
+      "ax + by = c",
+      "(x - a)² + (y - b)² = r²",
+      "dy/dx = (dy/dt)/(dx/dt)",
+      "∫sinx dx = -cosx + C",
+      "∫cosx dx = sinx + C",
+      "x^m × x^n = x^(m + n)",
+      "(xy)^n = x^n y^n",
+
+      "y = ax³ + bx² + cx + d + (e x)/(f + x²)",
+      "y = sin(kx + φ) + cos(mx - θ) + tan(nx)",
       "x = [ -b ± √(b² - 4ac + 8de - 2fg) ] / (2a + 3h)",
       "y = a e^(kx) + b ln(cx + d) + c √(ex² + fx + g)",
       "y = (x² - 3x + 2)(2x³ + 5x - 7)/(x + 4)(x² - 1)",
@@ -768,105 +772,6 @@
     });
 
     schedule();
-  </script>
-</head>
-
-<body>
-  <section class="cover" id="cover">
-    <div class="bg-formulas" id="bgFormulas" aria-hidden="true"></div>
-
-    <div class="leftui" id="leftUI">
-      <img class="mini-hero" src="assets/hero/title.png" alt="Font(X)=Y">
-      <div class="words" aria-label="keywords">
-        <div>Function</div>
-        <div>Parameter</div>
-        <div>System</div>
-        <div>Form</div>
-      </div>
-
-      <a class="trylink" href="javascript:void(0)" id="tryBtn" aria-label="Try now - jump to methods">
-        <span class="arrow" aria-hidden="true">→</span>
-        <span>Try now</span>
-      </a>
-    </div>
-
-    <div class="corner" id="cornerBox">
-      <img id="cornerImg" alt="cover-rotating">
-    </div>
-
-    <div class="hero" id="heroBox">
-      <img src="assets/hero/title.png" alt="Font(X)=Y">
-    </div>
-
-    <div class="support-note cover-note">
-      If something isn’t working, try opening and refreshing on a desktop browser.
-    </div>
-  </section>
-
-  <section id="choose" class="section">
-    <div class="wrap">
-      <div class="grid">
-        <a class="item" href="draw.html">
-          <div class="thumb">
-            <img src="assets/home/blocks.png" alt="Font building blocks">
-          </div>
-          <div class="note">
-            Experiment with building modular glyphs using mathematical grids and geometric patterns
-          </div>
-        </a>
-
-        <a class="item" href="path.html">
-          <div class="thumb">
-            <img src="assets/home/path.png" alt="Font Path Method">
-          </div>
-          <div class="note">
-            Experiment with building modular glyphs using mathematical grids and geometric patterns
-          </div>
-        </a>
-
-        <a class="item" href="texture.html">
-          <div class="thumb">
-            <img src="assets/home/texture.png" alt="Font Texture Method">
-          </div>
-          <div class="note">
-            Experiment with building modular glyphs using mathematical grids and geometric patterns
-          </div>
-        </a>
-      </div>
-
-      <div class="support-note choose-note">
-        If something isn’t working, try opening and refreshing on a desktop browser.
-      </div>
-    </div>
-  </section>
-
-  <footer>
-    <div class="wrap">© <span id="y"></span> Font Playground</div>
-  </footer>
-
-  <script>
-    document.getElementById("y").textContent = new Date().getFullYear();
-
-    const tryBtn = document.getElementById("tryBtn");
-    tryBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      document.getElementById("choose")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-
-    const coverImgs = [
-      "assets/cover/01-07.png","assets/cover/01-08.png","assets/cover/01-09.png","assets/cover/01-10.png",
-      "assets/cover/01-11.png","assets/cover/01-12.png","assets/cover/01-13.png","assets/cover/01-14.png",
-      "assets/cover/01-15.png","assets/cover/01-16.png","assets/cover/01-17.png","assets/cover/01-18.png"
-    ];
-    coverImgs.forEach(src => { const im = new Image(); im.src = src; });
-
-    const cornerImgEl = document.getElementById("cornerImg");
-    let ci = 0;
-    cornerImgEl.src = coverImgs[0];
-    setInterval(() => {
-      ci = (ci + 1) % coverImgs.length;
-      cornerImgEl.src = coverImgs[ci];
-    }, 1000);
   </script>
 </body>
 </html>
