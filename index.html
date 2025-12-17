@@ -17,29 +17,31 @@
     }
     a{ color:inherit; text-decoration:none; }
 
-    /* ✅ 统一比例体系：用 vmin + clamp 连续缩放（不同屏幕比例更一致） */
+    /* ✅ 连续缩放的比例体系（不同屏幕比例更一致） */
     :root{
       --edge: clamp(18px, 4vmin, 44px);
       --top:  clamp(14px, 2.6vmin, 28px);
 
-      --cornerSize: clamp(140px, 18vmin, 240px);
-      --cornerRadius: clamp(12px, 2.1vmin, 16px);
+      /* ✅ 微调 #1：右上角图更大一点 */
+      --cornerSize: clamp(176px, 22vmin, 312px);
+      --cornerRadius: clamp(12px, 2.1vmin, 18px);
 
-      --heroBottom: clamp(18px, 4vmin, 42px);
+      /* ✅ 微调 #2：标题图离底部更远一点 */
+      --heroBottom: clamp(34px, 7vmin, 102px);
     }
 
     /* ======= Cover (第一屏) ======= */
     .cover{
       position: relative;
       min-height: 100vh;
-      min-height: 100svh; /* ✅ 移动端地址栏适配 */
+      min-height: 100svh; /* 移动端地址栏适配 */
       width: 100%;
       padding: 36px var(--edge);
       overflow:hidden;
-      background:#fff;
+      background:#fff; /* 无网格点子 */
     }
 
-    /* ✅ 背景公式层（最底层） */
+    /* 背景公式层 */
     .bg-formulas{
       position:absolute;
       inset:0;
@@ -50,7 +52,7 @@
       position:absolute;
       font-size:12px;
       line-height:1.35;
-      color:#b8b8b8;       /* ✅ 浅灰 */
+      color:#b8b8b8; /* 浅灰 */
       opacity:0;
       white-space:pre;
       transform: translateZ(0);
@@ -61,6 +63,7 @@
       .formula{ max-width: min(460px, calc(100vw - 90px)); }
     }
 
+    /* 极轻“呼吸” */
     @keyframes breathe {
       0%, 100% { opacity: 0.75; }
       50% { opacity: 0.9; }
@@ -88,7 +91,7 @@
       z-index:2;
     }
 
-    /* 右上角轮播（恢复原始切换方式） */
+    /* 右上角轮播 */
     .corner{
       position:absolute;
       right:var(--edge);
@@ -123,12 +126,12 @@
       display:block;
       max-width: none;
 
-      /* ✅ 也用同一比例体系限制高度，避免超矮屏挤爆 */
-      max-height: 46vmin;
+      /* ✅ 关键：超大屏不让它无限变大，减少“粘连感” */
+      max-height: clamp(320px, 38vmin, 680px);
       object-fit: contain;
     }
 
-    /* ======= 下面原来那页：三张卡片进三个网页（保留） ======= */
+    /* ======= 第二屏 ======= */
     .wrap{
       width:min(1200px, calc(100% - 48px));
       margin:0 auto;
@@ -145,6 +148,11 @@
       color:#666;
       font-size: 13px;
       line-height:1.6;
+    }
+
+    /* ✅ 大高屏增加一点“断开感” */
+    @media (min-height: 900px){
+      .section{ padding-top: 76px; }
     }
 
     .grid{
@@ -262,7 +270,7 @@
   <script>
     document.getElementById("y").textContent = new Date().getFullYear();
 
-    /* 右上角轮播：12张（✅ 恢复你原来的 1 秒切换方式） */
+    /* 右上角轮播：✅ 恢复你原来的 1 秒切换方式 */
     const coverImgs = [
       "assets/cover/01-07.png",
       "assets/cover/01-08.png",
@@ -421,7 +429,7 @@
       return { x, y, w, h };
     }
 
-    /* ✅ 优化：尺寸测量缓存 */
+    /* 尺寸测量缓存 */
     const sizeCache = new Map();
     function measureFormulaSize(text){
       const cached = sizeCache.get(text);
@@ -442,7 +450,7 @@
       return size;
     }
 
-    /* ✅ 优化：纵向分散偏好 */
+    /* 纵向分散偏好 */
     function distanceScore(cx, cy){
       if (active.length === 0) return 1e9;
 
@@ -614,7 +622,7 @@
       }, speed);
     }
 
-    /* ✅ 静态时间点 */
+    /* 静态时间点 */
     let quietUntil = 0;
     let nextQuietAt = Date.now() + randi(30000, 45000);
     function canSpawn() { return Date.now() > quietUntil; }
@@ -637,6 +645,7 @@
           return;
         }
 
+        // 同时开始生成不超过2个；页面最多4个
         const want = randi(1, 3); // 1 或 2
         const toAdd = Math.min(MAX_ACTIVE - active.length, want, 2);
         for (let k = 0; k < toAdd; k++) spawnOne();
