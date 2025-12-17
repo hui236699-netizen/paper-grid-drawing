@@ -5,12 +5,10 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Font Playground</title>
 
-  <!-- ✅ 防止“打开先跳一下”——先隐藏页面，等滚动就位再显示 -->
   <style>
     body { visibility: hidden; }
   </style>
 
-  <!-- ✅ 滚动控制：默认=顶部；只有 ?from=method 才到第二屏；且不会“闪一下又回顶部” -->
   <script>
     (function () {
       if ("scrollRestoration" in history) history.scrollRestoration = "manual";
@@ -99,7 +97,6 @@
       --edge: clamp(18px, 4vmin, 44px);
       --top:  clamp(14px, 2.6vmin, 28px);
 
-      /* 右上角：稍微小一点（边距不变） */
       --cornerSize: clamp(156px, 20vmin, 286px);
       --cornerRadius: clamp(12px, 2.1vmin, 18px);
 
@@ -117,7 +114,6 @@
       background:#fff;
     }
 
-    /* 背景公式层 */
     .bg-formulas{
       position:absolute;
       inset:0;
@@ -154,7 +150,6 @@
       transition: opacity 220ms ease;
     }
 
-    /* 左上角新模块（位置/边距保持不变） */
     .leftui{
       position:absolute;
       left:var(--edge);
@@ -163,14 +158,12 @@
       max-width: min(520px, calc(100vw - var(--edge) * 2 - var(--cornerSize)));
     }
 
-    /* 小标题图 */
     .leftui .mini-hero{
       width: clamp(180px, 21.5vmin, 320px);
       height: auto;
       display:block;
     }
 
-    /* 四个词 */
     .leftui .words{
       margin-top: 12px;
       font-size: 17px;
@@ -180,7 +173,6 @@
     }
     .leftui .words div{ margin: 3px 0; }
 
-    /* Try now：更强调 */
     .trylink{
       display:inline-flex;
       align-items:center;
@@ -204,7 +196,6 @@
       50%, 100% { opacity: 0.12; }
     }
 
-    /* 右上角轮播 */
     .corner{
       position:absolute;
       right:var(--edge);
@@ -228,8 +219,8 @@
       position:absolute;
       left:var(--edge);
       right:var(--edge);
-      /* ✅ 第一屏底部标题图：稍微往上移一点点 */
-      bottom: calc(var(--heroBottom) + 18px);
+      /* ✅ 第一屏底部标题图：往下回一点点（比上一版更靠下） */
+      bottom: calc(var(--heroBottom) + 8px);
       display:flex;
       justify-content:center;
       z-index:2;
@@ -314,7 +305,6 @@
       color: #9a9a9a;
       text-align: center;
     }
-    /* 第一屏底部固定在 cover 内 */
     .support-note.cover-note{
       position: absolute;
       left: var(--edge);
@@ -323,10 +313,10 @@
       z-index: 2;
       pointer-events: none;
     }
-    /* ✅ 第二屏：放在内容末尾、footer 上面 */
+    /* ✅ 第二屏：更靠下（贴近 footer 但在它上面） */
     .support-note.choose-note{
-      margin-top: 28px;
-      padding-bottom: 6px;
+      margin-top: 72px;   /* 原来偏上 -> 这里加大间距让它更靠下 */
+      padding-bottom: 18px;
     }
   </style>
 </head>
@@ -344,7 +334,6 @@
         <div>Form</div>
       </div>
 
-      <!-- ✅ 不使用 #choose，避免 hash 影响刷新 -->
       <a class="trylink" href="javascript:void(0)" id="tryBtn" aria-label="Try now - jump to methods">
         <span class="arrow" aria-hidden="true">→</span>
         <span>Try now</span>
@@ -359,7 +348,6 @@
       <img src="assets/hero/title.png" alt="Font(X)=Y">
     </div>
 
-    <!-- ✅ 第一屏底部提示 -->
     <div class="support-note cover-note">
       If something isn’t working, try opening and refreshing on a desktop browser.
     </div>
@@ -396,7 +384,6 @@
         </a>
       </div>
 
-      <!-- ✅ 第二屏内容底部提示（在 footer 上面） -->
       <div class="support-note choose-note">
         If something isn’t working, try opening and refreshing on a desktop browser.
       </div>
