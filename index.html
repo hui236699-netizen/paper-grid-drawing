@@ -5,6 +5,59 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Font Playground</title>
 
+  <!-- ✅ 新增：滚动控制（不影响 index.html#choose 返回） -->
+  <script>
+    (function () {
+      // 1) 禁止浏览器自动恢复滚动位置（刷新 / 返回 / 前进）
+      if ("scrollRestoration" in history) {
+        history.scrollRestoration = "manual";
+      }
+
+      // 判断 hash 是否有效（存在且页面上有对应 id）
+      function hasValidHash() {
+        if (!location.hash) return false;
+        const id = location.hash.slice(1);
+        return !!document.getElementById(id);
+      }
+
+      // 2) 首次加载：如果没有有效 hash，强制在顶部（避免打开就跳）
+      //    注意：有 #choose 的情况绝对不能滚回顶部
+      if (!hasValidHash()) {
+        window.scrollTo(0, 0);
+      }
+
+      // 3) 如果有 hash（例如 #choose），确保最终停在目标位置（避免“先跳再回”）
+      function scrollToHashTarget() {
+        if (!hasValidHash()) return;
+        const id = location.hash.slice(1);
+        const el = document.getElementById(id);
+        if (!el) return;
+
+        // 临时关闭任何潜在的平滑滚动，避免视觉“跳动”
+        const prev = document.documentElement.style.scrollBehavior;
+        document.documentElement.style.scrollBehavior = "auto";
+        el.scrollIntoView({ behavior: "auto", block: "start" });
+        document.documentElement.style.scrollBehavior = prev;
+      }
+
+      // DOM 准备好后再校正一次（确保布局都算完）
+      window.addEventListener("DOMContentLoaded", () => {
+        if (hasValidHash()) requestAnimationFrame(scrollToHashTarget);
+      });
+
+      // hash 改变时也要处理（比如手动改 URL）
+      window.addEventListener("hashchange", () => {
+        requestAnimationFrame(scrollToHashTarget);
+      });
+
+      // bfcache（iOS/Safari 常见）从缓存恢复时也要校正
+      window.addEventListener("pageshow", () => {
+        if (hasValidHash()) requestAnimationFrame(scrollToHashTarget);
+        else window.scrollTo(0, 0);
+      });
+    })();
+  </script>
+
   <style>
     * { box-sizing: border-box; }
     html, body { height: 100%; }
@@ -21,6 +74,7 @@
       --edge: clamp(18px, 4vmin, 44px);
       --top:  clamp(14px, 2.6vmin, 28px);
 
+      /* 右上角：稍微小一点（边距不变） */
       --cornerSize: clamp(156px, 20vmin, 286px);
       --cornerRadius: clamp(12px, 2.1vmin, 18px);
 
@@ -49,6 +103,8 @@
       position:absolute;
       font-size:12px;
       line-height:1.35;
+
+      /* ✅ 深灰色 */
       color:#666;
 
       opacity:0;
@@ -76,7 +132,7 @@
       transition: opacity 220ms ease;
     }
 
-    /* 左上角新模块 */
+    /* 左上角新模块（位置/边距保持不变） */
     .leftui{
       position:absolute;
       left:var(--edge);
@@ -85,12 +141,14 @@
       max-width: min(520px, calc(100vw - var(--edge) * 2 - var(--cornerSize)));
     }
 
+    /* 小标题图 */
     .leftui .mini-hero{
       width: clamp(180px, 21.5vmin, 320px);
       height: auto;
       display:block;
     }
 
+    /* 四个词 */
     .leftui .words{
       margin-top: 12px;
       font-size: 17px;
@@ -100,6 +158,7 @@
     }
     .leftui .words div{ margin: 3px 0; }
 
+    /* Try now：更强调 */
     .trylink{
       display:inline-flex;
       align-items:center;
@@ -167,17 +226,11 @@
       margin:0 auto;
     }
 
-    /* ✅ 修复：第二屏占满一屏 + 内容垂直居中 */
-    .section{
-      background:#fff;
-      min-height: 100vh;
-      min-height: 100svh;
+    .section{ padding: 56px 0 84px; background:#fff; }
 
-      display:flex;
-      align-items:center;        /* 垂直居中 */
-      justify-content:center;    /* 水平居中（wrap 本来就居中，这里更稳） */
-
-      padding: 0;               /* 避免“扣上” */
+    /* 大高屏增加一点“断开感” */
+    @media (min-height: 900px){
+      .section{ padding-top: 76px; }
     }
 
     .grid{
@@ -300,19 +353,12 @@
   </footer>
 
   <script>
-    /* ✅ 防止刷新/返回时“自动恢复滚动”导致跳动 */
-    if ("scrollRestoration" in history) history.scrollRestoration = "manual";
-    window.addEventListener("pageshow", () => {
-      // 首次打开/刷新时稳定停在顶部（避免先跳到第二屏再弹回）
-      window.scrollTo(0, 0);
-    });
-
     document.getElementById("y").textContent = new Date().getFullYear();
 
     const tryBtn = document.getElementById("tryBtn");
     tryBtn.addEventListener("click", (e) => {
       e.preventDefault();
-      document.getElementById("choose")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      document.getElementById("choose")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
 
     /* 右上角轮播：1秒切换 */
@@ -665,6 +711,7 @@
       }, speed);
     }
 
+    /* 静态时间点 */
     let quietUntil = 0;
     let nextQuietAt = Date.now() + randi(30000, 45000);
     function canSpawn() { return Date.now() > quietUntil; }
@@ -687,7 +734,7 @@
           return;
         }
 
-        const want = randi(1, 3);
+        const want = randi(1, 3); // 1 或 2
         const toAdd = Math.min(MAX_ACTIVE - active.length, want, 2);
         for (let k = 0; k < toAdd; k++) spawnOne();
 
