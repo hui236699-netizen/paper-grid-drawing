@@ -5,76 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Font Playground</title>
 
-  <!-- ✅ 关键：防止“打开先跳一下”——先隐藏页面，等滚动就位再显示 -->
-  <style>
-    body { visibility: hidden; }
-  </style>
-
-  <!-- ✅ 关键：滚动控制（直接打开=顶部；只有 #choose 才到第二屏） -->
-  <script>
-    (function () {
-      // 禁止浏览器自动恢复滚动（微信/手机浏览器也尽量兜住）
-      if ("scrollRestoration" in history) history.scrollRestoration = "manual";
-
-      function hasValidHash() {
-        if (!location.hash) return false;
-        const id = location.hash.slice(1);
-        return !!document.getElementById(id);
-      }
-
-      function showBody() {
-        document.body.style.visibility = "visible";
-      }
-
-      function scrollToTopInstant() {
-        const prev = document.documentElement.style.scrollBehavior;
-        document.documentElement.style.scrollBehavior = "auto";
-        window.scrollTo(0, 0);
-        document.documentElement.style.scrollBehavior = prev;
-      }
-
-      function scrollToChooseInstant() {
-        const el = document.getElementById("choose");
-        if (!el) return;
-        const prev = document.documentElement.style.scrollBehavior;
-        document.documentElement.style.scrollBehavior = "auto";
-        el.scrollIntoView({ behavior: "auto", block: "start" });
-        document.documentElement.style.scrollBehavior = prev;
-      }
-
-      // 规则：
-      // 1) 只有 URL 明确带 #choose（并且存在该元素）→ 去第二屏
-      // 2) 否则一律去顶部（包括刷新、直接打开、微信自动恢复滚动）
-      function settleScroll() {
-        if (hasValidHash() && location.hash === "#choose") {
-          scrollToChooseInstant();
-        } else {
-          // 如果有其它 hash（不存在/不合法），也当做顶部处理
-          scrollToTopInstant();
-        }
-      }
-
-      // 尽量早地先定位一次
-      settleScroll();
-
-      // DOM 完整后再定位一次（避免布局变化导致偏移），最后再显示
-      window.addEventListener("DOMContentLoaded", () => {
-        requestAnimationFrame(() => {
-          settleScroll();
-          showBody();
-        });
-      });
-
-      // pageshow：处理 iOS/微信 bfcache 恢复
-      window.addEventListener("pageshow", () => {
-        requestAnimationFrame(() => {
-          settleScroll();
-          showBody();
-        });
-      });
-    })();
-  </script>
-
   <style>
     * { box-sizing: border-box; }
     html, body { height: 100%; }
@@ -120,7 +50,10 @@
       position:absolute;
       font-size:12px;
       line-height:1.35;
+
+      /* ✅ 深灰色 */
       color:#666;
+
       opacity:0;
       white-space:pre;
       transform: translateZ(0);
@@ -242,6 +175,7 @@
 
     .section{ padding: 56px 0 84px; background:#fff; }
 
+    /* 大高屏增加一点“断开感” */
     @media (min-height: 900px){
       .section{ padding-top: 76px; }
     }
@@ -297,10 +231,81 @@
       font-size: 12px;
       background:#fff;
     }
+
+    /* ================== Desktop Only Gate（新增） ================== */
+    #desktopGate{
+      position:fixed; inset:0;
+      display:none;
+      align-items:center; justify-content:center;
+      padding:24px;
+      background:#111;
+      color:#fff;
+      z-index:999999;
+      text-align:center;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, "PingFang SC";
+    }
+    #desktopGate .card{
+      max-width:520px;
+      width:100%;
+      border-radius:18px;
+      background:rgba(255,255,255,0.08);
+      padding:20px 18px;
+      border:1px solid rgba(255,255,255,0.14);
+    }
+    #desktopGate h1{
+      margin:0 0 10px;
+      font-size:18px;
+      letter-spacing:.2px;
+    }
+    #desktopGate p{
+      margin:0;
+      opacity:.9;
+      line-height:1.6;
+      font-size:14px;
+    }
+    #desktopGate .hint{
+      margin-top:12px;
+      opacity:.75;
+      font-size:12px;
+    }
+
+    html.is-mobile body{
+      overflow:hidden !important;
+      touch-action:none !important;
+    }
+    html.is-mobile #desktopGate{ display:flex; }
   </style>
+
+  <script>
+    // ================== Desktop Only Gate（新增） ==================
+    (function () {
+      const uaMobile = /Android|iPhone|iPad|iPod|Mobi/i.test(navigator.userAgent);
+
+      // ✅ 少误伤：不使用 pointer: coarse
+      // 你可以调这个阈值：越大越容易判为“移动端”
+      const smallScreen = window.matchMedia && window.matchMedia("(max-width: 900px)").matches;
+
+      const isMobile = uaMobile || smallScreen;
+
+      window.__DESKTOP_OK__ = !isMobile;
+
+      if (isMobile) {
+        document.documentElement.classList.add("is-mobile");
+      }
+    })();
+  </script>
 </head>
 
 <body>
+  <!-- ================== Desktop Only Gate（新增） ================== -->
+  <div id="desktopGate" aria-hidden="true">
+    <div class="card">
+      <h1>Desktop Only</h1>
+      <p>This site is designed for desktop browsers. Please open it on a computer.</p>
+      <div class="hint">Tip: If you must use a phone, try “Request Desktop Site” in your browser.</div>
+    </div>
+  </div>
+
   <section class="cover" id="cover">
     <div class="bg-formulas" id="bgFormulas" aria-hidden="true"></div>
 
@@ -366,400 +371,408 @@
   </footer>
 
   <script>
+    // 年份：无论桌面/移动都可以设置（移动端会被 Gate 覆盖）
     document.getElementById("y").textContent = new Date().getFullYear();
 
-    const tryBtn = document.getElementById("tryBtn");
-    tryBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      document.getElementById("choose")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
+    // ✅ 移动端：不运行下面的动画/公式逻辑（减少资源消耗、避免奇怪行为）
+    if (!window.__DESKTOP_OK__) {
+      // 只显示 Gate
+    } else {
 
-    /* 右上角轮播：1秒切换 */
-    const coverImgs = [
-      "assets/cover/01-07.png",
-      "assets/cover/01-08.png",
-      "assets/cover/01-09.png",
-      "assets/cover/01-10.png",
-      "assets/cover/01-11.png",
-      "assets/cover/01-12.png",
-      "assets/cover/01-13.png",
-      "assets/cover/01-14.png",
-      "assets/cover/01-15.png",
-      "assets/cover/01-16.png",
-      "assets/cover/01-17.png",
-      "assets/cover/01-18.png"
-    ];
-    coverImgs.forEach(src => { const im = new Image(); im.src = src; });
+      const tryBtn = document.getElementById("tryBtn");
+      tryBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        document.getElementById("choose")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
 
-    const cornerImgEl = document.getElementById("cornerImg");
-    let ci = 0;
-    cornerImgEl.src = coverImgs[0];
-    setInterval(() => {
-      ci = (ci + 1) % coverImgs.length;
-      cornerImgEl.src = coverImgs[ci];
-    }, 1000);
+      /* 右上角轮播：1秒切换 */
+      const coverImgs = [
+        "assets/cover/01-07.png",
+        "assets/cover/01-08.png",
+        "assets/cover/01-09.png",
+        "assets/cover/01-10.png",
+        "assets/cover/01-11.png",
+        "assets/cover/01-12.png",
+        "assets/cover/01-13.png",
+        "assets/cover/01-14.png",
+        "assets/cover/01-15.png",
+        "assets/cover/01-16.png",
+        "assets/cover/01-17.png",
+        "assets/cover/01-18.png"
+      ];
+      coverImgs.forEach(src => { const im = new Image(); im.src = src; });
 
-    /* ===== 背景公式 ===== */
-    const BASE_FORMULAS = [
-      "x + y = y + x",
-      "a(x + b) = ax + ab",
-      "x² - a² = (x + a)(x - a)",
-      "(x ± a)² = x² ± 2ax + a²",
-      "x = [-b ± √(b² - 4ac)]/(2a)",
-      "y = kx + b",
-      "y = ax² + bx + c",
-      "sin(x + y) = sinx cosy + cosx siny",
-      "sin²x + cos²x = 1",
-      "a^x × a^y = a^(x + y)",
-      "log_a x = log_c x / log_c a",
-      "(x^n)' = n x^(n - 1)",
-      "∫x^n dx = x^(n + 1)/(n + 1) + C",
-      "∫[a,b]x^n dx = b^(n + 1)/(n + 1) - a^(n + 1)/(n + 1)",
-      "y = sinx",
-      "y = cosx",
-      "y = ln x",
-      "y = e^x",
-      "ax + by = c",
-      "(x - a)² + (y - b)² = r²",
-      "dy/dx = (dy/dt)/(dx/dt)",
-      "∫sinx dx = -cosx + C",
-      "∫cosx dx = sinx + C",
-      "x^m × x^n = x^(m + n)",
-      "(xy)^n = x^n y^n",
+      const cornerImgEl = document.getElementById("cornerImg");
+      let ci = 0;
+      cornerImgEl.src = coverImgs[0];
+      setInterval(() => {
+        ci = (ci + 1) % coverImgs.length;
+        cornerImgEl.src = coverImgs[ci];
+      }, 1000);
 
-      "y = ax³ + bx² + cx + d + (e x)/(f + x²)",
-      "y = sin(kx + φ) + cos(mx - θ) + tan(nx)",
-      "x = [ -b ± √(b² - 4ac + 8de - 2fg) ] / (2a + 3h)",
-      "y = a e^(kx) + b ln(cx + d) + c √(ex² + fx + g)",
-      "y = (x² - 3x + 2)(2x³ + 5x - 7)/(x + 4)(x² - 1)",
-      "(x - a)² + (y - b)² + (z - c)² + 2(x - a)(y - b) = r²",
-      "y = k1 x + b1 + k2 x² + b2 √x + k3/(x + b3)",
-      "sin(2x + 3)cos(4x - 5) = [sin(6x - 2) + sin(-2x + 8)]/2",
-      "log_a(bx² + cx + d) - log_a(ex + f) = log_a[(bx² + cx + d)/(ex + f)]",
-      "y = a tan²x + b secx + c cotx + d cscx",
-      "x³ + 2x²y + 3xy² + 4y³ + 5x + 6y + 7 = 0",
-      "y = √(ax² + bx + c) + (dx + e)/(fx² + gx + h)",
-      "(x² + y²)² = 4axy + 2bx² - 3cy² + dx - ey",
-      "y = a sin²(kx) + b cos²(mx) + c sin(kx)cos(mx)",
-      "(x - a)(x - b)(x - c) + (y - d)(y - e)(y - f) = gxy",
-      "y = (ax³ + bx² + cx + d)^(1/3) + (ex² + fx + g)^(2/3)",
-      "y = e^(kx + m)sin(nx + p) + ln(qx² + rx + s) + √(tx + u)"
-    ];
+      /* ===== 背景公式 ===== */
+      const BASE_FORMULAS = [
+        "x + y = y + x",
+        "a(x + b) = ax + ab",
+        "x² - a² = (x + a)(x - a)",
+        "(x ± a)² = x² ± 2ax + a²",
+        "x = [-b ± √(b² - 4ac)]/(2a)",
+        "y = kx + b",
+        "y = ax² + bx + c",
+        "sin(x + y) = sinx cosy + cosx siny",
+        "sin²x + cos²x = 1",
+        "a^x × a^y = a^(x + y)",
+        "log_a x = log_c x / log_c a",
+        "(x^n)' = n x^(n - 1)",
+        "∫x^n dx = x^(n + 1)/(n + 1) + C",
+        "∫[a,b]x^n dx = b^(n + 1)/(n + 1) - a^(n + 1)/(n + 1)",
+        "y = sinx",
+        "y = cosx",
+        "y = ln x",
+        "y = e^x",
+        "ax + by = c",
+        "(x - a)² + (y - b)² = r²",
+        "dy/dx = (dy/dt)/(dx/dt)",
+        "∫sinx dx = -cosx + C",
+        "∫cosx dx = sinx + C",
+        "x^m × x^n = x^(m + n)",
+        "(xy)^n = x^n y^n",
 
-    const FORCE_3LINES = [
-      "y = asin(kx + φ)cos(mx - θ) + be^(px + q)ln(rx² + sx + t) + sqrt(ux³ + vx + w)/(zx + y) + ctan(dx)",
-      "log_m(nx³ + px² + qx + r) - log_m(sx + t) + sqrt(ux⁴ + vx³ + wx² + zx + y) = kx + b + a/(cx² + dx + e)",
-      "(x - a)(x - b)(x - c)(x - d) + (y - e)(y - f) = hx²y + ixy² + jx + ky + l + m/(nx + py + q) + rx³",
-      "∫(ax⁵ + bx⁴ + cx³ + dx² + ex + f)/(gx² + hx + i)dx = (jx⁶)/(6g) + (kx⁵)/(5g) - lln|gx² + hx + i| + C + mx",
-      "y = sqrt(ax⁴ + bx³ + cx² + dx + e) + (fx + g)/(hx² + ix + j) + ksin(lx + m) + ncos(px + q) + rtan(sx) + t(x² + y²)(x - y)(x + y) + a*(x³ + y³) = bx²y² + cxy + d + e/(fx² + gy + h) + isin(jx + ky)",
-      "y = ae^(kx + m)ln(nx² + rx + s) + bsqrt(tx³ + ux² + vx + w) + (zx + y)/(px² + qx + r) + ccot(dx + e)",
-      "log_a(bx⁴ + cx³ + dx² + ex + f) - log_a(gx + h) = ix² + jx + k + l/(mx² + nx + p) + qsin(rx + s)",
-      "∫(sin(kx)cos(mx) + e^(px)ln(qx + r))dx = -cos((k+m)x)/(2(k+m)) + e^(px)ln(qx + r)/p - s/(p²(qx + r)) + C",
-      "y = (ax³ + bx² + cx + d)^(2/3) + (ex² + fx + g)/(hx + i) + jsin(kx + l)cos(mx) + ne^(px + q) + sqrt(rx + t)"
-    ];
+        "y = ax³ + bx² + cx + d + (e x)/(f + x²)",
+        "y = sin(kx + φ) + cos(mx - θ) + tan(nx)",
+        "x = [ -b ± √(b² - 4ac + 8de - 2fg) ] / (2a + 3h)",
+        "y = a e^(kx) + b ln(cx + d) + c √(ex² + fx + g)",
+        "y = (x² - 3x + 2)(2x³ + 5x - 7)/(x + 4)(x² - 1)",
+        "(x - a)² + (y - b)² + (z - c)² + 2(x - a)(y - b) = r²",
+        "y = k1 x + b1 + k2 x² + b2 √x + k3/(x + b3)",
+        "sin(2x + 3)cos(4x - 5) = [sin(6x - 2) + sin(-2x + 8)]/2",
+        "log_a(bx² + cx + d) - log_a(ex + f) = log_a[(bx² + cx + d)/(ex + f)]",
+        "y = a tan²x + b secx + c cotx + d cscx",
+        "x³ + 2x²y + 3xy² + 4y³ + 5x + 6y + 7 = 0",
+        "y = √(ax² + bx + c) + (dx + e)/(fx² + gx + h)",
+        "(x² + y²)² = 4axy + 2bx² - 3cy² + dx - ey",
+        "y = a sin²(kx) + b cos²(mx) + c sin(kx)cos(mx)",
+        "(x - a)(x - b)(x - c) + (y - d)(y - e)(y - f) = gxy",
+        "y = (ax³ + bx² + cx + d)^(1/3) + (ex² + fx + g)^(2/3)",
+        "y = e^(kx + m)sin(nx + p) + ln(qx² + rx + s) + √(tx + u)"
+      ];
 
-    const FORMULAS = BASE_FORMULAS.concat(FORCE_3LINES);
+      const FORCE_3LINES = [
+        "y = asin(kx + φ)cos(mx - θ) + be^(px + q)ln(rx² + sx + t) + sqrt(ux³ + vx + w)/(zx + y) + ctan(dx)",
+        "log_m(nx³ + px² + qx + r) - log_m(sx + t) + sqrt(ux⁴ + vx³ + wx² + zx + y) = kx + b + a/(cx² + dx + e)",
+        "(x - a)(x - b)(x - c)(x - d) + (y - e)(y - f) = hx²y + ixy² + jx + ky + l + m/(nx + py + q) + rx³",
+        "∫(ax⁵ + bx⁴ + cx³ + dx² + ex + f)/(gx² + hx + i)dx = (jx⁶)/(6g) + (kx⁵)/(5g) - lln|gx² + hx + i| + C + mx",
+        "y = sqrt(ax⁴ + bx³ + cx² + dx + e) + (fx + g)/(hx² + ix + j) + ksin(lx + m) + ncos(px + q) + rtan(sx) + t(x² + y²)(x - y)(x + y) + a*(x³ + y³) = bx²y² + cxy + d + e/(fx² + gy + h) + isin(jx + ky)",
+        "y = ae^(kx + m)ln(nx² + rx + s) + bsqrt(tx³ + ux² + vx + w) + (zx + y)/(px² + qx + r) + ccot(dx + e)",
+        "log_a(bx⁴ + cx³ + dx² + ex + f) - log_a(gx + h) = ix² + jx + k + l/(mx² + nx + p) + qsin(rx + s)",
+        "∫(sin(kx)cos(mx) + e^(px)ln(qx + r))dx = -cos((k+m)x)/(2(k+m)) + e^(px)ln(qx + r)/p - s/(p²(qx + r)) + C",
+        "y = (ax³ + bx² + cx + d)^(2/3) + (ex² + fx + g)/(hx + i) + jsin(kx + l)cos(mx) + ne^(px + q) + sqrt(rx + t)"
+      ];
 
-    const cover = document.getElementById("cover");
-    const bg = document.getElementById("bgFormulas");
-    const leftUI = document.getElementById("leftUI");
-    const cornerBox = document.getElementById("cornerBox");
-    const heroBox = document.getElementById("heroBox");
+      const FORMULAS = BASE_FORMULAS.concat(FORCE_3LINES);
 
-    const MAX_ACTIVE = 4;
-    const LINE_TRIGGER = 36;
+      const cover = document.getElementById("cover");
+      const bg = document.getElementById("bgFormulas");
+      const leftUI = document.getElementById("leftUI");
+      const cornerBox = document.getElementById("cornerBox");
+      const heroBox = document.getElementById("heroBox");
 
-    const TWO_LINE_REFERENCE = "sin(x + y) = sinx cosy + cosx siny";
-    const TWO_LINE_LEN = TWO_LINE_REFERENCE.length;
+      const MAX_ACTIVE = 4;
+      const LINE_TRIGGER = 36;
 
-    const active = [];
+      const TWO_LINE_REFERENCE = "sin(x + y) = sinx cosy + cosx siny";
+      const TWO_LINE_LEN = TWO_LINE_REFERENCE.length;
 
-    const rand = (a, b) => a + Math.random() * (b - a);
-    const randi = (a, b) => Math.floor(rand(a, b));
-    const choice = (arr) => arr[Math.floor(Math.random() * arr.length)];
+      const active = [];
 
-    function rectInCover(el){
-      const cr = cover.getBoundingClientRect();
-      const r = el.getBoundingClientRect();
-      return { x: r.left - cr.left, y: r.top - cr.top, w: r.width, h: r.height };
-    }
-    function inflateRect(rc, pad){
-      return { x: rc.x - pad, y: rc.y - pad, w: rc.w + pad*2, h: rc.h + pad*2 };
-    }
-    function overlaps(a, b){
-      return !(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y);
-    }
+      const rand = (a, b) => a + Math.random() * (b - a);
+      const randi = (a, b) => Math.floor(rand(a, b));
+      const choice = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-    function getExcludedRects(){
-      const pad = 22;
-      const list = [];
-      if (leftUI) list.push(inflateRect(rectInCover(leftUI), pad));
-      if (cornerBox) list.push(inflateRect(rectInCover(cornerBox), pad));
-      if (heroBox) list.push(inflateRect(rectInCover(heroBox), pad));
-      return list;
-    }
-
-    function getSoftAvoidRect(){
-      const cr = cover.getBoundingClientRect();
-      const cb = cornerBox.getBoundingClientRect();
-      const hb = heroBox.getBoundingClientRect();
-
-      const cornerIn = { x: cb.left - cr.left, y: cb.top - cr.top, w: cb.width, h: cb.height };
-      const heroIn   = { x: hb.left - cr.left, y: hb.top - cr.top, w: hb.width, h: hb.height };
-
-      const x0 = Math.max(cornerIn.x - 40, cr.width * 0.55);
-      const x1 = cr.width - Math.max(28, cr.width * 0.07);
-
-      const y0 = cornerIn.y + cornerIn.h + 10;
-      const y1 = heroIn.y - 10;
-
-      return { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) };
-    }
-
-    function getBottomSoftAvoidRect(){
-      const cr = cover.getBoundingClientRect();
-      const hb = heroBox.getBoundingClientRect();
-      const heroIn = { x: hb.left - cr.left, y: hb.top - cr.top, w: hb.width, h: hb.height };
-
-      const padX = Math.max(24, cr.width * 0.08);
-      const up = Math.max(140, cr.height * 0.22);
-      const down = 26;
-
-      const x = Math.max(0, heroIn.x - padX);
-      const y = Math.max(0, heroIn.y - up);
-      const w = Math.min(cr.width, heroIn.w + padX * 2);
-      const h = Math.min(cr.height - y, up + heroIn.h + down);
-
-      return { x, y, w, h };
-    }
-
-    const sizeCache = new Map();
-    function measureFormulaSize(text){
-      const cached = sizeCache.get(text);
-      if (cached) return cached;
-
-      const tmp = document.createElement("div");
-      tmp.className = "formula";
-      tmp.style.visibility = "hidden";
-      tmp.style.left = "-9999px";
-      tmp.style.top = "-9999px";
-      tmp.textContent = text;
-      bg.appendChild(tmp);
-      const r = tmp.getBoundingClientRect();
-      bg.removeChild(tmp);
-
-      const size = { w: r.width, h: r.height };
-      sizeCache.set(text, size);
-      return size;
-    }
-
-    function distanceScore(cx, cy){
-      if (active.length === 0) return 1e9;
-
-      let bestDist = 1e9;
-      let bestY = 1e9;
-
-      for (const a of active){
-        const ax = a.rect.x + a.rect.w/2;
-        const ay = a.rect.y + a.rect.h/2;
-        const d = Math.hypot(cx - ax, cy - ay);
-        const dy = Math.abs(cy - ay);
-        if (d < bestDist) bestDist = d;
-        if (dy < bestY) bestY = dy;
+      function rectInCover(el){
+        const cr = cover.getBoundingClientRect();
+        const r = el.getBoundingClientRect();
+        return { x: r.left - cr.left, y: r.top - cr.top, w: r.width, h: r.height };
       }
-      return bestDist + bestY * 0.35;
-    }
+      function inflateRect(rc, pad){
+        return { x: rc.x - pad, y: rc.y - pad, w: rc.w + pad*2, h: rc.h + pad*2 };
+      }
+      function overlaps(a, b){
+        return !(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y);
+      }
 
-    const breakChars = new Set([" ", "+", "-", "=", ")", "(", "/", "*", "×", "±", "−", "·", ","]);
-    function findBreakIndex(s, from, near){
-      const window = 18;
-      let best = -1;
-      let bestScore = 1e9;
+      function getExcludedRects(){
+        const pad = 22;
+        const list = [];
+        if (leftUI) list.push(inflateRect(rectInCover(leftUI), pad));
+        if (cornerBox) list.push(inflateRect(rectInCover(cornerBox), pad));
+        if (heroBox) list.push(inflateRect(rectInCover(heroBox), pad));
+        return list;
+      }
 
-      const lo = Math.max(from + 10, near - window);
-      const hi = Math.min(s.length - 10, near + window);
+      function getSoftAvoidRect(){
+        const cr = cover.getBoundingClientRect();
+        const cb = cornerBox.getBoundingClientRect();
+        const hb = heroBox.getBoundingClientRect();
 
-      for (let i = lo; i <= hi; i++){
-        const ch = s[i];
-        if (!breakChars.has(ch)) continue;
+        const cornerIn = { x: cb.left - cr.left, y: cb.top - cr.top, w: cb.width, h: cb.height };
+        const heroIn   = { x: hb.left - cr.left, y: hb.top - cr.top, w: hb.width, h: hb.height };
 
-        const cut = (ch === " ") ? i : (i + 1);
+        const x0 = Math.max(cornerIn.x - 40, cr.width * 0.55);
+        const x1 = cr.width - Math.max(28, cr.width * 0.07);
 
-        let bias = 0;
-        if (ch === " ") bias -= 0.6;
-        if (ch === "=") bias -= 0.4;
+        const y0 = cornerIn.y + cornerIn.h + 10;
+        const y1 = heroIn.y - 10;
 
-        const score = Math.abs(cut - near) + bias;
+        return { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) };
+      }
 
-        if (score < bestScore){
-          bestScore = score;
-          best = cut;
+      function getBottomSoftAvoidRect(){
+        const cr = cover.getBoundingClientRect();
+        const hb = heroBox.getBoundingClientRect();
+        const heroIn = { x: hb.left - cr.left, y: hb.top - cr.top, w: hb.width, h: hb.height };
+
+        const padX = Math.max(24, cr.width * 0.08);
+        const up = Math.max(140, cr.height * 0.22);
+        const down = 26;
+
+        const x = Math.max(0, heroIn.x - padX);
+        const y = Math.max(0, heroIn.y - up);
+        const w = Math.min(cr.width, heroIn.w + padX * 2);
+        const h = Math.min(cr.height - y, up + heroIn.h + down);
+
+        return { x, y, w, h };
+      }
+
+      const sizeCache = new Map();
+      function measureFormulaSize(text){
+        const cached = sizeCache.get(text);
+        if (cached) return cached;
+
+        const tmp = document.createElement("div");
+        tmp.className = "formula";
+        tmp.style.visibility = "hidden";
+        tmp.style.left = "-9999px";
+        tmp.style.top = "-9999px";
+        tmp.textContent = text;
+        bg.appendChild(tmp);
+        const r = tmp.getBoundingClientRect();
+        bg.removeChild(tmp);
+
+        const size = { w: r.width, h: r.height };
+        sizeCache.set(text, size);
+        return size;
+      }
+
+      function distanceScore(cx, cy){
+        if (active.length === 0) return 1e9;
+
+        let bestDist = 1e9;
+        let bestY = 1e9;
+
+        for (const a of active){
+          const ax = a.rect.x + a.rect.w/2;
+          const ay = a.rect.y + a.rect.h/2;
+          const d = Math.hypot(cx - ax, cy - ay);
+          const dy = Math.abs(cy - ay);
+          if (d < bestDist) bestDist = d;
+          if (dy < bestY) bestY = dy;
         }
-      }
-      if (best === -1) best = Math.min(s.length - 10, Math.max(from + 10, near));
-      return best;
-    }
-
-    function splitIntoLines(raw, lines){
-      const s = (raw || "").trim();
-      if (lines <= 1) return s;
-      if (s.length < 22) return s;
-
-      const target = Math.floor(s.length / lines);
-      const cuts = [];
-      let start = 0;
-
-      for (let li = 1; li < lines; li++){
-        const near = start + target;
-        const cut = findBreakIndex(s, start, near);
-        cuts.push(cut);
-        start = cut;
+        return bestDist + bestY * 0.35;
       }
 
-      const parts = [];
-      let prev = 0;
-      for (const c of cuts){
-        parts.push(s.slice(prev, c).trim());
-        prev = c;
-      }
-      parts.push(s.slice(prev).trim());
+      const breakChars = new Set([" ", "+", "-", "=", ")", "(", "/", "*", "×", "±", "−", "·", ","]);
+      function findBreakIndex(s, from, near){
+        const window = 18;
+        let best = -1;
+        let bestScore = 1e9;
 
-      return parts.filter(Boolean).join("\n");
-    }
+        const lo = Math.max(from + 10, near - window);
+        const hi = Math.min(s.length - 10, near + window);
 
-    function formatFormula(raw){
-      const s = (raw || "").trim();
+        for (let i = lo; i <= hi; i++){
+          const ch = s[i];
+          if (!breakChars.has(ch)) continue;
 
-      if (FORCE_3LINES.includes(raw)) return splitIntoLines(s, 3);
-      if (s.length > TWO_LINE_LEN) return splitIntoLines(s, 2);
-      if (s.length <= LINE_TRIGGER) return s;
+          const cut = (ch === " ") ? i : (i + 1);
 
-      if (Math.random() < 0.25) return splitIntoLines(s, 2);
-      return s;
-    }
+          let bias = 0;
+          if (ch === " ") bias -= 0.6;
+          if (ch === "=") bias -= 0.4;
 
-    function pickFormulaRaw(){
-      const used = new Set(active.map(a => a.raw));
-      const pool = FORMULAS.filter(f => !used.has(f));
-      return pool.length ? choice(pool) : choice(FORMULAS);
-    }
+          const score = Math.abs(cut - near) + bias;
 
-    function findPosition(w, h){
-      const cr = cover.getBoundingClientRect();
-      const safe = Math.max(32, Math.floor(Math.min(cr.width, cr.height) * 0.06));
-      const excluded = getExcludedRects();
-      const softRight = getSoftAvoidRect();
-      const softBottom = getBottomSoftAvoidRect();
-
-      let best = null;
-      let bestScore = -1;
-
-      const tries = 180;
-      for (let t = 0; t < tries; t++){
-        const x = randi(safe, Math.max(safe + 1, Math.floor(cr.width  - w - safe)));
-        const y = randi(safe, Math.max(safe + 1, Math.floor(cr.height - h - safe)));
-        const cand = { x, y, w, h };
-
-        if (excluded.some(er => overlaps(cand, er))) continue;
-        if (active.some(a => overlaps(cand, inflateRect(a.rect, 14)))) continue;
-
-        const inSoftRight = overlaps(cand, softRight);
-        const inSoftBottom = overlaps(cand, softBottom);
-
-        let penalty = 1.0;
-        if (inSoftRight) penalty *= 0.55;
-        if (inSoftBottom) penalty *= 0.45;
-
-        const cx = x + w/2;
-        const cy = y + h/2;
-        const score = distanceScore(cx, cy) * penalty;
-
-        if (score > bestScore){
-          bestScore = score;
-          best = { x, y };
+          if (score < bestScore){
+            bestScore = score;
+            best = cut;
+          }
         }
+        if (best === -1) best = Math.min(s.length - 10, Math.max(from + 10, near));
+        return best;
       }
-      return best || { x: safe, y: safe };
-    }
 
-    function spawnOne(){
-      if (active.length >= MAX_ACTIVE) return;
+      function splitIntoLines(raw, lines){
+        const s = (raw || "").trim();
+        if (lines <= 1) return s;
+        if (s.length < 22) return s;
 
-      const raw = pickFormulaRaw();
-      const text = formatFormula(raw);
+        const target = Math.floor(s.length / lines);
+        const cuts = [];
+        let start = 0;
 
-      const size = measureFormulaSize(text);
-      const pos = findPosition(size.w, size.h);
+        for (let li = 1; li < lines; li++){
+          const near = start + target;
+          const cut = findBreakIndex(s, start, near);
+          cuts.push(cut);
+          start = cut;
+        }
 
-      const el = document.createElement("div");
-      el.className = "formula";
-      el.style.left = pos.x + "px";
-      el.style.top  = pos.y + "px";
-      bg.appendChild(el);
+        const parts = [];
+        let prev = 0;
+        for (const c of cuts){
+          parts.push(s.slice(prev, c).trim());
+          prev = c;
+        }
+        parts.push(s.slice(prev).trim());
 
-      const info = { raw, text, el, rect: { x: pos.x, y: pos.y, w: size.w, h: size.h } };
-      active.push(info);
+        return parts.filter(Boolean).join("\n");
+      }
 
-      requestAnimationFrame(() => el.classList.add("show"));
+      function formatFormula(raw){
+        const s = (raw || "").trim();
 
-      let i = 0;
-      const speed = rand(16, 32);
+        if (FORCE_3LINES.includes(raw)) return splitIntoLines(s, 3);
+        if (s.length > TWO_LINE_LEN) return splitIntoLines(s, 2);
+        if (s.length <= LINE_TRIGGER) return s;
 
-      const timer = setInterval(() => {
-        i++;
-        el.textContent = text.slice(0, i);
+        if (Math.random() < 0.25) return splitIntoLines(s, 2);
+        return s;
+      }
 
-        if (i >= text.length){
-          clearInterval(timer);
+      function pickFormulaRaw(){
+        const used = new Set(active.map(a => a.raw));
+        const pool = FORMULAS.filter(f => !used.has(f));
+        return pool.length ? choice(pool) : choice(FORMULAS);
+      }
 
-          setTimeout(() => {
-            el.classList.add("fade");
+      function findPosition(w, h){
+        const cr = cover.getBoundingClientRect();
+        const safe = Math.max(32, Math.floor(Math.min(cr.width, cr.height) * 0.06));
+        const excluded = getExcludedRects();
+        const softRight = getSoftAvoidRect();
+        const softBottom = getBottomSoftAvoidRect();
+
+        let best = null;
+        let bestScore = -1;
+
+        const tries = 180;
+        for (let t = 0; t < tries; t++){
+          const x = randi(safe, Math.max(safe + 1, Math.floor(cr.width  - w - safe)));
+          const y = randi(safe, Math.max(safe + 1, Math.floor(cr.height - h - safe)));
+          const cand = { x, y, w, h };
+
+          if (excluded.some(er => overlaps(cand, er))) continue;
+          if (active.some(a => overlaps(cand, inflateRect(a.rect, 14)))) continue;
+
+          const inSoftRight = overlaps(cand, softRight);
+          const inSoftBottom = overlaps(cand, softBottom);
+
+          let penalty = 1.0;
+          if (inSoftRight) penalty *= 0.55;
+          if (inSoftBottom) penalty *= 0.45;
+
+          const cx = x + w/2;
+          const cy = y + h/2;
+          const score = distanceScore(cx, cy) * penalty;
+
+          if (score > bestScore){
+            bestScore = score;
+            best = { x, y };
+          }
+        }
+        return best || { x: safe, y: safe };
+      }
+
+      function spawnOne(){
+        if (active.length >= MAX_ACTIVE) return;
+
+        const raw = pickFormulaRaw();
+        const text = formatFormula(raw);
+
+        const size = measureFormulaSize(text);
+        const pos = findPosition(size.w, size.h);
+
+        const el = document.createElement("div");
+        el.className = "formula";
+        el.style.left = pos.x + "px";
+        el.style.top  = pos.y + "px";
+        bg.appendChild(el);
+
+        const info = { raw, text, el, rect: { x: pos.x, y: pos.y, w: size.w, h: size.h } };
+        active.push(info);
+
+        requestAnimationFrame(() => el.classList.add("show"));
+
+        let i = 0;
+        const speed = rand(16, 32);
+
+        const timer = setInterval(() => {
+          i++;
+          el.textContent = text.slice(0, i);
+
+          if (i >= text.length){
+            clearInterval(timer);
+
             setTimeout(() => {
-              const idx = active.indexOf(info);
-              if (idx >= 0) active.splice(idx, 1);
-              el.remove();
-            }, 240);
-          }, 1000);
-        }
-      }, speed);
-    }
+              el.classList.add("fade");
+              setTimeout(() => {
+                const idx = active.indexOf(info);
+                if (idx >= 0) active.splice(idx, 1);
+                el.remove();
+              }, 240);
+            }, 1000);
+          }
+        }, speed);
+      }
 
-    let quietUntil = 0;
-    let nextQuietAt = Date.now() + randi(30000, 45000);
-    function canSpawn() { return Date.now() > quietUntil; }
+      /* 静态时间点 */
+      let quietUntil = 0;
+      let nextQuietAt = Date.now() + randi(30000, 45000);
+      function canSpawn() { return Date.now() > quietUntil; }
 
-    function schedule(){
-      const delay = (active.length === 0)
-        ? randi(140, 700)
-        : randi(320, 1900);
+      function schedule(){
+        const delay = (active.length === 0)
+          ? randi(140, 700)
+          : randi(320, 1900);
 
-      setTimeout(() => {
-        const now = Date.now();
+        setTimeout(() => {
+          const now = Date.now();
 
-        if (now >= nextQuietAt) {
-          quietUntil = now + randi(3000, 5000);
-          nextQuietAt = now + randi(30000, 45000);
-        }
+          if (now >= nextQuietAt) {
+            quietUntil = now + randi(3000, 5000);
+            nextQuietAt = now + randi(30000, 45000);
+          }
 
-        if (!canSpawn()) {
+          if (!canSpawn()) {
+            schedule();
+            return;
+          }
+
+          const want = randi(1, 3); // 1 或 2
+          const toAdd = Math.min(MAX_ACTIVE - active.length, want, 2);
+          for (let k = 0; k < toAdd; k++) spawnOne();
+
           schedule();
-          return;
-        }
+        }, delay);
+      }
 
-        const want = randi(1, 3);
-        const toAdd = Math.min(MAX_ACTIVE - active.length, want, 2);
-        for (let k = 0; k < toAdd; k++) spawnOne();
+      window.addEventListener("resize", () => {
+        active.splice(0).forEach(a => a.el?.remove());
+        sizeCache.clear();
+      });
 
-        schedule();
-      }, delay);
+      schedule();
     }
-
-    window.addEventListener("resize", () => {
-      active.splice(0).forEach(a => a.el?.remove());
-      sizeCache.clear();
-    });
-
-    schedule();
   </script>
 </body>
 </html>
