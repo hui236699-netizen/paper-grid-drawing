@@ -21,7 +21,7 @@
       --edge: clamp(18px, 4vmin, 44px);
       --top:  clamp(14px, 2.6vmin, 28px);
 
-      /* ✅ 右上角：稍微小一点点点点（边距不变） */
+      /* 右上角：稍微小一点（边距不变） */
       --cornerSize: clamp(156px, 20vmin, 286px);
       --cornerRadius: clamp(12px, 2.1vmin, 18px);
 
@@ -50,7 +50,10 @@
       position:absolute;
       font-size:12px;
       line-height:1.35;
-      color:#b8b8b8;
+
+      /* ✅ 深灰色 */
+      color:#666;
+
       opacity:0;
       white-space:pre;
       transform: translateZ(0);
@@ -102,7 +105,7 @@
     }
     .leftui .words div{ margin: 3px 0; }
 
-    /* ✅ Try now：再放大一点；箭头也再大一点 */
+    /* Try now：更强调 */
     .trylink{
       display:inline-flex;
       align-items:center;
@@ -126,7 +129,7 @@
       50%, 100% { opacity: 0.12; }
     }
 
-    /* 右上角轮播（边距不变，只变尺寸变量） */
+    /* 右上角轮播 */
     .corner{
       position:absolute;
       right:var(--edge);
@@ -171,18 +174,8 @@
     }
 
     .section{ padding: 56px 0 84px; background:#fff; }
-    .section h2{
-      margin:0 0 6px;
-      font-size: 24px;
-      letter-spacing:-.01em;
-    }
-    .section .sub{
-      margin:0 0 18px;
-      color:#666;
-      font-size: 13px;
-      line-height:1.6;
-    }
 
+    /* 大高屏增加一点“断开感” */
     @media (min-height: 900px){
       .section{ padding-top: 76px; }
     }
@@ -271,8 +264,7 @@
 
   <section id="choose" class="section">
     <div class="wrap">
-      <h2>Choose a Method</h2>
-      <p class="sub">Click an image to enter.</p>
+      <!-- ✅ 删除：Choose a Method / Click an image to enter. -->
 
       <div class="grid">
         <a class="item" href="draw.html">
