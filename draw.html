@@ -19,6 +19,37 @@
     canvas {
       display: block; /* 去掉 canvas 底部 4px 空隙 */
     }
+
+    /* ✅ Back button (top-right) */
+    .backBtn{
+      position: fixed;
+      top: max(14px, env(safe-area-inset-top));
+      right: max(14px, env(safe-area-inset-right));
+      z-index: 9999;
+
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+
+      height: 38px;
+      padding: 0 14px;
+
+      background: #DBDBDB;
+      color: #000;
+      border: 0;
+      border-radius: 18px;
+
+      font: 600 14px/1 system-ui, -apple-system, "Helvetica Neue", Arial;
+      letter-spacing: .02em;
+
+      cursor: pointer;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .backBtn:active{
+      transform: translateY(1px);
+      opacity: .92;
+    }
   </style>
 
   <!-- p5.js CDN（必须在 sketch.js 前） -->
@@ -26,6 +57,9 @@
 </head>
 
 <body>
+  <!-- ✅ Back -->
+  <a class="backBtn" href="index.html#choose" aria-label="Back">Back</a>
+
   <main id="app"></main>
 
   <!-- 你的绘图逻辑 -->
