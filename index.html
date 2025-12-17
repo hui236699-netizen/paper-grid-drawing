@@ -1,3 +1,6 @@
+下面是**按你要求改好的完整版本**（只改了：去掉点状网格背景、公式浅灰、同一时间最多 2 个公式开始生成、页面最多 4 个公式、降低靠近底部标题区域生成概率；其余功能不动）。
+
+```html
 <!doctype html>
 <html lang="zh-CN">
 <head>
@@ -33,7 +36,8 @@
       padding: 36px var(--edge);
       overflow:hidden;
 
-      background-color:#fff; /* 去掉网格背景 */
+      /* ✅ 改：不要网格点子背景 → 纯白 */
+      background:#fff;
     }
 
     /* ✅ 背景公式层（最底层） */
@@ -47,11 +51,15 @@
       position:absolute;
       font-size:12px;
       line-height:1.35;
-      color:#D3D3D3;  /* 浅灰色 */
+
+      /* ✅ 改：公式颜色浅灰 */
+      color:#b8b8b8;
+
       opacity:0;
       white-space:pre;            /* 允许 \n 换行 */
       transform: translateZ(0);
 
+      /* 防止太长撑破 */
       max-width: min(620px, calc(100vw - 160px));
       word-break: break-word;
     }
@@ -300,35 +308,340 @@
       "∫sinx dx = -cosx + C",
       "∫cosx dx = sinx + C",
       "x^m × x^n = x^(m + n)",
-      "(xy)^n = x^n y^n"
+      "(xy)^n = x^n y^n",
+
+      "y = ax³ + bx² + cx + d + (e x)/(f + x²)",
+      "y = sin(kx + φ) + cos(mx - θ) + tan(nx)",
+      "x = [ -b ± √(b² - 4ac + 8de - 2fg) ] / (2a + 3h)",
+      "y = a e^(kx) + b ln(cx + d) + c √(ex² + fx + g)",
+      "y = (x² - 3x + 2)(2x³ + 5x - 7)/(x + 4)(x² - 1)",
+      "(x - a)² + (y - b)² + (z - c)² + 2(x - a)(y - b) = r²",
+      "y = k1 x + b1 + k2 x² + b2 √x + k3/(x + b3)",
+      "sin(2x + 3)cos(4x - 5) = [sin(6x - 2) + sin(-2x + 8)]/2",
+      "log_a(bx² + cx + d) - log_a(ex + f) = log_a[(bx² + cx + d)/(ex + f)]",
+      "y = a tan²x + b secx + c cotx + d cscx",
+      "x³ + 2x²y + 3xy² + 4y³ + 5x + 6y + 7 = 0",
+      "y = √(ax² + bx + c) + (dx + e)/(fx² + gx + h)",
+      "(x² + y²)² = 4axy + 2bx² - 3cy² + dx - ey",
+      "y = a sin²(kx) + b cos²(mx) + c sin(kx)cos(mx)",
+      "(x - a)(x - b)(x - c) + (y - d)(y - e)(y - f) = gxy",
+      "y = (ax³ + bx² + cx + d)^(1/3) + (ex² + fx + g)^(2/3)",
+      "y = e^(kx + m)sin(nx + p) + ln(qx² + rx + s) + √(tx + u)"
     ];
 
-    const MAX_ACTIVE = 4;          // 最多 4 个
+    /* ✅ 你新加：全部强制三行 */
+    const FORCE_3LINES = [
+      "y = asin(kx + φ)cos(mx - θ) + be^(px + q)ln(rx² + sx + t) + sqrt(ux³ + vx + w)/(zx + y) + ctan(dx)",
+      "log_m(nx³ + px² + qx + r) - log_m(sx + t) + sqrt(ux⁴ + vx³ + wx² + zx + y) = kx + b + a/(cx² + dx + e)",
+      "(x - a)(x - b)(x - c)(x - d) + (y - e)(y - f) = hx²y + ixy² + jx + ky + l + m/(nx + py + q) + rx³",
+      "∫(ax⁵ + bx⁴ + cx³ + dx² + ex + f)/(gx² + hx + i)dx = (jx⁶)/(6g) + (kx⁵)/(5g) - lln|gx² + hx + i| + C + mx",
+      "y = sqrt(ax⁴ + bx³ + cx² + dx + e) + (fx + g)/(hx² + ix + j) + ksin(lx + m) + ncos(px + q) + rtan(sx) + t(x² + y²)(x - y)(x + y) + a*(x³ + y³) = bx²y² + cxy + d + e/(fx² + gy + h) + isin(jx + ky)",
+      "y = ae^(kx + m)ln(nx² + rx + s) + bsqrt(tx³ + ux² + vx + w) + (zx + y)/(px² + qx + r) + ccot(dx + e)",
+      "log_a(bx⁴ + cx³ + dx² + ex + f) - log_a(gx + h) = ix² + jx + k + l/(mx² + nx + p) + qsin(rx + s)",
+      "∫(sin(kx)cos(mx) + e^(px)ln(qx + r))dx = -cos((k+m)x)/(2(k+m)) + e^(px)ln(qx + r)/p - s/(p²(qx + r)) + C",
+      "y = (ax³ + bx² + cx + d)^(2/3) + (ex² + fx + g)/(hx + i) + jsin(kx + l)cos(mx) + ne^(px + q) + sqrt(rx + t)"
+    ];
+
+    const FORMULAS = BASE_FORMULAS.concat(FORCE_3LINES);
+
+    const cover = document.getElementById("cover");
+    const bg = document.getElementById("bgFormulas");
+    const topnote = document.getElementById("topnote");
+    const cornerBox = document.getElementById("cornerBox");
+    const heroBox = document.getElementById("heroBox");
+
+    const MAX_ACTIVE = 4;          // ✅ 页面最多同时显示 4 个
     const LINE_TRIGGER = 36;       // 超过 36 字符才考虑断行
 
-    function randomFormula() {
-      const formula = BASE_FORMULAS[Math.floor(Math.random() * BASE_FORMULAS.length)];
-      const formulaEl = document.createElement('div');
-      formulaEl.classList.add('formula');
-      formulaEl.textContent = formula;
-      formulaEl.style.top = `${Math.random() * 80}%`; // 更高的起始位置
-      formulaEl.style.left = `${Math.random() * 80}%`; // 左右随机生成
-      bg.appendChild(formulaEl);
-      
-      setTimeout(() => {
-        formulaEl.classList.add('show');
-      }, 50);  // 小延时后显示公式
+    // ✅ 这条用来决定“谁要强制两行”
+    const TWO_LINE_REFERENCE = "sin(x + y) = sinx cosy + cosx siny";
+    const TWO_LINE_LEN = TWO_LINE_REFERENCE.length;
 
-      setTimeout(() => formulaEl.classList.add('fade'), 1500); // 公式1.5秒后渐变消失
+    const active = []; // {raw, text, el, rect:{x,y,w,h}}
 
-      setTimeout(() => formulaEl.remove(), 2500); // 公式完全消失后删除
+    const rand = (a, b) => a + Math.random() * (b - a);
+    const randi = (a, b) => Math.floor(rand(a, b));
+    const choice = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+    function rectInCover(el){
+      const cr = cover.getBoundingClientRect();
+      const r = el.getBoundingClientRect();
+      return { x: r.left - cr.left, y: r.top - cr.top, w: r.width, h: r.height };
+    }
+    function inflateRect(rc, pad){
+      return { x: rc.x - pad, y: rc.y - pad, w: rc.w + pad*2, h: rc.h + pad*2 };
+    }
+    function overlaps(a, b){
+      return !(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y);
     }
 
-    setInterval(() => {
-      if (document.querySelectorAll('.formula').length < MAX_ACTIVE) {
-        randomFormula();
+    function getExcludedRects(){
+      const pad = 22;
+      const list = [];
+      if (topnote) list.push(inflateRect(rectInCover(topnote), pad));
+      if (cornerBox) list.push(inflateRect(rectInCover(cornerBox), pad));
+      if (heroBox) list.push(inflateRect(rectInCover(heroBox), pad));
+      return list;
+    }
+
+    /* ✅ soft avoid：右上角动画和底部标题中间的右侧区域（你原来的） */
+    function getSoftAvoidRect(){
+      const cr = cover.getBoundingClientRect();
+      const cb = cornerBox.getBoundingClientRect();
+      const hb = heroBox.getBoundingClientRect();
+
+      const cornerIn = {
+        x: cb.left - cr.left, y: cb.top - cr.top, w: cb.width, h: cb.height
+      };
+      const heroIn = {
+        x: hb.left - cr.left, y: hb.top - cr.top, w: hb.width, h: hb.height
+      };
+
+      const x0 = Math.max(cornerIn.x - 40, cr.width * 0.55);
+      const x1 = cr.width - Math.max(28, cr.width * 0.07);
+
+      const y0 = cornerIn.y + cornerIn.h + 10;
+      const y1 = heroIn.y - 10;
+
+      const w = Math.max(1, x1 - x0);
+      const h = Math.max(1, y1 - y0);
+
+      return { x: x0, y: y0, w, h };
+    }
+
+    /* ✅ 新增：底部标题（hero）附近“降低生成概率”的软避让区域 */
+    function getBottomSoftAvoidRect(){
+      const cr = cover.getBoundingClientRect();
+      const hb = heroBox.getBoundingClientRect();
+      const heroIn = {
+        x: hb.left - cr.left, y: hb.top - cr.top, w: hb.width, h: hb.height
+      };
+
+      // 让它覆盖 hero 上方一段高度，横向更宽一些（但不完全禁止）
+      const padX = Math.max(24, cr.width * 0.08);
+      const up = Math.max(140, cr.height * 0.22);
+      const down = 26;
+
+      const x = Math.max(0, heroIn.x - padX);
+      const y = Math.max(0, heroIn.y - up);
+      const w = Math.min(cr.width, heroIn.w + padX * 2);
+      const h = Math.min(cr.height - y, up + heroIn.h + down);
+
+      return { x, y, w, h };
+    }
+
+    function measureFormulaSize(text){
+      const tmp = document.createElement("div");
+      tmp.className = "formula";
+      tmp.style.visibility = "hidden";
+      tmp.style.left = "-9999px";
+      tmp.style.top = "-9999px";
+      tmp.textContent = text;
+      bg.appendChild(tmp);
+      const r = tmp.getBoundingClientRect();
+      bg.removeChild(tmp);
+      return { w: r.width, h: r.height };
+    }
+
+    function distanceScore(cx, cy){
+      if (active.length === 0) return 1e9;
+      let best = 1e9;
+      for (const a of active){
+        const ax = a.rect.x + a.rect.w/2;
+        const ay = a.rect.y + a.rect.h/2;
+        const d = Math.hypot(cx - ax, cy - ay);
+        if (d < best) best = d;
       }
-    }, 1500); // 每1.5秒生成一个新的数学公式
+      return best;
+    }
+
+    /* ===== 美观断行：尽量在“合理断点”断 ===== */
+    const breakChars = new Set([" ", "+", "-", "=", ")", "(", "/", "*", "×", "±", "−", "·", ","]);
+    function findBreakIndex(s, from, near){
+      const window = 18;
+      let best = -1;
+      let bestScore = 1e9;
+
+      const lo = Math.max(from + 10, near - window);
+      const hi = Math.min(s.length - 10, near + window);
+
+      for (let i = lo; i <= hi; i++){
+        const ch = s[i];
+        if (!breakChars.has(ch)) continue;
+
+        const cut = (ch === " ") ? i : (i + 1);
+
+        let bias = 0;
+        if (ch === " ") bias -= 0.6;
+        if (ch === "=") bias -= 0.4;
+
+        const score = Math.abs(cut - near) + bias;
+
+        if (score < bestScore){
+          bestScore = score;
+          best = cut;
+        }
+      }
+      if (best === -1) best = Math.min(s.length - 10, Math.max(from + 10, near));
+      return best;
+    }
+
+    function splitIntoLines(raw, lines){
+      const s = (raw || "").trim();
+      if (lines <= 1) return s;
+      if (s.length < 22) return s;
+
+      const target = Math.floor(s.length / lines);
+      const cuts = [];
+      let start = 0;
+
+      for (let li = 1; li < lines; li++){
+        const near = start + target;
+        const cut = findBreakIndex(s, start, near);
+        cuts.push(cut);
+        start = cut;
+      }
+
+      const parts = [];
+      let prev = 0;
+      for (const c of cuts){
+        parts.push(s.slice(prev, c).trim());
+        prev = c;
+      }
+      parts.push(s.slice(prev).trim());
+
+      return parts.filter(Boolean).join("\n");
+    }
+
+    function formatFormula(raw){
+      const s = (raw || "").trim();
+
+      if (FORCE_3LINES.includes(raw)) {
+        return splitIntoLines(s, 3);
+      }
+
+      if (s.length > TWO_LINE_LEN) {
+        return splitIntoLines(s, 2);
+      }
+
+      if (s.length <= LINE_TRIGGER) return s;
+
+      if (Math.random() < 0.25) return splitIntoLines(s, 2);
+      return s;
+    }
+
+    function pickFormulaRaw(){
+      const used = new Set(active.map(a => a.raw));
+      const pool = FORMULAS.filter(f => !used.has(f));
+      return pool.length ? choice(pool) : choice(FORMULAS);
+    }
+
+    function findPosition(w, h){
+      const cr = cover.getBoundingClientRect();
+      const safe = Math.max(32, Math.floor(Math.min(cr.width, cr.height) * 0.06));
+      const excluded = getExcludedRects();
+      const softRight = getSoftAvoidRect();
+      const softBottom = getBottomSoftAvoidRect();
+
+      let best = null;
+      let bestScore = -1;
+
+      const tries = 180;
+      for (let t = 0; t < tries; t++){
+        const x = randi(safe, Math.max(safe + 1, Math.floor(cr.width  - w - safe)));
+        const y = randi(safe, Math.max(safe + 1, Math.floor(cr.height - h - safe)));
+        const cand = { x, y, w, h };
+
+        if (excluded.some(er => overlaps(cand, er))) continue;
+        if (active.some(a => overlaps(cand, inflateRect(a.rect, 14)))) continue;
+
+        /* ✅ 软避让：落在这些区域就降低分数（不是禁止） */
+        const inSoftRight = overlaps(cand, softRight);
+        const inSoftBottom = overlaps(cand, softBottom);
+
+        let penalty = 1.0;
+        if (inSoftRight) penalty *= 0.55;
+        if (inSoftBottom) penalty *= 0.45; // ✅ 更强地降低靠近底部标题的概率
+
+        const cx = x + w/2;
+        const cy = y + h/2;
+        const score = distanceScore(cx, cy) * penalty;
+
+        if (score > bestScore){
+          bestScore = score;
+          best = { x, y };
+        }
+      }
+
+      return best || { x: safe, y: safe };
+    }
+
+    function spawnOne(){
+      if (active.length >= MAX_ACTIVE) return;
+
+      const raw = pickFormulaRaw();
+      const text = formatFormula(raw);
+
+      const size = measureFormulaSize(text);
+      const pos = findPosition(size.w, size.h);
+
+      const el = document.createElement("div");
+      el.className = "formula";
+      el.style.left = pos.x + "px";
+      el.style.top  = pos.y + "px";
+      bg.appendChild(el);
+
+      const info = { raw, text, el, rect: { x: pos.x, y: pos.y, w: size.w, h: size.h } };
+      active.push(info);
+
+      requestAnimationFrame(() => el.classList.add("show"));
+
+      let i = 0;
+      const speed = rand(16, 32); // 打字速度
+
+      const timer = setInterval(() => {
+        i++;
+        el.textContent = text.slice(0, i);
+
+        if (i >= text.length){
+          clearInterval(timer);
+
+          setTimeout(() => {
+            el.classList.add("fade");
+            setTimeout(() => {
+              const idx = active.indexOf(info);
+              if (idx >= 0) active.splice(idx, 1);
+              el.remove();
+            }, 240);
+          }, 1000); // 停 1 秒
+        }
+      }, speed);
+    }
+
+    function schedule(){
+      const delay = (active.length === 0)
+        ? randi(140, 700)
+        : randi(320, 1900);
+
+      setTimeout(() => {
+        /* ✅ 改：避免超过两个公式“同时开始生成” */
+        const want = randi(1, 3);                  // 只会是 1 或 2
+        const toAdd = Math.min(MAX_ACTIVE - active.length, want, 2);
+
+        for (let k = 0; k < toAdd; k++) spawnOne();
+
+        schedule();
+      }, delay);
+    }
+
+    window.addEventListener("resize", () => {
+      active.splice(0).forEach(a => a.el?.remove());
+    });
+
+    schedule();
   </script>
 </body>
 </html>
+```
+
+如果你还想让“底部标题附近几乎不出现”（接近“禁止”但仍留一点点概率），我可以把 `softBottom` 的惩罚系数再调低一点（比如 `0.2`）。
