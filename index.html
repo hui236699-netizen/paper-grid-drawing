@@ -173,7 +173,14 @@
       margin:0 auto;
     }
 
-    .section{ padding: 56px 0 84px; background:#fff; }
+    .section{
+      padding: 56px 0 84px;
+      background:#fff;
+
+      /* ✅ 修复：第二屏也至少占满一整屏（和 cover 一样） */
+      min-height: 100vh;
+      min-height: 100svh;
+    }
 
     /* 大高屏增加一点“断开感” */
     @media (min-height: 900px){
@@ -264,8 +271,6 @@
 
   <section id="choose" class="section">
     <div class="wrap">
-      <!-- ✅ 删除：Choose a Method / Click an image to enter. -->
-
       <div class="grid">
         <a class="item" href="draw.html">
           <div class="thumb">
