@@ -22,6 +22,29 @@
       touch-action: none;
     }
 
+    /* ✅ 左上角返回按钮 */
+    .backBtn{
+      position: fixed;
+      left: 16px;
+      top: 16px;
+      z-index: 9999;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(70,69,72,0.92);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1;
+      cursor: pointer;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      backdrop-filter: blur(8px);
+    }
+    .backBtn:hover{ background: rgba(90,89,93,0.92); }
+    .backBtn:active{ transform: translateY(1px); }
+
     /* 输入框：固定在左侧栏里 */
     .glyphInput {
       position: fixed;
@@ -44,7 +67,29 @@
   <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
 </head>
 <body>
+
+  <!-- ✅ 新增：返回按钮 -->
+  <button class="backBtn" id="backBtn" type="button">← 返回</button>
+
 <script>
+/* ✅ 返回按钮逻辑（优先返回上一页；否则回 index.html） */
+(function(){
+  const btn = document.getElementById("backBtn");
+  if(!btn) return;
+
+  const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+  btn.addEventListener("pointerdown", stop, { passive:false });
+  btn.addEventListener("touchstart", stop, { passive:false });
+  btn.addEventListener("mousedown", stop);
+
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (history.length > 1) history.back();
+    else window.location.href = "index.html";
+  });
+})();
+
 /* =================== 统一圆角（所有按钮同一套） =================== */
 const BTN_R = 18;
 
@@ -347,7 +392,6 @@ function rebuildRecentRects() {
 /* =================== setup =================== */
 function setup() {
   createCanvas(windowWidth, windowHeight);
-  // 主画布可保持 1（你原来就是 1）；如果你未来想更清晰可改成 min(dpr,2)
   pixelDensity(1);
 
   currentColor = color(0);
@@ -360,7 +404,6 @@ function setup() {
   pauseButton = rectToCapButton(FUNC_RECTS.pause, "Pause");
   saveButton  = rectToCapButton(FUNC_RECTS.save,  "Save");
 
-  // 输入框默认空（placeholder），画面默认仍显示 X
   glyphChar = "X";
   glyphInput = createInput("");
   glyphInput.addClass("glyphInput");
@@ -381,7 +424,6 @@ function setup() {
     }
   });
 
-  // Randomize（更大区域，文字不变）
   randomizeButton = new CapButton(
     layout.randomRect.x + layout.randomRect.w/2,
     layout.randomRect.y + layout.randomRect.h/2,
@@ -391,14 +433,12 @@ function setup() {
     true
   );
 
-  // sliders
   sliders = [];
   for (let i = 0; i < 5; i++) {
     const y = layout.firstSliderY + i * layout.sliderGap;
     sliders.push(new Slider(cw/2, y + layout.sliderH/2, 200, layout.sliderH, sliderName[i], 0.5));
   }
 
-  // wave 2×2（左侧下方）
   waveButtons = [];
   const names = ["Sin","Square","Triangle","Sawtooth"];
   for (let r = 0; r < 2; r++) {
@@ -463,37 +503,29 @@ function draw() {
 
   if (showGrid) drawGrid();
 
-  // 字母永远在窗口正中间
   push();
   translate(width / 2, height / 2);
   scale(scaleVal);
   drawGlyph(glyphChar);
   pop();
 
-  // 左侧栏覆盖
   noStroke();
   fill("#1F1E24");
   rect(0, 0, cw, height);
 
-  // 色盘 + recent
   drawColorPanel();
   drawRecentColors();
 
-  // Pause/Save
   pauseButton.str = isAnimating ? "Pause" : "Play";
   pauseButton.display();
   saveButton.display();
 
-  // Randomize
   randomizeButton.display();
 
-  // Sliders
   for (let s of sliders) s.run();
 
-  // Wave buttons
   for (let b of waveButtons) b.display();
 
-  // Function preview
   drawFunctionDisplay();
 
   if (isAnimating) t += animationSpeed;
@@ -540,7 +572,6 @@ function drawOneGlyph(ch, offsetX) {
 
   const up = (ch || "").toUpperCase();
 
-  // 保留你原来的 X / Y / O 逻辑
   if (up === "X") {
     drawParametricCurve(-70,  110,  70, -110);
     drawParametricCurve( 70,  110, -70, -110);
@@ -758,9 +789,7 @@ function drawRecentColors() {
   }
 }
 
-/* ✅ 把原来“只点一下”的逻辑升级成：按下进入拖拽 + 拖动实时更新 */
 function handleColorPress() {
-  // SB
   if (mouseX >= COLOR_MAIN.x && mouseX <= COLOR_MAIN.x + COLOR_MAIN.w &&
       mouseY >= COLOR_MAIN.y && mouseY <= COLOR_MAIN.y + COLOR_MAIN.h) {
     isColorDragging = true;
@@ -768,7 +797,6 @@ function handleColorPress() {
     updateColorByMouse();
     return true;
   }
-  // Hue
   if (mouseX >= COLOR_HUE.x && mouseX <= COLOR_HUE.x + COLOR_HUE.w &&
       mouseY >= COLOR_HUE.y && mouseY <= COLOR_HUE.y + COLOR_HUE.h) {
     isColorDragging = true;
@@ -776,7 +804,6 @@ function handleColorPress() {
     updateColorByMouse();
     return true;
   }
-  // Recent
   for (let i = 0; i < RECENT_RECTS.length; i++) {
     const r = RECENT_RECTS[i];
     if (mouseX >= r.x && mouseX <= r.x + r.w &&
@@ -825,7 +852,6 @@ function addRecentColor(c) {
   if (recentColors.length > 5) recentColors.length = 5;
 }
 
-/* ✅ 容差比较，避免“看起来一样但判定不等” */
 function colorsEqual(c1, c2, eps = 1) {
   return abs(red(c1) - red(c2)) <= eps &&
          abs(green(c1) - green(c2)) <= eps &&
@@ -861,7 +887,6 @@ function mousePressed() {
   }
 }
 
-/* ✅ 拖拽颜色实时更新 */
 function mouseDragged() {
   if (isColorDragging) {
     updateColorByMouse();
