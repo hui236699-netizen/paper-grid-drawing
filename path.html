@@ -22,10 +22,10 @@
       touch-action: none;
     }
 
-    /* ✅ 左上角返回按钮 */
+    /* ✅ 右上角返回按钮（英文） */
     .backBtn{
       position: fixed;
-      left: 16px;
+      right: 16px;
       top: 16px;
       z-index: 9999;
       padding: 10px 14px;
@@ -68,11 +68,11 @@
 </head>
 <body>
 
-  <!-- ✅ 新增：返回按钮 -->
-  <button class="backBtn" id="backBtn" type="button">← 返回</button>
+  <!-- ✅ 新增：右上角返回按钮 -->
+  <button class="backBtn" id="backBtn" type="button">Back</button>
 
 <script>
-/* ✅ 返回按钮逻辑（优先返回上一页；否则回 index.html） */
+/* ✅ 返回按钮逻辑：优先回到上一页；没有上一页就回 index.html */
 (function(){
   const btn = document.getElementById("backBtn");
   if(!btn) return;
