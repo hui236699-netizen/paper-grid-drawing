@@ -17,7 +17,6 @@
     }
     a{ color:inherit; text-decoration:none; }
 
-    /* ✅ 连续缩放的比例体系（不同屏幕比例更一致） */
     :root{
       --edge: clamp(18px, 4vmin, 44px);
       --top:  clamp(14px, 2.6vmin, 28px);
@@ -61,7 +60,6 @@
       .formula{ max-width: min(460px, calc(100vw - 90px)); }
     }
 
-    /* 极轻“呼吸” */
     @keyframes breathe {
       0%, 100% { opacity: 0.75; }
       50% { opacity: 0.9; }
@@ -86,41 +84,41 @@
       max-width: min(520px, calc(100vw - var(--edge) * 2 - var(--cornerSize)));
     }
 
-    /* ✅ 左上角的小标题图：略缩小一点 */
+    /* ✅ 小标题图：再缩小一点点点点 */
     .leftui .mini-hero{
-      width: clamp(200px, 24vmin, 360px);
+      width: clamp(180px, 21.5vmin, 320px);
       height: auto;
       display:block;
     }
 
-    /* ✅ 四行词：等比例放大一点 */
+    /* ✅ 四个词：再放大一点 */
     .leftui .words{
       margin-top: 12px;
-      font-size: 15px;
-      line-height: 1.4;
+      font-size: 17px;
+      line-height: 1.42;
       color:#111;
       opacity: .95;
     }
     .leftui .words div{ margin: 3px 0; }
 
-    /* 闪烁箭头 + Try now（✅ 等比例放大一点） */
+    /* ✅ Try now：比四个词稍微更大（更强调） */
     .trylink{
       display:inline-flex;
       align-items:center;
       gap:12px;
       margin-top: 14px;
-      font-size: 16px;
-      font-weight: 600;
+      font-size: 20px;     /* 比 17px 更大 */
+      font-weight: 650;
       color:#111;
       cursor:pointer;
       user-select:none;
     }
     .trylink .arrow{
       display:inline-block;
-      font-size: 22px;
+      font-size: 28px;     /* 箭头更大一点 */
       line-height: 1;
       animation: blinkArrow 900ms steps(2, end) infinite;
-      transform: translateY(1px);
+      transform: translateY(2px);
     }
     @keyframes blinkArrow{
       0%, 49% { opacity: 1; }
@@ -161,8 +159,6 @@
       height: auto;
       display:block;
       max-width: none;
-
-      /* 超大屏不让它无限变大 */
       max-height: clamp(320px, 38vmin, 680px);
       object-fit: contain;
     }
@@ -186,7 +182,6 @@
       line-height:1.6;
     }
 
-    /* 大高屏增加一点“断开感” */
     @media (min-height: 900px){
       .section{ padding-top: 76px; }
     }
@@ -249,7 +244,7 @@
   <section class="cover" id="cover">
     <div class="bg-formulas" id="bgFormulas" aria-hidden="true"></div>
 
-    <!-- ✅ 左上角：小标题图 + 四行词 + 闪烁箭头 Try now -->
+    <!-- 左上角：小标题图 + 四行词 + 闪烁箭头 Try now -->
     <div class="leftui" id="leftUI">
       <img class="mini-hero" src="assets/hero/title.png" alt="Font(X)=Y">
       <div class="words" aria-label="keywords">
@@ -317,14 +312,14 @@
   <script>
     document.getElementById("y").textContent = new Date().getFullYear();
 
-    /* ✅ Try now：平滑滚动到下一页 */
+    /* Try now：平滑滚动到下一页 */
     const tryBtn = document.getElementById("tryBtn");
     tryBtn.addEventListener("click", (e) => {
       e.preventDefault();
       document.getElementById("choose")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
 
-    /* 右上角轮播：1秒切换（保持原始模式） */
+    /* 右上角轮播：1秒切换 */
     const coverImgs = [
       "assets/cover/01-07.png",
       "assets/cover/01-08.png",
@@ -697,7 +692,6 @@
           return;
         }
 
-        // 同时开始生成不超过2个；页面最多4个
         const want = randi(1, 3); // 1 或 2
         const toAdd = Math.min(MAX_ACTIVE - active.length, want, 2);
         for (let k = 0; k < toAdd; k++) spawnOne();
