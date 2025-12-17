@@ -10,17 +10,11 @@
     body { visibility: hidden; }
   </style>
 
-  <!-- ✅ 关键：滚动控制（直接打开=顶部；只有 #choose 才到第二屏） -->
+  <!-- ✅ 改动：滚动控制（默认=顶部；只有 ?from=method 才到第二屏） -->
   <script>
     (function () {
       // 禁止浏览器自动恢复滚动（微信/手机浏览器也尽量兜住）
       if ("scrollRestoration" in history) history.scrollRestoration = "manual";
-
-      function hasValidHash() {
-        if (!location.hash) return false;
-        const id = location.hash.slice(1);
-        return !!document.getElementById(id);
-      }
 
       function showBody() {
         document.body.style.visibility = "visible";
@@ -33,28 +27,49 @@
         document.documentElement.style.scrollBehavior = prev;
       }
 
+      // 返回 true 表示成功滚到了 choose（元素存在）
       function scrollToChooseInstant() {
         const el = document.getElementById("choose");
-        if (!el) return;
+        if (!el) return false;
         const prev = document.documentElement.style.scrollBehavior;
         document.documentElement.style.scrollBehavior = "auto";
         el.scrollIntoView({ behavior: "auto", block: "start" });
         document.documentElement.style.scrollBehavior = prev;
+        return true;
+      }
+
+      // 清掉 ?from=method（但保留其它 query 参数）
+      function clearFromMethodFlag() {
+        try {
+          const url = new URL(location.href);
+          url.searchParams.delete("from");
+          // 也顺手清掉 hash，避免别的地方意外写入
+          url.hash = "";
+          const qs = url.searchParams.toString();
+          const clean = url.pathname + (qs ? "?" + qs : "");
+          history.replaceState(null, "", clean);
+        } catch (e) {
+          // 兜底：不影响页面使用
+        }
       }
 
       // 规则：
-      // 1) 只有 URL 明确带 #choose（并且存在该元素）→ 去第二屏
+      // 1) 只有 URL 带 ?from=method 才滚到第二屏
       // 2) 否则一律去顶部（包括刷新、直接打开、微信自动恢复滚动）
       function settleScroll() {
-        if (hasValidHash() && location.hash === "#choose") {
-          scrollToChooseInstant();
+        const sp = new URLSearchParams(location.search);
+        const fromMethod = sp.get("from") === "method";
+
+        if (fromMethod) {
+          const ok = scrollToChooseInstant();
+          // ✅ 只有在元素存在且滚动成功后，才清掉标记
+          if (ok) clearFromMethodFlag();
         } else {
-          // 如果有其它 hash（不存在/不合法），也当做顶部处理
           scrollToTopInstant();
         }
       }
 
-      // 尽量早地先定位一次
+      // 尽量早地先定位一次（这里从方法页返回时 choose 可能还没出现，后面会再定位）
       settleScroll();
 
       // DOM 完整后再定位一次（避免布局变化导致偏移），最后再显示
@@ -313,7 +328,8 @@
         <div>Form</div>
       </div>
 
-      <a class="trylink" href="#choose" id="tryBtn" aria-label="Try now - jump to methods">
+      <!-- ✅ 改动：Try now 不再写 #choose，避免刷新/分享导致默认第二屏 -->
+      <a class="trylink" href="javascript:void(0)" id="tryBtn" aria-label="Try now - jump to methods">
         <span class="arrow" aria-hidden="true">→</span>
         <span>Try now</span>
       </a>
