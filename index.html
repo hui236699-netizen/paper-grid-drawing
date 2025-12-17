@@ -124,6 +124,21 @@
       background:#fff;
     }
 
+    /* ✅ 第一屏底部提示文案（不影响你现有布局） */
+    .coverHint{
+      position: absolute;
+      left: var(--edge);
+      right: var(--edge);
+      bottom: max(14px, env(safe-area-inset-bottom));
+      z-index: 2;
+      text-align: center;
+      font-size: 12px;
+      line-height: 1.35;
+      color: rgba(0,0,0,0.38);
+      pointer-events: none;
+      user-select: none;
+    }
+
     /* 背景公式层 */
     .bg-formulas{
       position:absolute;
@@ -342,6 +357,9 @@
     <div class="hero" id="heroBox">
       <img src="assets/hero/title.png" alt="Font(X)=Y">
     </div>
+
+    <!-- ✅ 你要加的：第一页底部提示 -->
+    <div class="coverHint">If something isn’t working, try opening and refreshing on a desktop browser.</div>
   </section>
 
   <section id="choose" class="section">
