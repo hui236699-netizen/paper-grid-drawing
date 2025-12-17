@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Font Playground</title>
 
-  <!-- ✅ 关键：防止“打开先跳一下”——先隐藏页面，等滚动就位再显示 -->
+  <!-- ✅ 防止“打开先跳一下”——先隐藏页面，等滚动就位再显示 -->
   <style>
     body { visibility: hidden; }
   </style>
 
-  <!-- ✅ 关键：滚动控制（默认=顶部；只有 ?from=method 才到第二屏；且不会“闪一下又回顶部”） -->
+  <!-- ✅ 滚动控制：默认=顶部；只有 ?from=method 才到第二屏；且不会“闪一下又回顶部” -->
   <script>
     (function () {
       if ("scrollRestoration" in history) history.scrollRestoration = "manual";
@@ -312,6 +312,22 @@
       font-size: 12px;
       background:#fff;
     }
+
+    /* ======= 小提示（两屏底部） ======= */
+    .support-note{
+      font-size: 12px;
+      line-height: 1.4;
+      color: #9a9a9a;
+      text-align: center;
+    }
+    .support-note.cover-note{
+      position: absolute;
+      left: var(--edge);
+      right: var(--edge);
+      bottom: 14px;
+      z-index: 2;
+      pointer-events: none;
+    }
   </style>
 </head>
 
@@ -341,6 +357,11 @@
 
     <div class="hero" id="heroBox">
       <img src="assets/hero/title.png" alt="Font(X)=Y">
+    </div>
+
+    <!-- ✅ 第一屏底部提示 -->
+    <div class="support-note cover-note">
+      If something isn’t working, try opening and refreshing on a desktop browser.
     </div>
   </section>
 
@@ -378,7 +399,13 @@
   </section>
 
   <footer>
-    <div class="wrap">© <span id="y"></span> Font Playground</div>
+    <div class="wrap">
+      © <span id="y"></span> Font Playground
+      <!-- ✅ 第二屏底部提示 -->
+      <div class="support-note" style="margin-top:6px;">
+        If something isn’t working, try opening and refreshing on a desktop browser.
+      </div>
+    </div>
   </footer>
 
   <script>
