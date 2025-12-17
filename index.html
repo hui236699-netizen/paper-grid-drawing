@@ -32,12 +32,36 @@
       width: 100%;
       padding: 36px var(--edge);
       overflow:hidden;
-
-      /* ✅ 不再使用网格背景 */
-      background-color:#fff;
     }
 
-    /* ✅ 向下滚动提示 */
+    /*  背景数学公式 */
+    .bg-formulas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(255, 255, 255, 0.1);
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .bg-formulas span {
+      font-family: "Courier New", Courier, monospace;
+      position: absolute;
+      font-size: 14px;
+      color: rgba(0,0,0,0.2);
+      white-space: nowrap;
+      opacity: 0;
+      animation: fadeIn 2s infinite;
+    }
+
+    @keyframes fadeIn {
+      0% { opacity: 0; }
+      100% { opacity: 1; }
+    }
+
+    /* 向下滚动提示 */
     .scroll-hint {
       position: absolute;
       bottom: 16px;
@@ -194,7 +218,6 @@
     </div>
 
     <div class="hero" id="heroBox">
-      <!-- ✅ 你的大标题图（是照片）放这里：改成你的真实路径 -->
       <img src="assets/hero/title.png" alt="Font(X)=Y">
     </div>
 
@@ -270,7 +293,7 @@
       cornerImgEl.src = coverImgs[ci];
     }, 1000);
 
-    /* ===== 向下滚动提示 ===== */
+    /* 向下滚动提示 */
     const scrollHint = document.getElementById("scrollHint");
 
     window.addEventListener("scroll", () => {
@@ -281,6 +304,32 @@
         scrollHint.classList.remove("show");
       }
     });
+
+    /* 数学公式背景 */
+    const formulas = [
+      "x + y = y + x", "a(x + b) = ax + ab", "x² - a² = (x + a)(x - a)", 
+      "(x ± a)² = x² ± 2ax + a²", "x = [-b ± √(b² - 4ac)]/(2a)", "y = kx + b", 
+      "y = ax² + bx + c", "sin(x + y) = sinx cosy + cosx siny", "sin²x + cos²x = 1", 
+      "a^x × a^y = a^(x + y)", "log_a x = log_c x / log_c a", "(x^n)' = n x^(n - 1)", 
+      "∫x^n dx = x^(n + 1)/(n + 1) + C", "∫[a,b]x^n dx = b^(n + 1)/(n + 1) - a^(n + 1)/(n + 1)",
+      "y = sinx", "y = cosx", "y = ln x", "y = e^x", "ax + by = c", "(x - a)² + (y - b)² = r²", 
+      "dy/dx = (dy/dt)/(dx/dt)", "∫sinx dx = -cosx + C", "∫cosx dx = sinx + C", 
+      "x^m × x^n = x^(m + n)", "(xy)^n = x^n y^n", "y = asin(kx + φ)cos(mx - θ) + be^(px + q)ln(rx² + sx + t)",
+      "y = (x² - 3x + 2)(2x³ + 5x - 7)/(x + 4)(x² - 1)", "(x - a)² + (y - b)² + (z - c)² + 2(x - a)(y - b) = r²"
+    ];
+    
+    const bgFormulasEl = document.getElementById("bgFormulas");
+    
+    function randomFormula() {
+      const formula = formulas[Math.floor(Math.random() * formulas.length)];
+      const formulaEl = document.createElement('span');
+      formulaEl.textContent = formula;
+      formulaEl.style.top = `${Math.random() * 100}%`;
+      formulaEl.style.left = `${Math.random() * 100}%`;
+      bgFormulasEl.appendChild(formulaEl);
+    }
+    
+    setInterval(randomFormula, 1500); // 每1.5秒生成一个新的数学公式
   </script>
 </body>
 </html>
