@@ -219,7 +219,6 @@
       position:absolute;
       left:var(--edge);
       right:var(--edge);
-      /* ✅ 第一屏底部标题图：往下回一点点（比上一版更靠下） */
       bottom: calc(var(--heroBottom) + 8px);
       display:flex;
       justify-content:center;
@@ -302,7 +301,8 @@
     .support-note{
       font-size: 12px;
       line-height: 1.4;
-      color: #9a9a9a;
+      /* ✅ 更浅一点 */
+      color: #bdbdbd;
       text-align: center;
     }
     .support-note.cover-note{
@@ -313,10 +313,10 @@
       z-index: 2;
       pointer-events: none;
     }
-    /* ✅ 第二屏：更靠下（贴近 footer 但在它上面） */
+    /* ✅ 第二屏：再往下（更靠近 footer 上面） */
     .support-note.choose-note{
-      margin-top: 72px;   /* 原来偏上 -> 这里加大间距让它更靠下 */
-      padding-bottom: 18px;
+      margin-top: 110px;  /* 再往下 */
+      padding-bottom: 30px;
     }
   </style>
 </head>
@@ -428,36 +428,15 @@
       cornerImgEl.src = coverImgs[ci];
     }, 1000);
 
-    /* ===== 背景公式 ===== */
+    /* ===== 背景公式（保持原逻辑） ===== */
     const BASE_FORMULAS = [
-      "x + y = y + x",
-      "a(x + b) = ax + ab",
-      "x² - a² = (x + a)(x - a)",
-      "(x ± a)² = x² ± 2ax + a²",
-      "x = [-b ± √(b² - 4ac)]/(2a)",
-      "y = kx + b",
-      "y = ax² + bx + c",
-      "sin(x + y) = sinx cosy + cosx siny",
-      "sin²x + cos²x = 1",
-      "a^x × a^y = a^(x + y)",
-      "log_a x = log_c x / log_c a",
-      "(x^n)' = n x^(n - 1)",
-      "∫x^n dx = x^(n + 1)/(n + 1) + C",
-      "∫[a,b]x^n dx = b^(n + 1)/(n + 1) - a^(n + 1)/(n + 1)",
-      "y = sinx",
-      "y = cosx",
-      "y = ln x",
-      "y = e^x",
-      "ax + by = c",
-      "(x - a)² + (y - b)² = r²",
-      "dy/dx = (dy/dt)/(dx/dt)",
-      "∫sinx dx = -cosx + C",
-      "∫cosx dx = sinx + C",
-      "x^m × x^n = x^(m + n)",
-      "(xy)^n = x^n y^n",
-
-      "y = ax³ + bx² + cx + d + (e x)/(f + x²)",
-      "y = sin(kx + φ) + cos(mx - θ) + tan(nx)",
+      "x + y = y + x","a(x + b) = ax + ab","x² - a² = (x + a)(x - a)","(x ± a)² = x² ± 2ax + a²",
+      "x = [-b ± √(b² - 4ac)]/(2a)","y = kx + b","y = ax² + bx + c","sin(x + y) = sinx cosy + cosx siny",
+      "sin²x + cos²x = 1","a^x × a^y = a^(x + y)","log_a x = log_c x / log_c a","(x^n)' = n x^(n - 1)",
+      "∫x^n dx = x^(n + 1)/(n + 1) + C","∫[a,b]x^n dx = b^(n + 1)/(n + 1) - a^(n + 1)/(n + 1)",
+      "y = sinx","y = cosx","y = ln x","y = e^x","ax + by = c","(x - a)² + (y - b)² = r²",
+      "dy/dx = (dy/dt)/(dx/dt)","∫sinx dx = -cosx + C","∫cosx dx = sinx + C","x^m × x^n = x^(m + n)","(xy)^n = x^n y^n",
+      "y = ax³ + bx² + cx + d + (e x)/(f + x²)","y = sin(kx + φ) + cos(mx - θ) + tan(nx)",
       "x = [ -b ± √(b² - 4ac + 8de - 2fg) ] / (2a + 3h)",
       "y = a e^(kx) + b ln(cx + d) + c √(ex² + fx + g)",
       "y = (x² - 3x + 2)(2x³ + 5x - 7)/(x + 4)(x² - 1)",
@@ -789,6 +768,105 @@
     });
 
     schedule();
+  </script>
+</head>
+
+<body>
+  <section class="cover" id="cover">
+    <div class="bg-formulas" id="bgFormulas" aria-hidden="true"></div>
+
+    <div class="leftui" id="leftUI">
+      <img class="mini-hero" src="assets/hero/title.png" alt="Font(X)=Y">
+      <div class="words" aria-label="keywords">
+        <div>Function</div>
+        <div>Parameter</div>
+        <div>System</div>
+        <div>Form</div>
+      </div>
+
+      <a class="trylink" href="javascript:void(0)" id="tryBtn" aria-label="Try now - jump to methods">
+        <span class="arrow" aria-hidden="true">→</span>
+        <span>Try now</span>
+      </a>
+    </div>
+
+    <div class="corner" id="cornerBox">
+      <img id="cornerImg" alt="cover-rotating">
+    </div>
+
+    <div class="hero" id="heroBox">
+      <img src="assets/hero/title.png" alt="Font(X)=Y">
+    </div>
+
+    <div class="support-note cover-note">
+      If something isn’t working, try opening and refreshing on a desktop browser.
+    </div>
+  </section>
+
+  <section id="choose" class="section">
+    <div class="wrap">
+      <div class="grid">
+        <a class="item" href="draw.html">
+          <div class="thumb">
+            <img src="assets/home/blocks.png" alt="Font building blocks">
+          </div>
+          <div class="note">
+            Experiment with building modular glyphs using mathematical grids and geometric patterns
+          </div>
+        </a>
+
+        <a class="item" href="path.html">
+          <div class="thumb">
+            <img src="assets/home/path.png" alt="Font Path Method">
+          </div>
+          <div class="note">
+            Experiment with building modular glyphs using mathematical grids and geometric patterns
+          </div>
+        </a>
+
+        <a class="item" href="texture.html">
+          <div class="thumb">
+            <img src="assets/home/texture.png" alt="Font Texture Method">
+          </div>
+          <div class="note">
+            Experiment with building modular glyphs using mathematical grids and geometric patterns
+          </div>
+        </a>
+      </div>
+
+      <div class="support-note choose-note">
+        If something isn’t working, try opening and refreshing on a desktop browser.
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">© <span id="y"></span> Font Playground</div>
+  </footer>
+
+  <script>
+    document.getElementById("y").textContent = new Date().getFullYear();
+
+    const tryBtn = document.getElementById("tryBtn");
+    tryBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      document.getElementById("choose")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+
+    const coverImgs = [
+      "assets/cover/01-07.png","assets/cover/01-08.png","assets/cover/01-09.png","assets/cover/01-10.png",
+      "assets/cover/01-11.png","assets/cover/01-12.png","assets/cover/01-13.png","assets/cover/01-14.png",
+      "assets/cover/01-15.png","assets/cover/01-16.png","assets/cover/01-17.png","assets/cover/01-18.png"
+    ];
+    coverImgs.forEach(src => { const im = new Image(); im.src = src; });
+
+    const cornerImgEl = document.getElementById("cornerImg");
+    let ci = 0;
+    cornerImgEl.src = coverImgs[0];
+    setInterval(() => {
+      ci = (ci + 1) % coverImgs.length;
+      cornerImgEl.src = coverImgs[ci];
+    }, 1000);
   </script>
 </body>
 </html>
