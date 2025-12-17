@@ -17,24 +17,25 @@
     }
     a{ color:inherit; text-decoration:none; }
 
+    /* ✅ 统一比例体系：用 vmin + clamp 连续缩放（不同屏幕比例更一致） */
     :root{
-      --edge: 44px;
-      --top: 28px;
-    }
-    @media (max-width: 980px){
-      :root{ --edge: 18px; --top: 14px; }
+      --edge: clamp(18px, 4vmin, 44px);
+      --top:  clamp(14px, 2.6vmin, 28px);
+
+      --cornerSize: clamp(140px, 18vmin, 240px);
+      --cornerRadius: clamp(12px, 2.1vmin, 16px);
+
+      --heroBottom: clamp(18px, 4vmin, 42px);
     }
 
     /* ======= Cover (第一屏) ======= */
     .cover{
       position: relative;
       min-height: 100vh;
-      min-height: 100svh; /* ✅ 适配移动端地址栏高度变化 */
+      min-height: 100svh; /* ✅ 移动端地址栏适配 */
       width: 100%;
       padding: 36px var(--edge);
       overflow:hidden;
-
-      /* ✅ 纯白背景（无网格点子） */
       background:#fff;
     }
 
@@ -49,15 +50,10 @@
       position:absolute;
       font-size:12px;
       line-height:1.35;
-
-      /* ✅ 公式颜色浅灰 */
-      color:#b8b8b8;
-
+      color:#b8b8b8;       /* ✅ 浅灰 */
       opacity:0;
-      white-space:pre;            /* 允许 \n 换行 */
+      white-space:pre;
       transform: translateZ(0);
-
-      /* 防止太长撑破 */
       max-width: min(620px, calc(100vw - 160px));
       word-break: break-word;
     }
@@ -65,12 +61,10 @@
       .formula{ max-width: min(460px, calc(100vw - 90px)); }
     }
 
-    /* ✅ 极轻“呼吸”动画（你之前已采用） */
     @keyframes breathe {
       0%, 100% { opacity: 0.75; }
       50% { opacity: 0.9; }
     }
-
     .formula.show{
       opacity:1;
       transition: opacity 120ms linear;
@@ -94,14 +88,14 @@
       z-index:2;
     }
 
-    /* 右上角轮播 */
+    /* 右上角轮播（恢复原始切换方式） */
     .corner{
       position:absolute;
       right:var(--edge);
       top:var(--top);
-      width: 240px;
+      width: var(--cornerSize);
       aspect-ratio: 1 / 1;
-      border-radius: 16px;
+      border-radius: var(--cornerRadius);
       overflow:hidden;
       background:#fff;
       z-index:2;
@@ -112,26 +106,16 @@
       object-fit: cover;
       display:block;
       transform: translateZ(0);
-
-      /* ✅ 优化 #5：淡入淡出（crossfade） */
-      opacity: 1;
-      transition: opacity 180ms ease;
-    }
-    @media (max-width: 980px){
-      .corner{ width: 150px; border-radius: 14px; }
     }
 
     .hero{
       position:absolute;
       left:var(--edge);
       right:var(--edge);
-      bottom: 42px;
+      bottom: var(--heroBottom);
       display:flex;
       justify-content:center;
       z-index:2;
-    }
-    @media (max-width: 980px){
-      .hero{ bottom: 28px; }
     }
     .hero img{
       width: 100%;
@@ -139,22 +123,9 @@
       display:block;
       max-width: none;
 
-      /* ✅ 适配超矮屏：避免 hero 挤压/溢出 */
-      max-height: 44svh;
+      /* ✅ 也用同一比例体系限制高度，避免超矮屏挤爆 */
+      max-height: 46vmin;
       object-fit: contain;
-    }
-
-    /* ✅ 适配特别矮的屏幕：缩小角图与 hero 占用，避免重叠 */
-    @media (max-height: 650px){
-      .corner{ width: 170px; }
-      .hero{ bottom: 20px; }
-      .hero img{ max-height: 40svh; }
-      .topnote{ max-width: 320px; }
-    }
-    @media (max-height: 520px){
-      .corner{ width: 140px; border-radius: 12px; }
-      .hero{ bottom: 16px; }
-      .hero img{ max-height: 34svh; }
     }
 
     /* ======= 下面原来那页：三张卡片进三个网页（保留） ======= */
@@ -291,7 +262,7 @@
   <script>
     document.getElementById("y").textContent = new Date().getFullYear();
 
-    /* 右上角轮播：12张 */
+    /* 右上角轮播：12张（✅ 恢复你原来的 1 秒切换方式） */
     const coverImgs = [
       "assets/cover/01-07.png",
       "assets/cover/01-08.png",
@@ -311,26 +282,10 @@
     const cornerImgEl = document.getElementById("cornerImg");
     let ci = 0;
     cornerImgEl.src = coverImgs[0];
-
-    /* ✅ 优化 #5：轮播淡入淡出 + 偶尔停顿 */
-    function setCornerImage(src){
-      cornerImgEl.style.opacity = "0";
-      setTimeout(() => {
-        cornerImgEl.src = src;
-        requestAnimationFrame(() => {
-          cornerImgEl.style.opacity = "1";
-        });
-      }, 120);
-    }
-
-    function rotateCorner(){
+    setInterval(() => {
       ci = (ci + 1) % coverImgs.length;
-      setCornerImage(coverImgs[ci]);
-
-      const delay = (Math.random() < 0.2) ? 2600 : 1200; // 偶尔停顿
-      setTimeout(rotateCorner, delay);
-    }
-    setTimeout(rotateCorner, 1000);
+      cornerImgEl.src = coverImgs[ci];
+    }, 1000);
 
     /* ===== 背景公式 ===== */
     const BASE_FORMULAS = [
@@ -399,13 +354,13 @@
     const cornerBox = document.getElementById("cornerBox");
     const heroBox = document.getElementById("heroBox");
 
-    const MAX_ACTIVE = 4;          // 页面最多同时显示 4 个
+    const MAX_ACTIVE = 4;
     const LINE_TRIGGER = 36;
 
     const TWO_LINE_REFERENCE = "sin(x + y) = sinx cosy + cosx siny";
     const TWO_LINE_LEN = TWO_LINE_REFERENCE.length;
 
-    const active = []; // {raw, text, el, rect:{x,y,w,h}}
+    const active = [];
 
     const rand = (a, b) => a + Math.random() * (b - a);
     const randi = (a, b) => Math.floor(rand(a, b));
@@ -466,9 +421,8 @@
       return { x, y, w, h };
     }
 
-    /* ✅ 优化 #1：尺寸测量缓存（resize 时清理） */
-    const sizeCache = new Map(); // key: text -> {w,h}
-
+    /* ✅ 优化：尺寸测量缓存 */
+    const sizeCache = new Map();
     function measureFormulaSize(text){
       const cached = sizeCache.get(text);
       if (cached) return cached;
@@ -488,7 +442,7 @@
       return size;
     }
 
-    /* ✅ 优化 #4：纵向分散偏好（减少“同一水平带”聚集） */
+    /* ✅ 优化：纵向分散偏好 */
     function distanceScore(cx, cy){
       if (active.length === 0) return 1e9;
 
@@ -503,8 +457,6 @@
         if (d < bestDist) bestDist = d;
         if (dy < bestY) bestY = dy;
       }
-
-      // d 负责“整体分散”，dy 负责“高度分层”
       return bestDist + bestY * 0.35;
     }
 
@@ -617,7 +569,6 @@
           best = { x, y };
         }
       }
-
       return best || { x: safe, y: safe };
     }
 
@@ -663,7 +614,7 @@
       }, speed);
     }
 
-    /* ✅ 你之前采用的“静态时间点” */
+    /* ✅ 静态时间点 */
     let quietUntil = 0;
     let nextQuietAt = Date.now() + randi(30000, 45000);
     function canSpawn() { return Date.now() > quietUntil; }
@@ -686,18 +637,17 @@
           return;
         }
 
-        // 同一时间最多 2 个开始生成 + 页面最多 4 个
         const want = randi(1, 3); // 1 或 2
         const toAdd = Math.min(MAX_ACTIVE - active.length, want, 2);
-
         for (let k = 0; k < toAdd; k++) spawnOne();
+
         schedule();
       }, delay);
     }
 
     window.addEventListener("resize", () => {
       active.splice(0).forEach(a => a.el?.remove());
-      sizeCache.clear(); // ✅ resize 后清理缓存，保证不同尺寸测量准确
+      sizeCache.clear();
     });
 
     schedule();
