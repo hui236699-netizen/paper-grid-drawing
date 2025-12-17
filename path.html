@@ -22,7 +22,7 @@
       touch-action: none;
     }
 
-    /* ✅ 右上角返回按钮（英文） */
+    /* ✅ 返回按钮（右上角 / 英文 / 灰底黑字） */
     .backBtn{
       position: fixed;
       right: 16px;
@@ -30,9 +30,11 @@
       z-index: 9999;
       padding: 10px 14px;
       border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.14);
-      background: rgba(70,69,72,0.92);
-      color: #fff;
+
+      background: #DBDBDB;
+      color: #000;
+      border: 1px solid rgba(0,0,0,0.12);
+
       font-size: 13px;
       font-weight: 700;
       line-height: 1;
@@ -40,9 +42,8 @@
       user-select: none;
       -webkit-tap-highlight-color: transparent;
       touch-action: manipulation;
-      backdrop-filter: blur(8px);
     }
-    .backBtn:hover{ background: rgba(90,89,93,0.92); }
+    .backBtn:hover{ background: #CFCFCF; }
     .backBtn:active{ transform: translateY(1px); }
 
     /* 输入框：固定在左侧栏里 */
@@ -68,27 +69,21 @@
 </head>
 <body>
 
-  <!-- ✅ 新增：右上角返回按钮 -->
-  <button class="backBtn" id="backBtn" type="button">Back</button>
+  <!-- ✅ 右上角返回按钮 -->
+  <button class="backBtn" id="backBtn" type="button" aria-label="Back to Home">Back</button>
 
 <script>
-/* ✅ 返回按钮逻辑：优先回到上一页；没有上一页就回 index.html */
-(function(){
-  const btn = document.getElementById("backBtn");
-  if(!btn) return;
-
-  const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
-  btn.addEventListener("pointerdown", stop, { passive:false });
-  btn.addEventListener("touchstart", stop, { passive:false });
-  btn.addEventListener("mousedown", stop);
-
-  btn.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (history.length > 1) history.back();
-    else window.location.href = "index.html";
-  });
-})();
+/* ✅ 返回逻辑：优先回到 index.html；否则用浏览器返回 */
+document.getElementById("backBtn").addEventListener("click", () => {
+  // 如果你的首页文件名不是 index.html，把下面这行改成你的实际首页
+  const home = "index.html";
+  try {
+    // 在 GitHub Pages / Vercel 都稳定：直接跳首页
+    window.location.href = home;
+  } catch (e) {
+    history.back();
+  }
+});
 
 /* =================== 统一圆角（所有按钮同一套） =================== */
 const BTN_R = 18;
@@ -419,9 +414,7 @@ function setup() {
   });
 
   glyphInput.elt.addEventListener("blur", () => {
-    if (!glyphInput.value() || glyphInput.value().length === 0) {
-      glyphChar = "X";
-    }
+    if (!glyphInput.value() || glyphInput.value().length === 0) glyphChar = "X";
   });
 
   randomizeButton = new CapButton(
@@ -523,7 +516,6 @@ function draw() {
   randomizeButton.display();
 
   for (let s of sliders) s.run();
-
   for (let b of waveButtons) b.display();
 
   drawFunctionDisplay();
@@ -547,7 +539,7 @@ function drawGrid() {
   for (let y = 0; y <= height; y += step) line(cw, y, width, y);
 }
 
-/* =================== 字母绘制：骨架 + 沿线扰动 =================== */
+/* =================== 字母绘制 =================== */
 function drawGlyph(str) {
   stroke(currentColor);
   strokeWeight(strokeW);
