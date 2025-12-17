@@ -1,6 +1,3 @@
-下面是**按你要求改好的完整版本**（只改了：去掉点状网格背景、公式浅灰、同一时间最多 2 个公式开始生成、页面最多 4 个公式、降低靠近底部标题区域生成概率；其余功能不动）。
-
-```html
 <!doctype html>
 <html lang="zh-CN">
 <head>
@@ -36,7 +33,7 @@
       padding: 36px var(--edge);
       overflow:hidden;
 
-      /* ✅ 改：不要网格点子背景 → 纯白 */
+      /* ✅ 纯白背景（无网格点子） */
       background:#fff;
     }
 
@@ -52,7 +49,7 @@
       font-size:12px;
       line-height:1.35;
 
-      /* ✅ 改：公式颜色浅灰 */
+      /* ✅ 公式颜色浅灰 */
       color:#b8b8b8;
 
       opacity:0;
@@ -66,8 +63,26 @@
     @media (max-width: 980px){
       .formula{ max-width: min(460px, calc(100vw - 90px)); }
     }
-    .formula.show{ opacity:1; transition: opacity 120ms linear; }
-    .formula.fade{ opacity:0; transition: opacity 220ms ease; }
+
+    /* ✅ 新增：极轻“呼吸”动画 */
+    @keyframes breathe {
+      0%, 100% { opacity: 0.75; }
+      50% { opacity: 0.9; }
+    }
+
+    .formula.show{
+      opacity:1;
+      transition: opacity 120ms linear;
+
+      /* ✅ 新增：show 状态下呼吸 */
+      animation: breathe 6s ease-in-out infinite;
+    }
+    .formula.fade{
+      /* ✅ 新增：fade 时关掉呼吸，避免动画和淡出打架 */
+      animation: none;
+      opacity:0;
+      transition: opacity 220ms ease;
+    }
 
     .topnote{
       position:absolute;
@@ -201,8 +216,9 @@
     <div class="bg-formulas" id="bgFormulas" aria-hidden="true"></div>
 
     <div class="topnote" id="topnote">
-      Experiment with building modular glyphs using<br/>
-      mathematical grids and geometric patterns
+      <!-- ✅ 替换文案（你选的） -->
+      A playground for turning mathematics<br/>
+      into a visual language of type
     </div>
 
     <div class="corner" id="cornerBox">
@@ -257,7 +273,7 @@
   <script>
     document.getElementById("y").textContent = new Date().getFullYear();
 
-    /* 右上角轮播：12张，每1秒切换 */
+    /* 右上角轮播：12张 */
     const coverImgs = [
       "assets/cover/01-07.png",
       "assets/cover/01-08.png",
@@ -277,10 +293,16 @@
     const cornerImgEl = document.getElementById("cornerImg");
     let ci = 0;
     cornerImgEl.src = coverImgs[0];
-    setInterval(() => {
+
+    /* ✅ 改：不再用固定 setInterval（1s），改成“轻微放慢 + 偶尔停顿” */
+    function rotateCorner(){
       ci = (ci + 1) % coverImgs.length;
       cornerImgEl.src = coverImgs[ci];
-    }, 1000);
+
+      const delay = (Math.random() < 0.2) ? 2600 : 1200; // 偶尔停顿
+      setTimeout(rotateCorner, delay);
+    }
+    setTimeout(rotateCorner, 1000);
 
     /* ===== 背景公式 ===== */
     const BASE_FORMULAS = [
@@ -329,7 +351,7 @@
       "y = e^(kx + m)sin(nx + p) + ln(qx² + rx + s) + √(tx + u)"
     ];
 
-    /* ✅ 你新加：全部强制三行 */
+    /* ✅ 强制三行 */
     const FORCE_3LINES = [
       "y = asin(kx + φ)cos(mx - θ) + be^(px + q)ln(rx² + sx + t) + sqrt(ux³ + vx + w)/(zx + y) + ctan(dx)",
       "log_m(nx³ + px² + qx + r) - log_m(sx + t) + sqrt(ux⁴ + vx³ + wx² + zx + y) = kx + b + a/(cx² + dx + e)",
@@ -350,10 +372,9 @@
     const cornerBox = document.getElementById("cornerBox");
     const heroBox = document.getElementById("heroBox");
 
-    const MAX_ACTIVE = 4;          // ✅ 页面最多同时显示 4 个
+    const MAX_ACTIVE = 4;          // 页面最多同时显示 4 个
     const LINE_TRIGGER = 36;       // 超过 36 字符才考虑断行
 
-    // ✅ 这条用来决定“谁要强制两行”
     const TWO_LINE_REFERENCE = "sin(x + y) = sinx cosy + cosx siny";
     const TWO_LINE_LEN = TWO_LINE_REFERENCE.length;
 
@@ -384,7 +405,6 @@
       return list;
     }
 
-    /* ✅ soft avoid：右上角动画和底部标题中间的右侧区域（你原来的） */
     function getSoftAvoidRect(){
       const cr = cover.getBoundingClientRect();
       const cb = cornerBox.getBoundingClientRect();
@@ -409,7 +429,6 @@
       return { x: x0, y: y0, w, h };
     }
 
-    /* ✅ 新增：底部标题（hero）附近“降低生成概率”的软避让区域 */
     function getBottomSoftAvoidRect(){
       const cr = cover.getBoundingClientRect();
       const hb = heroBox.getBoundingClientRect();
@@ -417,7 +436,6 @@
         x: hb.left - cr.left, y: hb.top - cr.top, w: hb.width, h: hb.height
       };
 
-      // 让它覆盖 hero 上方一段高度，横向更宽一些（但不完全禁止）
       const padX = Math.max(24, cr.width * 0.08);
       const up = Math.max(140, cr.height * 0.22);
       const down = 26;
@@ -455,7 +473,6 @@
       return best;
     }
 
-    /* ===== 美观断行：尽量在“合理断点”断 ===== */
     const breakChars = new Set([" ", "+", "-", "=", ")", "(", "/", "*", "×", "±", "−", "·", ","]);
     function findBreakIndex(s, from, near){
       const window = 18;
@@ -555,13 +572,12 @@
         if (excluded.some(er => overlaps(cand, er))) continue;
         if (active.some(a => overlaps(cand, inflateRect(a.rect, 14)))) continue;
 
-        /* ✅ 软避让：落在这些区域就降低分数（不是禁止） */
         const inSoftRight = overlaps(cand, softRight);
         const inSoftBottom = overlaps(cand, softBottom);
 
         let penalty = 1.0;
         if (inSoftRight) penalty *= 0.55;
-        if (inSoftBottom) penalty *= 0.45; // ✅ 更强地降低靠近底部标题的概率
+        if (inSoftBottom) penalty *= 0.45;
 
         const cx = x + w/2;
         const cy = y + h/2;
@@ -597,7 +613,7 @@
       requestAnimationFrame(() => el.classList.add("show"));
 
       let i = 0;
-      const speed = rand(16, 32); // 打字速度
+      const speed = rand(16, 32);
 
       const timer = setInterval(() => {
         i++;
@@ -613,9 +629,17 @@
               if (idx >= 0) active.splice(idx, 1);
               el.remove();
             }, 240);
-          }, 1000); // 停 1 秒
+          }, 1000);
         }
       }, speed);
+    }
+
+    /* ✅ 新增：“静态时间点”控制 */
+    let quietUntil = 0;
+    let nextQuietAt = Date.now() + randi(30000, 45000);
+
+    function canSpawn() {
+      return Date.now() > quietUntil;
     }
 
     function schedule(){
@@ -624,12 +648,25 @@
         : randi(320, 1900);
 
       setTimeout(() => {
-        /* ✅ 改：避免超过两个公式“同时开始生成” */
+        const now = Date.now();
+
+        /* ✅ 每 30~45 秒触发一次“安静期”3~5 秒 */
+        if (now >= nextQuietAt) {
+          quietUntil = now + randi(3000, 5000);
+          nextQuietAt = now + randi(30000, 45000);
+        }
+
+        /* ✅ 安静期内：不生成新公式（但仍保持 schedule 节奏） */
+        if (!canSpawn()) {
+          schedule();
+          return;
+        }
+
+        /* ✅ 避免超过两个公式同时开始生成 */
         const want = randi(1, 3);                  // 只会是 1 或 2
         const toAdd = Math.min(MAX_ACTIVE - active.length, want, 2);
 
         for (let k = 0; k < toAdd; k++) spawnOne();
-
         schedule();
       }, delay);
     }
@@ -642,6 +679,3 @@
   </script>
 </body>
 </html>
-```
-
-如果你还想让“底部标题附近几乎不出现”（接近“禁止”但仍留一点点概率），我可以把 `softBottom` 的惩罚系数再调低一点（比如 `0.2`）。
