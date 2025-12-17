@@ -13,14 +13,11 @@
       height: 100%;
       background: #eeeeee;
       overflow: hidden;
-      touch-action: none; /* 防止移动端拖动画布时页面滚动 */
+      touch-action: none;
     }
 
-    canvas {
-      display: block; /* 去掉 canvas 底部 4px 空隙 */
-    }
+    canvas { display: block; }
 
-    /* ✅ Back button (top-right) */
     .backBtn{
       position: fixed;
       top: max(14px, env(safe-area-inset-top));
@@ -45,6 +42,10 @@
       cursor: pointer;
       user-select: none;
       -webkit-tap-highlight-color: transparent;
+
+      /* ✅ 去掉 a 标签默认下划线/小横线 */
+      text-decoration: none;
+      border-bottom: none;
     }
     .backBtn:active{
       transform: translateY(1px);
@@ -52,17 +53,13 @@
     }
   </style>
 
-  <!-- p5.js CDN（必须在 sketch.js 前） -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
 </head>
 
 <body>
-  <!-- ✅ Back -->
   <a class="backBtn" href="index.html#choose" aria-label="Back">Back</a>
 
   <main id="app"></main>
-
-  <!-- 你的绘图逻辑 -->
   <script src="sketch.js"></script>
 </body>
 </html>
