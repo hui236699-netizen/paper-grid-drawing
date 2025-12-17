@@ -35,11 +35,52 @@
     .glyphInput::placeholder{
       color: rgba(255,255,255,0.45);
     }
+
+    /* ✅ 新增：右上角 Back 按钮（和你 path 要求一致） */
+    .backBtn{
+      position: fixed;
+      top: 18px;
+      right: 18px;
+      z-index: 9999;
+
+      background: #DBDBDB;
+      color: #000;
+      border: 0;
+      outline: none;
+      border-radius: 18px;
+      padding: 10px 14px;
+      height: 36px;
+
+      font-family: ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, "PingFang SC";
+      font-size: 14px;
+      line-height: 16px;
+      cursor: pointer;
+      user-select: none;
+
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+
+      box-shadow: 0 1px 0 rgba(0,0,0,0.18);
+    }
+    .backBtn:active{
+      transform: translateY(1px);
+    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
 </head>
 <body>
+
+<!-- ✅ 新增：Back 按钮 -->
+<button class="backBtn" id="backBtn" type="button" aria-label="Back">Back</button>
+
 <script>
+/* ✅ Back：回到首页第二屏（#choose），不是回到顶部 */
+document.getElementById("backBtn").addEventListener("click", () => {
+  // 直接回到 index.html 的第二屏
+  window.location.href = "index.html#choose";
+});
+
 /* =================== UI =================== */
 const BTN_R = 18;
 const FONT_PATH = "assets/fonts/ABCFavoritHebrewBoldVariable-Trial.ttf";
@@ -697,57 +738,39 @@ function colorsEqual(c1, c2) {
 
 /* ============================================================
    ✅ Randomize（关键改动）
-   1) 颜色不变（不碰 hue/sat/bri/currentColor）
-   2) speed 固定 = 0.4（五分之二）
-   3) thickness randomize 最大不超过 0.70（滑块值）
-   4) Range 与 Letter Size 反向组合：一次大字+小Range，下一次小字+大Range
-   5) a 从随机起点开始播放
    ============================================================ */
 let randFlip = false;
 
 function randomizeParams() {
-  const FIXED_SPEED = 0.40;   // ✅ 五分之二
+  const FIXED_SPEED = 0.40;
   randFlip = !randFlip;
 
-  // 两种风格交替，但仍保留随机美观
   let rangeVal, letterVal;
 
   if (randFlip) {
-    // 大字 + 小Range
     rangeVal  = r01(0.10, 0.28);
     letterVal = r01(0.72, 0.95);
   } else {
-    // 小字 + 大Range
     rangeVal  = r01(0.78, 0.98);
     letterVal = r01(0.25, 0.48);
   }
 
-  // thickness：<= 0.70，且根据风格略调（更美观）
   let thickVal;
-  if (randFlip) {
-    // 大字通常别太粗
-    thickVal = r01(0.20, 0.52);
-  } else {
-    // 小字可以稍厚一点，但硬顶到 0.70
-    thickVal = r01(0.35, 0.70);
-  }
+  if (randFlip) thickVal = r01(0.20, 0.52);
+  else thickVal = r01(0.35, 0.70);
   thickVal = min(thickVal, 0.70);
 
   sliders[0].val = rangeVal;
   sliders[2].val = letterVal;
   sliders[1].val = thickVal;
 
-  // ✅ speed 固定
   sliders[3].val = FIXED_SPEED;
 
-  // ✅ a 从随机起点开始（不固定）
-  // 尽量避开“太平”的中间段，让变化明显
   if (random() < 0.5) a = r01(-2.0, -0.55);
   else a = r01(0.55, 3.0);
 
   daSign = random([+1, -1]);
 
-  // 立刻更新速度（基于滑块映射）
   animationSpeedSliderValue = map(sliders[3].val, 0, 1, 0.02, 0.14);
   da = isPlaying ? (daSign * animationSpeedSliderValue) : 0;
 
