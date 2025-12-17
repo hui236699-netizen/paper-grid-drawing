@@ -124,17 +124,19 @@
       background:#fff;
     }
 
-    /* ✅ 第一屏底部提示文案（不影响你现有布局） */
+    /* ✅ 第一屏底部提示：左对齐，并与左侧元素同边距 */
     .coverHint{
       position: absolute;
       left: var(--edge);
       right: var(--edge);
       bottom: max(14px, env(safe-area-inset-bottom));
       z-index: 2;
-      text-align: center;
+
+      text-align: left;
       font-size: 12px;
       line-height: 1.35;
       color: rgba(0,0,0,0.38);
+
       pointer-events: none;
       user-select: none;
     }
@@ -327,6 +329,14 @@
       font-size: 12px;
       background:#fff;
     }
+
+    /* ✅ Footer 左对齐到 var(--edge)，不要居中 */
+    footer .wrap{
+      width: 100%;
+      max-width: none;
+      margin: 0;
+      padding: 0 var(--edge);
+    }
   </style>
 </head>
 
@@ -358,7 +368,7 @@
       <img src="assets/hero/title.png" alt="Font(X)=Y">
     </div>
 
-    <!-- ✅ 你要加的：第一页底部提示 -->
+    <!-- ✅ 第一屏底部提示（左对齐到 var(--edge)） -->
     <div class="coverHint">If something isn’t working, try opening and refreshing on a desktop browser.</div>
   </section>
 
