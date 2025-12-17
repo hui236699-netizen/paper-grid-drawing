@@ -71,7 +71,7 @@
 </head>
 <body>
 
-  <!-- ✅ 右上角返回按钮（回到 index.html#choose） -->
+  <!-- ✅ 右上角返回按钮 -->
   <button class="backBtn" id="backBtn" type="button">Back</button>
 
 <script>
@@ -979,9 +979,9 @@ function useUIFont() {
   else textFont("system-ui");
 }
 
-/* ✅ Back：回到首页“下滑后的那段” */
+/* ✅ Back：回到首页时带 ?from=method，让首页强制回到第二屏 */
 document.getElementById("backBtn").addEventListener("click", () => {
-  window.location.href = "index.html#choose";
+  window.location.href = "index.html?from=method";
 });
 </script>
 </body>
