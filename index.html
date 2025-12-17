@@ -21,7 +21,8 @@
       --edge: clamp(18px, 4vmin, 44px);
       --top:  clamp(14px, 2.6vmin, 28px);
 
-      --cornerSize: clamp(176px, 22vmin, 312px);
+      /* ✅ 右上角：稍微小一点点点点（边距不变） */
+      --cornerSize: clamp(156px, 20vmin, 286px);
       --cornerRadius: clamp(12px, 2.1vmin, 18px);
 
       --heroBottom: clamp(34px, 7vmin, 102px);
@@ -75,7 +76,7 @@
       transition: opacity 220ms ease;
     }
 
-    /* ✅ 左上角新模块（位置/边距保持不变） */
+    /* 左上角新模块（位置/边距保持不变） */
     .leftui{
       position:absolute;
       left:var(--edge);
@@ -84,14 +85,14 @@
       max-width: min(520px, calc(100vw - var(--edge) * 2 - var(--cornerSize)));
     }
 
-    /* ✅ 小标题图：再缩小一点点点点 */
+    /* 小标题图 */
     .leftui .mini-hero{
       width: clamp(180px, 21.5vmin, 320px);
       height: auto;
       display:block;
     }
 
-    /* ✅ 四个词：再放大一点 */
+    /* 四个词 */
     .leftui .words{
       margin-top: 12px;
       font-size: 17px;
@@ -101,13 +102,13 @@
     }
     .leftui .words div{ margin: 3px 0; }
 
-    /* ✅ Try now：比四个词稍微更大（更强调） */
+    /* ✅ Try now：再放大一点；箭头也再大一点 */
     .trylink{
       display:inline-flex;
       align-items:center;
       gap:12px;
       margin-top: 14px;
-      font-size: 20px;     /* 比 17px 更大 */
+      font-size: 22px;
       font-weight: 650;
       color:#111;
       cursor:pointer;
@@ -115,7 +116,7 @@
     }
     .trylink .arrow{
       display:inline-block;
-      font-size: 28px;     /* 箭头更大一点 */
+      font-size: 32px;
       line-height: 1;
       animation: blinkArrow 900ms steps(2, end) infinite;
       transform: translateY(2px);
@@ -125,7 +126,7 @@
       50%, 100% { opacity: 0.12; }
     }
 
-    /* 右上角轮播 */
+    /* 右上角轮播（边距不变，只变尺寸变量） */
     .corner{
       position:absolute;
       right:var(--edge);
@@ -244,7 +245,6 @@
   <section class="cover" id="cover">
     <div class="bg-formulas" id="bgFormulas" aria-hidden="true"></div>
 
-    <!-- 左上角：小标题图 + 四行词 + 闪烁箭头 Try now -->
     <div class="leftui" id="leftUI">
       <img class="mini-hero" src="assets/hero/title.png" alt="Font(X)=Y">
       <div class="words" aria-label="keywords">
@@ -312,7 +312,6 @@
   <script>
     document.getElementById("y").textContent = new Date().getFullYear();
 
-    /* Try now：平滑滚动到下一页 */
     const tryBtn = document.getElementById("tryBtn");
     tryBtn.addEventListener("click", (e) => {
       e.preventDefault();
