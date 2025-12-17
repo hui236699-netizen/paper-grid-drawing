@@ -10,11 +10,13 @@
     body { visibility: hidden; }
   </style>
 
-  <!-- ✅ 改动：滚动控制（默认=顶部；只有 ?from=method 才到第二屏） -->
+  <!-- ✅ 关键：滚动控制（默认=顶部；只有 ?from=method 才到第二屏；且不会“闪一下又回顶部”） -->
   <script>
     (function () {
-      // 禁止浏览器自动恢复滚动（微信/手机浏览器也尽量兜住）
       if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+
+      // ✅ 本次页面生命周期只结算一次，避免重复 settle 导致跳回顶部
+      let settled = false;
 
       function showBody() {
         document.body.style.visibility = "visible";
@@ -38,41 +40,38 @@
         return true;
       }
 
-      // 清掉 ?from=method（但保留其它 query 参数）
+      // 清掉 ?from=method（保留其它 query），同时清掉 hash
       function clearFromMethodFlag() {
-        try {
-          const url = new URL(location.href);
-          url.searchParams.delete("from");
-          // 也顺手清掉 hash，避免别的地方意外写入
-          url.hash = "";
-          const qs = url.searchParams.toString();
-          const clean = url.pathname + (qs ? "?" + qs : "");
-          history.replaceState(null, "", clean);
-        } catch (e) {
-          // 兜底：不影响页面使用
-        }
+        const url = new URL(location.href);
+        url.searchParams.delete("from");
+        url.hash = "";
+        const qs = url.searchParams.toString();
+        history.replaceState(null, "", url.pathname + (qs ? "?" + qs : ""));
       }
 
-      // 规则：
-      // 1) 只有 URL 带 ?from=method 才滚到第二屏
-      // 2) 否则一律去顶部（包括刷新、直接打开、微信自动恢复滚动）
       function settleScroll() {
+        if (settled) return;
+
         const sp = new URLSearchParams(location.search);
         const fromMethod = sp.get("from") === "method";
 
         if (fromMethod) {
+          // 只有滚成功了才算结算完成（避免第一次太早，choose 还没出来）
           const ok = scrollToChooseInstant();
-          // ✅ 只有在元素存在且滚动成功后，才清掉标记
-          if (ok) clearFromMethodFlag();
+          if (ok) {
+            clearFromMethodFlag();
+            settled = true;
+          }
         } else {
           scrollToTopInstant();
+          settled = true;
         }
       }
 
-      // 尽量早地先定位一次（这里从方法页返回时 choose 可能还没出现，后面会再定位）
+      // 尽量早地先定位一次
       settleScroll();
 
-      // DOM 完整后再定位一次（避免布局变化导致偏移），最后再显示
+      // DOM 完整后再定位一次，最后再显示
       window.addEventListener("DOMContentLoaded", () => {
         requestAnimationFrame(() => {
           settleScroll();
@@ -80,8 +79,9 @@
         });
       });
 
-      // pageshow：处理 iOS/微信 bfcache 恢复
-      window.addEventListener("pageshow", () => {
+      // pageshow：只在 bfcache 恢复时允许重新结算
+      window.addEventListener("pageshow", (e) => {
+        if (e.persisted) settled = false;
         requestAnimationFrame(() => {
           settleScroll();
           showBody();
@@ -328,7 +328,7 @@
         <div>Form</div>
       </div>
 
-      <!-- ✅ 改动：Try now 不再写 #choose，避免刷新/分享导致默认第二屏 -->
+      <!-- ✅ 不使用 #choose，避免 hash 影响刷新 -->
       <a class="trylink" href="javascript:void(0)" id="tryBtn" aria-label="Try now - jump to methods">
         <span class="arrow" aria-hidden="true">→</span>
         <span>Try now</span>
