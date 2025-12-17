@@ -77,7 +77,7 @@
       transition: opacity 220ms ease;
     }
 
-    /* ✅ 左上角新模块（替换原来的那一小段文字/按钮） */
+    /* ✅ 左上角新模块（位置/边距保持不变） */
     .leftui{
       position:absolute;
       left:var(--edge);
@@ -86,29 +86,30 @@
       max-width: min(520px, calc(100vw - var(--edge) * 2 - var(--cornerSize)));
     }
 
-    /* 左上角的小标题图：复用底部同一张 title.png */
+    /* ✅ 左上角的小标题图：略缩小一点 */
     .leftui .mini-hero{
-      width: clamp(220px, 28vmin, 420px);
+      width: clamp(200px, 24vmin, 360px);
       height: auto;
       display:block;
     }
 
+    /* ✅ 四行词：等比例放大一点 */
     .leftui .words{
-      margin-top: 10px;
-      font-size: 13px;
-      line-height: 1.35;
+      margin-top: 12px;
+      font-size: 15px;
+      line-height: 1.4;
       color:#111;
       opacity: .95;
     }
-    .leftui .words div{ margin: 2px 0; }
+    .leftui .words div{ margin: 3px 0; }
 
-    /* 闪烁箭头 + Try now */
+    /* 闪烁箭头 + Try now（✅ 等比例放大一点） */
     .trylink{
       display:inline-flex;
       align-items:center;
-      gap:10px;
-      margin-top: 12px;
-      font-size: 14px;
+      gap:12px;
+      margin-top: 14px;
+      font-size: 16px;
       font-weight: 600;
       color:#111;
       cursor:pointer;
@@ -116,7 +117,7 @@
     }
     .trylink .arrow{
       display:inline-block;
-      font-size: 18px;
+      font-size: 22px;
       line-height: 1;
       animation: blinkArrow 900ms steps(2, end) infinite;
       transform: translateY(1px);
