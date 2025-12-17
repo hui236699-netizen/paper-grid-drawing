@@ -22,30 +22,6 @@
       touch-action: none;
     }
 
-    /* ✅ 返回按钮（右上角 / 英文 / 灰底黑字） */
-    .backBtn{
-      position: fixed;
-      right: 16px;
-      top: 16px;
-      z-index: 9999;
-      padding: 10px 14px;
-      border-radius: 999px;
-
-      background: #DBDBDB;
-      color: #000;
-      border: 1px solid rgba(0,0,0,0.12);
-
-      font-size: 13px;
-      font-weight: 700;
-      line-height: 1;
-      cursor: pointer;
-      user-select: none;
-      -webkit-tap-highlight-color: transparent;
-      touch-action: manipulation;
-    }
-    .backBtn:hover{ background: #CFCFCF; }
-    .backBtn:active{ transform: translateY(1px); }
-
     /* 输入框：固定在左侧栏里 */
     .glyphInput {
       position: fixed;
@@ -63,28 +39,42 @@
     .glyphInput::placeholder{
       color: rgba(255,255,255,0.45);
     }
+
+    /* ✅ 新增：右上角 Back 按钮（英文、底色 DBDBDB、字黑色） */
+    .backBtn{
+      position: fixed;
+      right: 18px;
+      top: 18px;
+      z-index: 9999;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 0;
+      background: #DBDBDB;
+      color: #000;
+      font-weight: 700;
+      font-size: 13px;
+      line-height: 1;
+      cursor: pointer;
+      user-select: none;
+    }
+    .backBtn:hover{
+      filter: brightness(0.97);
+      transform: translateY(-1px);
+    }
+    .backBtn:active{
+      transform: translateY(0px);
+      filter: brightness(0.94);
+    }
   </style>
 
   <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
 </head>
 <body>
 
-  <!-- ✅ 右上角返回按钮 -->
-  <button class="backBtn" id="backBtn" type="button" aria-label="Back to Home">Back</button>
+  <!-- ✅ 右上角返回按钮（回到 index.html#choose） -->
+  <button class="backBtn" id="backBtn" type="button">Back</button>
 
 <script>
-/* ✅ 返回逻辑：优先回到 index.html；否则用浏览器返回 */
-document.getElementById("backBtn").addEventListener("click", () => {
-  // 如果你的首页文件名不是 index.html，把下面这行改成你的实际首页
-  const home = "index.html";
-  try {
-    // 在 GitHub Pages / Vercel 都稳定：直接跳首页
-    window.location.href = home;
-  } catch (e) {
-    history.back();
-  }
-});
-
 /* =================== 统一圆角（所有按钮同一套） =================== */
 const BTN_R = 18;
 
@@ -414,7 +404,9 @@ function setup() {
   });
 
   glyphInput.elt.addEventListener("blur", () => {
-    if (!glyphInput.value() || glyphInput.value().length === 0) glyphChar = "X";
+    if (!glyphInput.value() || glyphInput.value().length === 0) {
+      glyphChar = "X";
+    }
   });
 
   randomizeButton = new CapButton(
@@ -523,14 +515,12 @@ function draw() {
   if (isAnimating) t += animationSpeed;
 }
 
-/* =================== 输入框定位 =================== */
 function placeGlyphInput() {
   if (!glyphInput) return;
   glyphInput.position(layout.inputX, layout.inputY);
   glyphInput.size(layout.inputW, layout.inputH);
 }
 
-/* =================== 网格 =================== */
 function drawGrid() {
   const step = 25;
   stroke(220);
@@ -539,7 +529,6 @@ function drawGrid() {
   for (let y = 0; y <= height; y += step) line(cw, y, width, y);
 }
 
-/* =================== 字母绘制 =================== */
 function drawGlyph(str) {
   stroke(currentColor);
   strokeWeight(strokeW);
@@ -633,7 +622,6 @@ function applyFunction(tt) {
   }
 }
 
-/* =================== 参数更新 =================== */
 function updateParameters() {
   scaleVal       = map(sliders[0].val, 0, 1, 0.5, 3);
   strokeW        = map(sliders[1].val, 0, 1, 0.5, 20);
@@ -642,7 +630,6 @@ function updateParameters() {
   animationSpeed = map(sliders[4].val, 0, 1, 0, 0.1);
 }
 
-/* =================== 右下角函数预览 =================== */
 function drawFunctionDisplay() {
   const displayWidth = 250;
   const displayHeight = 250;
@@ -687,7 +674,6 @@ function drawFunctionDisplay() {
   endShape();
 }
 
-/* =================== 颜色模块（色盘贴图） =================== */
 function buildHueGraphic() {
   const w = max(1, floor(COLOR_HUE.w));
   const h = max(1, floor(COLOR_HUE.h));
@@ -850,7 +836,6 @@ function colorsEqual(c1, c2, eps = 1) {
          abs(blue(c1) - blue(c2)) <= eps;
 }
 
-/* =================== Randomize =================== */
 function randomizeParams() {
   sliders[0].val = random(0.35, 0.75);
   sliders[1].val = random(0.15, 0.85);
@@ -863,13 +848,10 @@ function randomizeParams() {
   t = 0;
 }
 
-/* =================== 交互 =================== */
 function mousePressed() {
   if (pauseButton.hover()) { isAnimating = !isAnimating; return; }
   if (saveButton.hover())  { saveCanvas("FontPath", "png"); return; }
-
   if (randomizeButton.hover()) { randomizeParams(); return; }
-
   if (handleColorPress()) return;
 
   for (let s of sliders) s.click();
@@ -900,7 +882,6 @@ function setWaveSelected(idx) {
   for (let i = 0; i < waveButtons.length; i++) waveButtons[i].state = (i === idx);
 }
 
-/* =================== UI：CapButton / Slider =================== */
 function rectToCapButton(rect, label) {
   const cx = rect.x + rect.w / 2;
   const cy = rect.y + rect.h / 2;
@@ -986,7 +967,6 @@ class Slider {
   }
 }
 
-/* =================== 字体加载（失败不影响） =================== */
 function tryLoadUIFont() {
   loadFont(
     FONT_PATH,
@@ -998,6 +978,11 @@ function useUIFont() {
   if (fontLoaded && uiFont) textFont(uiFont);
   else textFont("system-ui");
 }
+
+/* ✅ Back：回到首页“下滑后的那段” */
+document.getElementById("backBtn").addEventListener("click", () => {
+  window.location.href = "index.html#choose";
+});
 </script>
 </body>
 </html>
