@@ -124,23 +124,6 @@
       background:#fff;
     }
 
-    /* ✅ 第一屏底部提示：左对齐，并与左侧元素同边距 */
-    .coverHint{
-      position: absolute;
-      left: var(--edge);
-      right: var(--edge);
-      bottom: max(14px, env(safe-area-inset-bottom));
-      z-index: 2;
-
-      text-align: left;
-      font-size: 12px;
-      line-height: 1.35;
-      color: rgba(0,0,0,0.38);
-
-      pointer-events: none;
-      user-select: none;
-    }
-
     /* 背景公式层 */
     .bg-formulas{
       position:absolute;
@@ -328,14 +311,15 @@
       color: #888;
       font-size: 12px;
       background:#fff;
+      text-align: center;
     }
 
-    /* ✅ Footer 左对齐到 var(--edge)，不要居中 */
-    footer .wrap{
-      width: 100%;
-      max-width: none;
-      margin: 0;
-      padding: 0 var(--edge);
+    /* ✅ 第二屏底部提示（在版权上面，居中、更浅灰） */
+    .helpnote{
+      margin: 0 0 8px;
+      font-size: 11px;
+      line-height: 1.35;
+      color: #b7b7b7;
     }
   </style>
 </head>
@@ -367,9 +351,6 @@
     <div class="hero" id="heroBox">
       <img src="assets/hero/title.png" alt="Font(X)=Y">
     </div>
-
-    <!-- ✅ 第一屏底部提示（左对齐到 var(--edge)） -->
-    <div class="coverHint">If something isn’t working, try opening and refreshing on a desktop browser.</div>
   </section>
 
   <section id="choose" class="section">
@@ -406,7 +387,10 @@
   </section>
 
   <footer>
-    <div class="wrap">© <span id="y"></span> Font Playground</div>
+    <div class="wrap">
+      <div class="helpnote">If something isn’t working, try opening and refreshing on a desktop browser.</div>
+      © <span id="y"></span> Font Playground
+    </div>
   </footer>
 
   <script>
