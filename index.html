@@ -29,6 +29,7 @@
     .cover{
       position: relative;
       min-height: 100vh;
+      min-height: 100svh; /* ✅ 适配移动端地址栏高度变化 */
       width: 100%;
       padding: 36px var(--edge);
       overflow:hidden;
@@ -64,7 +65,7 @@
       .formula{ max-width: min(460px, calc(100vw - 90px)); }
     }
 
-    /* ✅ 新增：极轻“呼吸”动画 */
+    /* ✅ 极轻“呼吸”动画（你之前已采用） */
     @keyframes breathe {
       0%, 100% { opacity: 0.75; }
       50% { opacity: 0.9; }
@@ -73,12 +74,9 @@
     .formula.show{
       opacity:1;
       transition: opacity 120ms linear;
-
-      /* ✅ 新增：show 状态下呼吸 */
       animation: breathe 6s ease-in-out infinite;
     }
     .formula.fade{
-      /* ✅ 新增：fade 时关掉呼吸，避免动画和淡出打架 */
       animation: none;
       opacity:0;
       transition: opacity 220ms ease;
@@ -114,6 +112,10 @@
       object-fit: cover;
       display:block;
       transform: translateZ(0);
+
+      /* ✅ 优化 #5：淡入淡出（crossfade） */
+      opacity: 1;
+      transition: opacity 180ms ease;
     }
     @media (max-width: 980px){
       .corner{ width: 150px; border-radius: 14px; }
@@ -136,6 +138,23 @@
       height: auto;
       display:block;
       max-width: none;
+
+      /* ✅ 适配超矮屏：避免 hero 挤压/溢出 */
+      max-height: 44svh;
+      object-fit: contain;
+    }
+
+    /* ✅ 适配特别矮的屏幕：缩小角图与 hero 占用，避免重叠 */
+    @media (max-height: 650px){
+      .corner{ width: 170px; }
+      .hero{ bottom: 20px; }
+      .hero img{ max-height: 40svh; }
+      .topnote{ max-width: 320px; }
+    }
+    @media (max-height: 520px){
+      .corner{ width: 140px; border-radius: 12px; }
+      .hero{ bottom: 16px; }
+      .hero img{ max-height: 34svh; }
     }
 
     /* ======= 下面原来那页：三张卡片进三个网页（保留） ======= */
@@ -216,7 +235,6 @@
     <div class="bg-formulas" id="bgFormulas" aria-hidden="true"></div>
 
     <div class="topnote" id="topnote">
-      <!-- ✅ 替换文案（你选的） -->
       A playground for turning mathematics<br/>
       into a visual language of type
     </div>
@@ -294,10 +312,20 @@
     let ci = 0;
     cornerImgEl.src = coverImgs[0];
 
-    /* ✅ 改：不再用固定 setInterval（1s），改成“轻微放慢 + 偶尔停顿” */
+    /* ✅ 优化 #5：轮播淡入淡出 + 偶尔停顿 */
+    function setCornerImage(src){
+      cornerImgEl.style.opacity = "0";
+      setTimeout(() => {
+        cornerImgEl.src = src;
+        requestAnimationFrame(() => {
+          cornerImgEl.style.opacity = "1";
+        });
+      }, 120);
+    }
+
     function rotateCorner(){
       ci = (ci + 1) % coverImgs.length;
-      cornerImgEl.src = coverImgs[ci];
+      setCornerImage(coverImgs[ci]);
 
       const delay = (Math.random() < 0.2) ? 2600 : 1200; // 偶尔停顿
       setTimeout(rotateCorner, delay);
@@ -351,7 +379,6 @@
       "y = e^(kx + m)sin(nx + p) + ln(qx² + rx + s) + √(tx + u)"
     ];
 
-    /* ✅ 强制三行 */
     const FORCE_3LINES = [
       "y = asin(kx + φ)cos(mx - θ) + be^(px + q)ln(rx² + sx + t) + sqrt(ux³ + vx + w)/(zx + y) + ctan(dx)",
       "log_m(nx³ + px² + qx + r) - log_m(sx + t) + sqrt(ux⁴ + vx³ + wx² + zx + y) = kx + b + a/(cx² + dx + e)",
@@ -373,7 +400,7 @@
     const heroBox = document.getElementById("heroBox");
 
     const MAX_ACTIVE = 4;          // 页面最多同时显示 4 个
-    const LINE_TRIGGER = 36;       // 超过 36 字符才考虑断行
+    const LINE_TRIGGER = 36;
 
     const TWO_LINE_REFERENCE = "sin(x + y) = sinx cosy + cosx siny";
     const TWO_LINE_LEN = TWO_LINE_REFERENCE.length;
@@ -410,12 +437,8 @@
       const cb = cornerBox.getBoundingClientRect();
       const hb = heroBox.getBoundingClientRect();
 
-      const cornerIn = {
-        x: cb.left - cr.left, y: cb.top - cr.top, w: cb.width, h: cb.height
-      };
-      const heroIn = {
-        x: hb.left - cr.left, y: hb.top - cr.top, w: hb.width, h: hb.height
-      };
+      const cornerIn = { x: cb.left - cr.left, y: cb.top - cr.top, w: cb.width, h: cb.height };
+      const heroIn   = { x: hb.left - cr.left, y: hb.top - cr.top, w: hb.width, h: hb.height };
 
       const x0 = Math.max(cornerIn.x - 40, cr.width * 0.55);
       const x1 = cr.width - Math.max(28, cr.width * 0.07);
@@ -423,18 +446,13 @@
       const y0 = cornerIn.y + cornerIn.h + 10;
       const y1 = heroIn.y - 10;
 
-      const w = Math.max(1, x1 - x0);
-      const h = Math.max(1, y1 - y0);
-
-      return { x: x0, y: y0, w, h };
+      return { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) };
     }
 
     function getBottomSoftAvoidRect(){
       const cr = cover.getBoundingClientRect();
       const hb = heroBox.getBoundingClientRect();
-      const heroIn = {
-        x: hb.left - cr.left, y: hb.top - cr.top, w: hb.width, h: hb.height
-      };
+      const heroIn = { x: hb.left - cr.left, y: hb.top - cr.top, w: hb.width, h: hb.height };
 
       const padX = Math.max(24, cr.width * 0.08);
       const up = Math.max(140, cr.height * 0.22);
@@ -448,7 +466,13 @@
       return { x, y, w, h };
     }
 
+    /* ✅ 优化 #1：尺寸测量缓存（resize 时清理） */
+    const sizeCache = new Map(); // key: text -> {w,h}
+
     function measureFormulaSize(text){
+      const cached = sizeCache.get(text);
+      if (cached) return cached;
+
       const tmp = document.createElement("div");
       tmp.className = "formula";
       tmp.style.visibility = "hidden";
@@ -458,19 +482,30 @@
       bg.appendChild(tmp);
       const r = tmp.getBoundingClientRect();
       bg.removeChild(tmp);
-      return { w: r.width, h: r.height };
+
+      const size = { w: r.width, h: r.height };
+      sizeCache.set(text, size);
+      return size;
     }
 
+    /* ✅ 优化 #4：纵向分散偏好（减少“同一水平带”聚集） */
     function distanceScore(cx, cy){
       if (active.length === 0) return 1e9;
-      let best = 1e9;
+
+      let bestDist = 1e9;
+      let bestY = 1e9;
+
       for (const a of active){
         const ax = a.rect.x + a.rect.w/2;
         const ay = a.rect.y + a.rect.h/2;
         const d = Math.hypot(cx - ax, cy - ay);
-        if (d < best) best = d;
+        const dy = Math.abs(cy - ay);
+        if (d < bestDist) bestDist = d;
+        if (dy < bestY) bestY = dy;
       }
-      return best;
+
+      // d 负责“整体分散”，dy 负责“高度分层”
+      return bestDist + bestY * 0.35;
     }
 
     const breakChars = new Set([" ", "+", "-", "=", ")", "(", "/", "*", "×", "±", "−", "·", ","]);
@@ -533,14 +568,8 @@
     function formatFormula(raw){
       const s = (raw || "").trim();
 
-      if (FORCE_3LINES.includes(raw)) {
-        return splitIntoLines(s, 3);
-      }
-
-      if (s.length > TWO_LINE_LEN) {
-        return splitIntoLines(s, 2);
-      }
-
+      if (FORCE_3LINES.includes(raw)) return splitIntoLines(s, 3);
+      if (s.length > TWO_LINE_LEN) return splitIntoLines(s, 2);
       if (s.length <= LINE_TRIGGER) return s;
 
       if (Math.random() < 0.25) return splitIntoLines(s, 2);
@@ -634,13 +663,10 @@
       }, speed);
     }
 
-    /* ✅ 新增：“静态时间点”控制 */
+    /* ✅ 你之前采用的“静态时间点” */
     let quietUntil = 0;
     let nextQuietAt = Date.now() + randi(30000, 45000);
-
-    function canSpawn() {
-      return Date.now() > quietUntil;
-    }
+    function canSpawn() { return Date.now() > quietUntil; }
 
     function schedule(){
       const delay = (active.length === 0)
@@ -650,20 +676,18 @@
       setTimeout(() => {
         const now = Date.now();
 
-        /* ✅ 每 30~45 秒触发一次“安静期”3~5 秒 */
         if (now >= nextQuietAt) {
           quietUntil = now + randi(3000, 5000);
           nextQuietAt = now + randi(30000, 45000);
         }
 
-        /* ✅ 安静期内：不生成新公式（但仍保持 schedule 节奏） */
         if (!canSpawn()) {
           schedule();
           return;
         }
 
-        /* ✅ 避免超过两个公式同时开始生成 */
-        const want = randi(1, 3);                  // 只会是 1 或 2
+        // 同一时间最多 2 个开始生成 + 页面最多 4 个
+        const want = randi(1, 3); // 1 或 2
         const toAdd = Math.min(MAX_ACTIVE - active.length, want, 2);
 
         for (let k = 0; k < toAdd; k++) spawnOne();
@@ -673,6 +697,7 @@
 
     window.addEventListener("resize", () => {
       active.splice(0).forEach(a => a.el?.remove());
+      sizeCache.clear(); // ✅ resize 后清理缓存，保证不同尺寸测量准确
     });
 
     schedule();
