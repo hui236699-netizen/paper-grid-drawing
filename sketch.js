@@ -1,34 +1,25 @@
-// =================== 全局设置 ===================
+// =================== 全局设置（响应式 + 网格强吸附 + 统一拖拽锚点翻转 + Anti-Jitter） ===================
 
 let cw = 240;
 let cellSize = 36;
 
-// 交互状态机
-const STATE_IDLE = 0;
-const STATE_DRAWING = 1;
-const STATE_MOVING = 2; // 移动整个图形
-const STATE_RESIZING = 3; // 拖动控制点调整大小
-const STATE_ROTATING = 4; // ✅ 新增：旋转状态
+let dragAnchor;          // ✅ 角点锚点（grid int）
+let dragEndFloat;        // ✅ 当前鼠标（grid float）
+let isDragging = false;  // 画新图
+let isMoving = false;    // 移动选中图
 
-let appState = STATE_IDLE;
-
-// 绘制相关
-let drawAnchor = null;
-let drawCurrent = null;
-
-// 选中/变形相关
-let selectedIndex = -1;
-let transformHandle = null; // 'nw', 'se', ... 或 'rotate-nw' 等
-let transformStartShape = null; // 备份
-let transformStartMouse = null; // 屏幕像素坐标 (px)
-let transformStartAngle = 0;    // 旋转开始时的鼠标角度
-
-// 图形数据
 let currentShape = 0;
 let currentColor;
+
 let shapes = [];
 let undoStack = [];
 let showGrid = true;
+
+// 选中/移动
+let selectedIndex = -1;
+let moveStartGrid = null;
+let moveOrigXY = null;
+let moveDidChange = false;
 
 // 资源
 let icons = new Array(10);
@@ -36,73 +27,173 @@ let buttons = new Array(10);
 let svgs = new Array(8);
 let svgBounds = new Array(8).fill(null);
 
-// 颜色系统
-let hue = 220, sat = 100, bri = 80;
+// HSV 颜色
+let hue = 220;
+let sat = 100;
+let bri = 80;
+
+// 颜色拖动
 let isColorDragging = false;
-let colorDragMode = null;
-let COLOR_MAIN, COLOR_HUE, RECENT_RECTS = [], FUNC_RECTS = {}, SHAPE_RECTS = [];
+let colorDragMode = null; // "sb" | "hue"
+
+// 动态布局
+let COLOR_MAIN, COLOR_HUE;
+let RECENT_RECTS = [];
+let FUNC_RECTS = {};
+let SHAPE_RECTS = [];
+
 let sbGraphic, hueGraphic;
+
 const defaultRecentHex = ["#482BCC", "#FF04A5", "#FFE900", "#8CE255", "#8EC8EC"];
 let recentColors = [];
+
 let undoButton, clearButton, gridButton, saveButton;
+
+// ✅ 拖拽符号状态（用于 Anti-Jitter：边界附近不抖动）
+let dragSignX = 1;
+let dragSignY = 1;
 
 // =================== 工具函数 ===================
 function clamp(v, lo, hi) { return max(lo, min(hi, v)); }
+
+// ✅ 清空 redo 栈（你的 undoStack 在这里承担 redo 功能）
 function clearRedo() { undoStack = []; }
 
+// ✅ 限制主画布 DPR，避免超高 DPR 设备性能暴涨
 function setCanvasDPR() {
   pixelDensity(min(window.devicePixelRatio || 1, 2));
   smooth();
 }
 
+// ✅ 右侧网格区域可用格子数
 function gridCols() { return max(1, floor((width - cw) / cellSize)); }
 function gridRows() { return max(1, floor(height / cellSize)); }
 
-// 鼠标 -> 网格坐标 (int)
-function mouseToGrid() {
+// 鼠标 -> 网格坐标（整数格，强吸附）
+function mouseToGridInt() {
   const gx = floor((mouseX - cw) / cellSize);
   const gy = floor(mouseY / cellSize);
-  return { x: gx, y: gy };
+  return { gx, gy };
 }
 
-// 辅助：旋转点 (x, y) 围绕 (cx, cy) 旋转 angle 弧度
-function rotatePoint(x, y, cx, cy, angle) {
-  const cosA = cos(angle);
-  const sinA = sin(angle);
-  const dx = x - cx;
-  const dy = y - cy;
-  return {
-    x: cx + dx * cosA - dy * sinA,
-    y: cy + dx * sinA + dy * cosA
-  };
+// ✅ 鼠标 -> 网格坐标（浮点，用于 Anti-Jitter/平滑翻转判断）
+function mouseToGridFloat() {
+  const gx = (mouseX - cw) / cellSize;
+  const gy = mouseY / cellSize;
+  return { gx, gy };
 }
 
-// =================== 布局与预加载 (保持原样) ===================
+// ✅ Anti-Jitter：根据“死区”更新 dragSignX / dragSignY
+function updateDragSigns(dx, dy) {
+  // 死区像素（越大越稳，但越不灵敏）。你想更“像 Adobe”，8~14 px 都行。
+  const deadPx = 10;
+  const eps = deadPx / cellSize; // 转成 grid 单位
+
+  // X：在 [-eps, +eps] 内保持上一次符号，不切换
+  if (dx > eps) dragSignX = 1;
+  else if (dx < -eps) dragSignX = -1;
+
+  // Y：同理
+  if (dy > eps) dragSignY = 1;
+  else if (dy < -eps) dragSignY = -1;
+}
+
+// ✅ 核心：角点锚 + 对角拉伸 + 翻转 + Shift 等比 + Anti-Jitter + 贴网格
+// 返回：{ ax, ay, w, h } 其中 w/h 是“带符号”的格子数（可为负），且最小为 1（带符号）
+function getDragBoxSigned(lockAspect) {
+  const ax = dragAnchor.x;
+  const ay = dragAnchor.y;
+
+  const mx = dragEndFloat.x;
+  const my = dragEndFloat.y;
+
+  // 相对锚点的连续位移（grid float）
+  const dx = mx - ax;
+  const dy = my - ay;
+
+  // 更新符号（含死区）
+  updateDragSigns(dx, dy);
+
+  // 长度（grid int）：用 abs(dx/dy) 的 floor 做吸附，最小 1
+  // 这样“点一下” dx/dy≈0 => length=1，满足你要的 1×1
+  let lenX = max(1, floor(abs(dx)));
+  let lenY = max(1, floor(abs(dy)));
+
+  if (lockAspect) {
+    const s = max(lenX, lenY);
+    lenX = s;
+    lenY = s;
+  }
+
+  let w = dragSignX * lenX;
+  let h = dragSignY * lenY;
+
+  // ✅ 限制不出可视网格（保持锚点不动，裁剪 w/h）
+  const cols = gridCols();
+  const rows = gridRows();
+
+  // X 方向裁剪
+  if (w > 0) {
+    // 右下拉：右边界 = ax + w <= cols
+    w = min(w, cols - ax);
+    w = max(1, w); // 保底
+  } else {
+    // 左边翻：左边界 = ax + w >= 0  (w 为负)
+    w = max(w, -ax);
+    w = min(-1, w); // 保底（负）
+  }
+
+  // Y 方向裁剪
+  if (h > 0) {
+    h = min(h, rows - ay);
+    h = max(1, h);
+  } else {
+    h = max(h, -ay);
+    h = min(-1, h);
+  }
+
+  return { ax, ay, w, h };
+}
+
+// =================== 响应式布局（颜色区重写，且强制整数尺寸） ===================
 function computeLayout() {
   cw = clamp(width * 0.18, 200, 320);
+
   const rightW = max(1, width - cw);
   const byWidth = rightW / 26;
   const byHeight = height / 22;
   cellSize = clamp(min(byWidth, byHeight), 24, 52);
 
-  const pad = 16, gap = 10;
+  // 颜色区
+  const pad = 16;
+  const gap = 10;
   const hueW = clamp(cw * 0.09, 18, 28);
   const maxSB = clamp(height * 0.28, 170, 260);
+
   const sbW = cw - pad * 2 - hueW - gap;
   const sbSize = clamp(min(sbW, maxSB), 150, maxSB);
+
+  // ✅ 强制整数尺寸（修复 Retina 下 pixels 长度/绘制错位问题）
   const sbSizeI = max(1, floor(sbSize));
   const hueWI = max(1, floor(hueW));
+
   const topY = pad;
 
   COLOR_MAIN = { x: pad, y: topY, w: sbSizeI, h: sbSizeI };
   COLOR_HUE  = { x: pad + sbSizeI + gap, y: topY, w: hueWI,  h: sbSizeI };
 
+  // Recent colors
   RECENT_RECTS = [];
-  const recentCount = 5, recentGap = 10;
+  const recentCount = 5;
+  const recentGap = 10;
   const rW = clamp((cw - pad * 2 - recentGap * (recentCount - 1)) / recentCount, 22, 34);
   const recentY = topY + sbSizeI + 18;
-  for (let i = 0; i < recentCount; i++) RECENT_RECTS.push({ x: pad + i * (rW + recentGap), y: recentY, w: rW, h: rW });
 
+  for (let i = 0; i < recentCount; i++) {
+    RECENT_RECTS.push({ x: pad + i * (rW + recentGap), y: recentY, w: rW, h: rW });
+  }
+
+  // 功能按钮
   const btnGapX = 12;
   const btnW = (cw - pad * 2 - btnGapX) / 2;
   const btnH = clamp(height * 0.035, 30, 38);
@@ -116,15 +207,19 @@ function computeLayout() {
     save:  { x: pad + btnW + btnGapX, y: funcY2, w: btnW, h: btnH }
   };
 
+  // 形状按钮 2x5
   SHAPE_RECTS = [];
   const shapesTopY = funcY2 + btnH + 18;
   const availableH = max(1, height - shapesTopY - 18);
+
   const cols = 2, rows = 5;
   const gridGapX = clamp(cw * 0.08, 10, 16);
   const gridGapY = clamp(height * 0.015, 10, 18);
+
   const cellW2 = (cw - pad * 2 - gridGapX) / cols;
   const cellH2 = (availableH - gridGapY * (rows - 1)) / rows;
   const size = clamp(min(cellW2, cellH2), 56, 86);
+
   const col1x = pad + (cellW2 - size) / 2;
   const col2x = pad + cellW2 + gridGapX + (cellW2 - size) / 2;
 
@@ -135,81 +230,148 @@ function computeLayout() {
   }
 }
 
+// =================== 预加载 ===================
 function preload() {
   for (let i = 0; i < icons.length; i++) icons[i] = loadImage("assets/" + i + ".png");
   for (let i = 0; i < svgs.length; i++) svgs[i] = loadImage("svg/" + (i + 1) + ".svg?v=10");
 }
 
+// ------------------- 计算 SVG 的非透明区域 -------------------
 function computeSvgBounds(index) {
   const img = svgs[index];
   if (!img) return;
-  const pg = createGraphics(256, 256);
+
+  const sampleW = 256, sampleH = 256;
+  const pg = createGraphics(sampleW, sampleH);
   pg.pixelDensity(1);
   pg.clear();
-  pg.image(img, 0, 0, 256, 256);
+  pg.image(img, 0, 0, sampleW, sampleH);
   pg.loadPixels();
-  let minX = 256, minY = 256, maxX = -1, maxY = -1;
-  for (let y = 0; y < 256; y++) {
-    for (let x = 0; x < 256; x++) {
-      if (pg.pixels[(y * 256 + x) * 4 + 3] > 10) {
-        if (x < minX) minX = x; if (y < minY) minY = y;
-        if (x > maxX) maxX = x; if (y > maxY) maxY = y;
+
+  let minX = sampleW, minY = sampleH;
+  let maxX = -1, maxY = -1;
+
+  for (let y = 0; y < sampleH; y++) {
+    for (let x = 0; x < sampleW; x++) {
+      const idx4 = (y * sampleW + x) * 4;
+      const a = pg.pixels[idx4 + 3];
+      if (a > 10) {
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
       }
     }
   }
+
+  let bounds;
+  if (maxX < minX || maxY < minY) {
+    bounds = { x0: 0, y0: 0, w: 1, h: 1 };
+  } else {
+    let x0 = minX / sampleW;
+    let y0 = minY / sampleH;
+    let w = (maxX - minX + 1) / sampleW;
+    let h = (maxY - minY + 1) / sampleH;
+
+    const margin = 0.03;
+    let x1 = x0 + w, y1 = y0 + h;
+    x0 = max(0, x0 - margin);
+    y0 = max(0, y0 - margin);
+    x1 = min(1, x1 + margin);
+    y1 = min(1, y1 + margin);
+    w = x1 - x0;
+    h = y1 - y0;
+    bounds = { x0, y0, w, h };
+  }
+
+  svgBounds[index] = bounds;
   pg.remove();
-  if (maxX < minX) svgBounds[index] = { x0: 0, y0: 0, w: 1, h: 1 };
-  else svgBounds[index] = { x0: minX/256, y0: minY/256, w: (maxX-minX+1)/256, h: (maxY-minY+1)/256 };
 }
 
+// =================== 颜色贴图（关键修复：pixelDensity(1) + 整数尺寸） ===================
 function rebuildHueGraphic() {
-  const w = floor(COLOR_HUE.w), h = floor(COLOR_HUE.h);
+  const w = max(1, floor(COLOR_HUE.w));
+  const h = max(1, floor(COLOR_HUE.h));
+
   hueGraphic = createGraphics(w, h);
   hueGraphic.pixelDensity(1);
   hueGraphic.colorMode(HSB, 360, 100, 100);
   hueGraphic.noStroke();
+  hueGraphic.loadPixels();
+
   for (let y = 0; y < h; y++) {
-    hueGraphic.fill(map(y, 0, h, 0, 360), 100, 100);
-    hueGraphic.rect(0, y, w, 1);
+    const hh = map(y, 0, h - 1, 0, 360);
+    const c = hueGraphic.color(hh, 100, 100);
+    for (let x = 0; x < w; x++) {
+      const idx = (y * w + x) * 4;
+      hueGraphic.pixels[idx]     = red(c);
+      hueGraphic.pixels[idx + 1] = green(c);
+      hueGraphic.pixels[idx + 2] = blue(c);
+      hueGraphic.pixels[idx + 3] = 255;
+    }
   }
+  hueGraphic.updatePixels();
 }
 
 function rebuildSBGraphic() {
-  const w = floor(COLOR_MAIN.w), h = floor(COLOR_MAIN.h);
+  const w = max(1, floor(COLOR_MAIN.w));
+  const h = max(1, floor(COLOR_MAIN.h));
+
   sbGraphic = createGraphics(w, h);
   sbGraphic.pixelDensity(1);
   sbGraphic.colorMode(HSB, 360, 100, 100);
+  sbGraphic.noStroke();
   sbGraphic.loadPixels();
+
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
+      const sVal = map(x, 0, w - 1, 0, 100);
+      const bVal = map(y, 0, h - 1, 100, 0);
+      const c = sbGraphic.color(hue, sVal, bVal);
       const idx = (y * w + x) * 4;
-      const c = sbGraphic.color(hue, map(x, 0, w, 0, 100), map(y, 0, h, 100, 0));
-      sbGraphic.pixels[idx] = red(c); sbGraphic.pixels[idx+1] = green(c);
-      sbGraphic.pixels[idx+2] = blue(c); sbGraphic.pixels[idx+3] = 255;
+      sbGraphic.pixels[idx]     = red(c);
+      sbGraphic.pixels[idx + 1] = green(c);
+      sbGraphic.pixels[idx + 2] = blue(c);
+      sbGraphic.pixels[idx + 3] = 255;
     }
   }
   sbGraphic.updatePixels();
 }
 
+// =================== UI layout ===================
 function layoutUI() {
   computeLayout();
   rebuildHueGraphic();
   rebuildSBGraphic();
-  undoButton = new CapButton(FUNC_RECTS.undo, "Undo");
-  clearButton = new CapButton(FUNC_RECTS.clear, "Clear");
-  gridButton = new CapButton(FUNC_RECTS.grid, "Grid");
-  saveButton = new CapButton(FUNC_RECTS.save, "Save");
+
+  undoButton  = rectToCapButton(FUNC_RECTS.undo,  "Undo");
+  clearButton = rectToCapButton(FUNC_RECTS.clear, "Clear");
+  gridButton  = rectToCapButton(FUNC_RECTS.grid,  "Grid");
+  saveButton  = rectToCapButton(FUNC_RECTS.save,  "Save");
+
   for (let i = 0; i < SHAPE_RECTS.length; i++) {
     const r = SHAPE_RECTS[i];
-    buttons[i] = new IconButton(r.x + r.w/2, r.y + r.h/2, min(r.w, r.h), i);
+    const cx = r.x + r.w / 2;
+    const cy = r.y + r.h / 2;
+    const size = min(r.w, r.h);
+    buttons[i] = new IconButton(cx, cy, size, i);
   }
 }
 
+function rectToCapButton(rect, label) {
+  const cx = rect.x + rect.w / 2;
+  const cy = rect.y + rect.h / 2;
+  return new CapButton(cx, cy, rect.w, rect.h, label);
+}
+
+// =================== setup / resize ===================
 function setup() {
   createCanvas(windowWidth, windowHeight);
   setCanvasDPR();
+
   currentColor = color("#482BCC");
   recentColors = defaultRecentHex.map(h => color(h));
+
   layoutUI();
   for (let i = 0; i < svgs.length; i++) computeSvgBounds(i);
 }
@@ -220,121 +382,277 @@ function windowResized() {
   layoutUI();
 }
 
-// =================== 主循环 ===================
+// =================== draw ===================
 function draw() {
   background(240);
-  noTint();
+  noTint(); // 防 tint 泄漏
 
-  // --- 右侧画布 ---
+  // 右侧画布区域
   push();
   translate(cw, 0);
 
   if (showGrid) drawGrid();
+  drawShapes();
 
-  // 1. 绘制所有图形
-  for (let s of shapes) s.display();
-
-  // 2. 绘制正在创建的图形预览
-  if (appState === STATE_DRAWING && drawAnchor && drawCurrent) {
-    const box = getPreviewBox(drawAnchor, drawCurrent, keyIsDown(SHIFT));
-    const pf = color(red(currentColor), green(currentColor), blue(currentColor), 80);
-    push();
-    stroke(currentColor);
-    strokeWeight(2);
-    fill(pf);
-    drawShapePrimitive(currentShape, box.x * cellSize, box.y * cellSize, box.w * cellSize, box.h * cellSize, 0);
-    pop();
-  }
-
-  // 3. 绘制选区框 (旋转后的)
-  if (selectedIndex !== -1 && selectedIndex < shapes.length && appState !== STATE_DRAWING) {
-    drawSelectionBox(shapes[selectedIndex]);
-  }
+  if (isDragging) drawPreview(); // ✅ 统一预览逻辑（所有形状一致）
 
   pop();
 
-  // --- 左侧 UI ---
-  drawLeftPanel();
-  
-  // --- 鼠标光标逻辑 ---
-  updateCursor();
+  // 左侧 UI 背景
+  noStroke();
+  fill("#1F1E24");
+  rect(0, 0, cw, height);
+
+  drawColorPanelNew();
+  drawRecentColors();
+
+  undoButton.display();
+  clearButton.display();
+  gridButton.display();
+  saveButton.display();
+
+  for (let b of buttons) b.display();
 }
 
-function updateCursor() {
-  // 简单光标反馈
-  if (mouseX <= cw) {
-    cursor(ARROW);
-    return;
-  }
-  if (appState === STATE_ROTATING) {
-    // 旋转中
-    cursor('grab'); // 或 alias
-  } else if (appState === STATE_RESIZING) {
-    // 缩放中 (简化统一十字)
-    cursor(CROSS);
-  } else {
-    // 空闲或移动
-    cursor(ARROW);
+// =================== 网格 & 图形 ===================
+function drawGrid() {
+  const w = width - cw;
+  const h = height;
+
+  noStroke();
+  fill(245);
+  rect(0, 0, w, h);
+
+  stroke(220);
+  strokeWeight(1);
+  for (let x = 0; x <= w; x += cellSize) line(x, 0, x, h);
+  for (let y = 0; y <= h; y += cellSize) line(0, y, w, y);
+}
+
+function drawShapes() {
+  for (let s of shapes) s.display();
+}
+
+// =================== 统一预览（角点锚 + 翻转 + Shift 等比 + Anti-Jitter） ===================
+function drawPreview() {
+  const lockAspect = keyIsDown(SHIFT);
+  const box = getDragBoxSigned(lockAspect);
+
+  const px = box.ax * cellSize;
+  const py = box.ay * cellSize;
+  const pw = box.w * cellSize;
+  const ph = box.h * cellSize;
+
+  const previewFill = color(red(currentColor), green(currentColor), blue(currentColor), 80);
+
+  push();
+  stroke(currentColor);
+  strokeWeight(3);
+  fill(previewFill);
+
+  drawShapeByType(currentShape, px, py, pw, ph, previewFill, true);
+
+  pop();
+}
+
+function addNewShapeFromDrag() {
+  const lockAspect = keyIsDown(SHIFT);
+  const box = getDragBoxSigned(lockAspect);
+
+  // ✅ 存储为“锚点 + 带符号 w/h”（这样翻转信息不会丢，SVG 也稳定）
+  shapes.push(new Shape(box.ax, box.ay, box.w, box.h, currentShape, currentColor));
+  clearRedo();
+}
+
+// =================== 新颜色面板（重写 + 修复黑屏） ===================
+function drawColorPanelNew() {
+  noTint();
+  const r = 14;
+
+  noStroke();
+  fill(38);
+  rect(
+    COLOR_MAIN.x - 8,
+    COLOR_MAIN.y - 8,
+    (COLOR_MAIN.w + COLOR_HUE.w + 10) + 16,
+    COLOR_MAIN.h + 16,
+    16
+  );
+
+  stroke(70);
+  strokeWeight(1);
+  fill(20);
+  rect(COLOR_MAIN.x, COLOR_MAIN.y, COLOR_MAIN.w, COLOR_MAIN.h, r);
+
+  imageMode(CORNER);
+  image(sbGraphic, COLOR_MAIN.x, COLOR_MAIN.y, COLOR_MAIN.w, COLOR_MAIN.h);
+
+  stroke(70);
+  strokeWeight(1);
+  fill(20);
+  rect(COLOR_HUE.x, COLOR_HUE.y, COLOR_HUE.w, COLOR_HUE.h, r);
+
+  image(hueGraphic, COLOR_HUE.x, COLOR_HUE.y, COLOR_HUE.w, COLOR_HUE.h);
+
+  // SB 手柄
+  const hx = COLOR_MAIN.x + (sat / 100) * COLOR_MAIN.w;
+  const hy = COLOR_MAIN.y + (1 - bri / 100) * COLOR_MAIN.h;
+
+  stroke(255);
+  strokeWeight(2);
+  noFill();
+  circle(hx, hy, 14);
+  stroke(0, 140);
+  strokeWeight(2);
+  circle(hx, hy, 10);
+
+  // Hue 指示线
+  const hueY = COLOR_HUE.y + (hue / 360) * COLOR_HUE.h;
+  stroke(255);
+  strokeWeight(3);
+  line(COLOR_HUE.x - 3, hueY, COLOR_HUE.x + COLOR_HUE.w + 3, hueY);
+}
+
+// =================== 最近颜色 ===================
+function drawRecentColors() {
+  for (let i = 0; i < RECENT_RECTS.length; i++) {
+    const r = RECENT_RECTS[i];
+    stroke(40);
+    strokeWeight(1);
+    fill(recentColors[i] || color(0));
+    rect(r.x, r.y, r.w, r.h, 8);
+
+    if (recentColors[i] && colorsEqual(recentColors[i], currentColor)) {
+      noFill();
+      stroke(255);
+      strokeWeight(2);
+      rect(r.x - 3, r.y - 3, r.w + 6, r.h + 6, 10);
+    }
   }
 }
 
-// =================== 交互逻辑核心 ===================
-
-function mousePressed() {
-  if (mouseX <= cw) {
-    handleUIInteractions();
-    return;
+function handleColorPress() {
+  // SB
+  if (
+    mouseX >= COLOR_MAIN.x && mouseX <= COLOR_MAIN.x + COLOR_MAIN.w &&
+    mouseY >= COLOR_MAIN.y && mouseY <= COLOR_MAIN.y + COLOR_MAIN.h
+  ) {
+    isColorDragging = true;
+    colorDragMode = "sb";
+    updateColorByMouse();
+    return true;
   }
 
-  const mx = mouseX - cw;
-  const my = mouseY;
-  const g = mouseToGrid();
-  
-  // 1. 检查选中图形的控制点（Resize 或 Rotate）
-  if (selectedIndex !== -1) {
-    const s = shapes[selectedIndex];
-    const action = getHitAction(s, mx, my);
-    
-    if (action.type === 'resize') {
-      appState = STATE_RESIZING;
-      transformHandle = action.handle;
-      transformStartShape = s.clone();
-      transformStartMouse = { x: mx, y: my }; // 记录像素坐标用于计算
-      return;
-    } 
-    else if (action.type === 'rotate') {
-      appState = STATE_ROTATING;
-      transformHandle = action.handle;
-      transformStartShape = s.clone();
-      // 计算中心点 (px)
-      const cx = (s.x + s.w/2) * cellSize;
-      const cy = (s.y + s.h/2) * cellSize;
-      // 记录起始角度
-      transformStartAngle = atan2(my - cy, mx - cx);
-      return;
+  // Hue
+  if (
+    mouseX >= COLOR_HUE.x && mouseX <= COLOR_HUE.x + COLOR_HUE.w &&
+    mouseY >= COLOR_HUE.y && mouseY <= COLOR_HUE.y + COLOR_HUE.h
+  ) {
+    isColorDragging = true;
+    colorDragMode = "hue";
+    updateColorByMouse();
+    return true;
+  }
+
+  // Recent
+  for (let i = 0; i < RECENT_RECTS.length; i++) {
+    const r = RECENT_RECTS[i];
+    if (mouseX >= r.x && mouseX <= r.x + r.w && mouseY >= r.y && mouseY <= r.y + r.h) {
+      if (recentColors[i]) {
+        currentColor = color(recentColors[i]);
+        addRecentColor(currentColor);
+      }
+      return true;
     }
   }
 
-  // 2. 命中测试 (Hit Test)
-  const hitIndex = hitTestShape(mx, my); // 传入像素坐标，支持旋转检测
-  if (hitIndex !== -1) {
-    selectedIndex = hitIndex;
-    appState = STATE_MOVING;
-    transformStartShape = shapes[hitIndex].clone();
-    transformStartMouse = mouseToGrid(); // 移动还是用网格对齐
+  return false;
+}
+
+function updateColorByMouse() {
+  if (colorDragMode === "sb") {
+    const sx = clamp(mouseX, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w - 1);
+    const sy = clamp(mouseY, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h - 1);
+    sat = map(sx, COLOR_MAIN.x, COLOR_MAIN.x + COLOR_MAIN.w - 1, 0, 100);
+    bri = map(sy, COLOR_MAIN.y, COLOR_MAIN.y + COLOR_MAIN.h - 1, 100, 0);
+    updateCurrentColor(false);
+    return true;
+  }
+
+  if (colorDragMode === "hue") {
+    const hy = clamp(mouseY, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h - 1);
+    hue = map(hy, COLOR_HUE.y, COLOR_HUE.y + COLOR_HUE.h - 1, 0, 360);
+    rebuildSBGraphic();
+    updateCurrentColor(false);
+    return true;
+  }
+  return false;
+}
+
+function updateCurrentColor(addRecent = true) {
+  push();
+  colorMode(HSB, 360, 100, 100);
+  currentColor = color(hue, sat, bri);
+  pop();
+  if (addRecent) addRecentColor(currentColor);
+}
+
+function addRecentColor(c) {
+  const nc = color(c);
+  recentColors = recentColors.filter(rc => !colorsEqual(rc, nc));
+  recentColors.unshift(nc);
+  if (recentColors.length > 5) recentColors.length = 5;
+}
+
+function colorsEqual(c1, c2, eps = 1) {
+  return abs(red(c1) - red(c2)) <= eps &&
+         abs(green(c1) - green(c2)) <= eps &&
+         abs(blue(c1) - blue(c2)) <= eps;
+}
+
+// =================== 鼠标交互（左侧颜色拖动 + 右侧绘制/移动） ===================
+function mousePressed() {
+  // 左侧 UI
+  if (mouseX <= cw) {
+    if (undoButton.hover()) { undo(); return; }
+    if (clearButton.hover()) { clearShapes(); return; }
+    if (gridButton.hover()) { showGrid = !showGrid; return; }
+    if (saveButton.hover()) { saveCanvas("paper-grid-drawing", "png"); return; }
+
+    if (handleColorPress()) return;
+
+    for (let b of buttons) b.click();
     return;
   }
 
-  // 3. 空白处 -> 取消选中 或 开始绘制
-  if (selectedIndex !== -1) {
+  // 右侧画布区
+  if (mouseX > cw && mouseY >= 0 && mouseY <= height) {
+    const { gx, gy } = mouseToGridInt();
+
+    const hit = hitTestShape(gx, gy);
+    if (hit >= 0) {
+      selectedIndex = hit;
+      isMoving = true;
+      moveDidChange = false;
+      moveStartGrid = { x: gx, y: gy };
+      moveOrigXY = { x: shapes[hit].x, y: shapes[hit].y };
+      return;
+    }
+
     selectedIndex = -1;
-    return;
-  }
 
-  appState = STATE_DRAWING;
-  drawAnchor = g;
-  drawCurrent = g;
-  updateCurrentColor(false);
+    // ✅ 开始绘制：锚点 = 按下格子
+    isDragging = true;
+    dragAnchor = createVector(gx, gy);
+
+    // 初始符号设为正向（不会中心跳变）
+    dragSignX = 1;
+    dragSignY = 1;
+
+    // 初始 end 也设成当前（点一下也能生成 1×1）
+    const f = mouseToGridFloat();
+    dragEndFloat = createVector(f.gx, f.gy);
+  }
 }
 
 function mouseDragged() {
@@ -343,453 +661,329 @@ function mouseDragged() {
     return;
   }
 
-  const mx = mouseX - cw;
-  const my = mouseY;
-  const g = mouseToGrid();
+  // 移动：严格按格子 + 不出界（支持带符号 w/h 的形状）
+  if (isMoving && selectedIndex >= 0 && selectedIndex < shapes.length) {
+    const { gx, gy } = mouseToGridInt();
+    const dx = gx - moveStartGrid.x;
+    const dy = gy - moveStartGrid.y;
+    if (dx !== 0 || dy !== 0) moveDidChange = true;
 
-  if (appState === STATE_DRAWING) {
-    drawCurrent = g;
-  } 
-  else if (appState === STATE_MOVING) {
-    // 移动：直接修改 grid 坐标
     const s = shapes[selectedIndex];
-    const dx = g.x - transformStartMouse.x;
-    const dy = g.y - transformStartMouse.y;
-    s.x = transformStartShape.x + dx;
-    s.y = transformStartShape.y + dy;
-  } 
-  else if (appState === STATE_RESIZING) {
-    // 缩放：需要将屏幕像素位移投影回局部坐标系，以支持旋转后的缩放
-    updateResize(mx, my);
-  } 
-  else if (appState === STATE_ROTATING) {
-    // 旋转：计算角度差，吸附 45 度
-    updateRotate(mx, my);
+    const cols = gridCols();
+    const rows = gridRows();
+
+    // 对于带符号 w/h：允许范围取决于符号
+    // X
+    let minAx, maxAx;
+    if (s.w > 0) { // 右伸
+      minAx = 0;
+      maxAx = cols - s.w;
+    } else {       // 左伸：最左 = ax + w >= 0 => ax >= -w；最右 = ax <= cols
+      minAx = -s.w;
+      maxAx = cols;
+    }
+    // Y
+    let minAy, maxAy;
+    if (s.h > 0) {
+      minAy = 0;
+      maxAy = rows - s.h;
+    } else {
+      minAy = -s.h;
+      maxAy = rows;
+    }
+
+    let nx = clamp(round(moveOrigXY.x + dx), minAx, maxAx);
+    let ny = clamp(round(moveOrigXY.y + dy), minAy, maxAy);
+
+    s.x = nx;
+    s.y = ny;
+    return;
+  }
+
+  // 绘制：更新 dragEndFloat（用 float 以便 Anti-Jitter）
+  if (isDragging) {
+    const f = mouseToGridFloat();
+    dragEndFloat = createVector(f.gx, f.gy);
   }
 }
 
 function mouseReleased() {
   if (isColorDragging) {
-    isColorDragging = false; colorDragMode = null;
+    isColorDragging = false;
+    colorDragMode = null;
     addRecentColor(currentColor);
     return;
   }
 
-  if (appState === STATE_DRAWING) {
-    const box = getPreviewBox(drawAnchor, drawCurrent, keyIsDown(SHIFT));
-    shapes.push(new Shape(box.x, box.y, box.w, box.h, currentShape, currentColor, 0));
-    selectedIndex = shapes.length - 1;
-    clearRedo();
-  } 
-  else if (appState === STATE_MOVING) {
-     const s = shapes[selectedIndex];
-     if (s.x !== transformStartShape.x || s.y !== transformStartShape.y) clearRedo();
-  }
-  else if (appState === STATE_RESIZING || appState === STATE_ROTATING) {
-    clearRedo();
+  if (isMoving) {
+    isMoving = false;
+    moveStartGrid = null;
+    moveOrigXY = null;
+    if (moveDidChange) clearRedo();
+    moveDidChange = false;
+    return;
   }
 
-  appState = STATE_IDLE;
-  drawAnchor = null;
-  transformHandle = null;
-}
-
-// =================== 选区、缩放与旋转逻辑 (关键修改) ===================
-
-// 计算图形的 8 个控制点和 4 个角点在屏幕上的实际位置
-function getShapeCorners(s) {
-  const cx = (s.x + s.w/2) * cellSize;
-  const cy = (s.y + s.h/2) * cellSize;
-  const hw = (s.w * cellSize) / 2;
-  const hh = (s.h * cellSize) / 2;
-  const ang = s.rot;
-
-  // 局部坐标系下的 8 个点
-  const p = {
-    nw: {x: -hw, y: -hh}, n: {x: 0, y: -hh}, ne: {x: hw, y: -hh},
-    w:  {x: -hw, y: 0},                      e:  {x: hw, y: 0},
-    sw: {x: -hw, y: hh},  s: {x: 0, y: hh},  se: {x: hw, y: hh}
-  };
-
-  const corners = {};
-  for (let key in p) {
-    corners[key] = rotatePoint(cx + p[key].x, cy + p[key].y, cx, cy, ang);
+  if (isDragging) {
+    isDragging = false;
+    addNewShapeFromDrag(); // ✅ 点一下也生成 1×1（你要的功能保留）
   }
-  return { corners, cx, cy };
 }
 
-// 绘制旋转后的选区框
-function drawSelectionBox(s) {
-  const { corners, cx, cy } = getShapeCorners(s);
-
-  push();
-  noFill();
-  stroke("#3B82F6");
-  strokeWeight(2);
-  
-  // 绘制旋转的矩形框
-  beginShape();
-  vertex(corners.nw.x, corners.nw.y);
-  vertex(corners.ne.x, corners.ne.y);
-  vertex(corners.se.x, corners.se.y);
-  vertex(corners.sw.x, corners.sw.y);
-  endShape(CLOSE);
-
-  // 绘制控制点
-  strokeWeight(1);
-  fill(255);
-  rectMode(CENTER);
-  const size = 10;
-  
-  const handles = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
-  for (let h of handles) {
-    const pt = corners[h];
-    // 如果是角点，画圆一点或者方一点都行，这里统一方块
-    rect(pt.x, pt.y, size, size);
+// =================== 撤销 / 清空 ===================
+function undo() {
+  if (shapes.length > 0) {
+    undoStack.push(shapes.pop());
+    if (selectedIndex >= shapes.length) selectedIndex = -1;
   }
-  pop();
+}
+function redo() {
+  if (undoStack.length > 0) shapes.push(undoStack.pop());
+}
+function clearShapes() {
+  shapes = [];
+  clearRedo();
+  selectedIndex = -1;
 }
 
-// 判断鼠标在控制点的行为 (Resize 还是 Rotate)
-function getHitAction(s, mx, my) {
-  const { corners } = getShapeCorners(s);
-  const resizeDist = 8; // 像素：在这个距离内是 Resize
-  const rotateDist = 24; // 像素：在 resize 外但在 rotate 内是 Rotate
-
-  // 1. 优先检查角点 (nw, ne, se, sw) -> 支持 Rotate 和 Resize
-  const cornersList = ['nw', 'ne', 'sw', 'se'];
-  for (let h of cornersList) {
-    const pt = corners[h];
-    const d = dist(mx, my, pt.x, pt.y);
-    if (d <= resizeDist) {
-      return { type: 'resize', handle: h };
-    } else if (d <= rotateDist) {
-      // ✅ 靠近角落但没点中方块 -> 旋转
-      return { type: 'rotate', handle: h };
-    }
-  }
-
-  // 2. 检查边点 (n, s, w, e) -> 仅支持 Resize
-  const edgesList = ['n', 's', 'w', 'e'];
-  for (let h of edgesList) {
-    const pt = corners[h];
-    if (dist(mx, my, pt.x, pt.y) <= resizeDist) {
-      return { type: 'resize', handle: h };
-    }
-  }
-
-  return { type: null };
-}
-
-// 旋转逻辑：吸附 45 度
-function updateRotate(mx, my) {
-  const s = shapes[selectedIndex];
-  const cx = (s.x + s.w/2) * cellSize;
-  const cy = (s.y + s.h/2) * cellSize;
-  
-  const currentAngle = atan2(my - cy, mx - cx);
-  const angleDiff = currentAngle - transformStartAngle;
-  
-  // 原始角度 + 差值
-  let newRot = transformStartShape.rot + angleDiff;
-  
-  // ✅ 强制吸附到 45 度 (PI/4)
-  const snapStep = PI / 4;
-  newRot = round(newRot / snapStep) * snapStep;
-  
-  s.rot = newRot;
-}
-
-// 缩放逻辑：投影回局部坐标系
-function updateResize(mx, my) {
-  const s = shapes[selectedIndex];
-  const startS = transformStartShape;
-  const startM = transformStartMouse;
-  const h = transformHandle;
-
-  // 屏幕上的位移 (px)
-  let dxPx = mx - startM.x;
-  let dyPx = my - startM.y;
-
-  // 将位移逆向旋转，投影到图形的局部坐标轴上
-  // 这样无论图形怎么转，拖拽 "右" 手柄总是改变 "宽"
-  const ang = -startS.rot; // 逆向旋转
-  const dxLocal = dxPx * cos(ang) - dyPx * sin(ang);
-  const dyLocal = dxPx * sin(ang) + dyPx * cos(ang);
-
-  // 转回 Grid 单位
-  const dGridX = round(dxLocal / cellSize);
-  const dGridY = round(dyLocal / cellSize);
-
-  let nx = startS.x;
-  let ny = startS.y;
-  let nw = startS.w;
-  let nh = startS.h;
-
-  // 逻辑：修改 nw/nh。如果变负，需要调整 nx/ny
-  // 注意：因为我们是基于局部坐标系修改，nx/ny 的调整比较复杂（需要旋转回世界坐标）。
-  // 为了简化且稳健，且因这是网格工具，我们假设：
-  // "Resize" 总是改变这一块 Grid Box 的定义 (x,y,w,h)。
-  // 旋转仅仅是渲染时的变换。
-  
-  if (h.includes('e')) nw = startS.w + dGridX;
-  if (h.includes('w')) { nx = startS.x + dGridX; nw = startS.w - dGridX; }
-  if (h.includes('s')) nh = startS.h + dGridY;
-  if (h.includes('n')) { ny = startS.y + dGridY; nh = startS.h - dGridY; }
-
-  // 翻转处理
-  if (nw < 0) { nx = nx + nw; nw = abs(nw); }
-  if (nh < 0) { ny = ny + nh; nh = abs(nh); }
-  
-  if (nw === 0) nw = 1;
-  if (nh === 0) nh = 1;
-
-  s.x = nx;
-  s.y = ny;
-  s.w = nw;
-  s.h = nh;
-}
-
-// 命中测试 (支持旋转矩形)
-function hitTestShape(mx, my) {
+// =================== Shape 命中（支持带符号 w/h） ===================
+function hitTestShape(gx, gy) {
   for (let i = shapes.length - 1; i >= 0; i--) {
     const s = shapes[i];
-    const cx = (s.x + s.w/2) * cellSize;
-    const cy = (s.y + s.h/2) * cellSize;
-    
-    // 将鼠标点逆向旋转，变回轴对齐坐标系检查
-    const p = rotatePoint(mx, my, cx, cy, -s.rot);
-    
-    // 局部坐标系下的边界
-    const halfW = (s.w * cellSize) / 2;
-    const halfH = (s.h * cellSize) / 2;
-    
-    if (p.x >= cx - halfW && p.x <= cx + halfW &&
-        p.y >= cy - halfH && p.y <= cy + halfH) {
-      return i;
-    }
+    const x0 = min(s.x, s.x + s.w);
+    const x1 = max(s.x, s.x + s.w);
+    const y0 = min(s.y, s.y + s.h);
+    const y1 = max(s.y, s.y + s.h);
+    if (gx >= x0 && gx < x1 && gy >= y0 && gy < y1) return i;
   }
   return -1;
 }
 
-// =================== Shape 类 ===================
+// =================== Shape 类（存锚点 + 带符号 w/h） ===================
 class Shape {
-  constructor(x, y, w, h, type, c, rot) {
-    this.x = x;
-    this.y = y;
-    this.w = w;
-    this.h = h;
+  constructor(ax, ay, w, h, type, c) {
+    this.x = round(ax);
+    this.y = round(ay);
+    // ✅ w/h 可为负，但绝不为 0
+    this.w = (w === 0 ? 1 : round(w));
+    this.h = (h === 0 ? 1 : round(h));
     this.type = type;
     this.c = color(c);
-    this.rot = rot || 0; // 弧度
-  }
-
-  clone() {
-    return new Shape(this.x, this.y, this.w, this.h, this.type, this.c, this.rot);
   }
 
   display() {
     push();
-    // 图形中心
-    const cx = (this.x + this.w / 2) * cellSize;
-    const cy = (this.y + this.h / 2) * cellSize;
+    noStroke();
+    fill(this.c);
+
+    const px = this.x * cellSize;
+    const py = this.y * cellSize;
     const pw = this.w * cellSize;
     const ph = this.h * cellSize;
 
-    // 移动到中心 -> 旋转 -> 移回左上角绘制
-    translate(cx, cy);
-    rotate(this.rot);
-    translate(-pw/2, -ph/2);
+    drawShapeByType(this.type, px, py, pw, ph, this.c, false);
 
-    drawShapePrimitive(this.type, 0, 0, pw, ph, 0, this.c); // 内部不再旋转，由外部 matrix 控制
     pop();
   }
 }
 
-// 统一绘制原语
-function drawShapePrimitive(type, x, y, w, h, localRot, col) {
-  if (col) { noStroke(); fill(col); }
-  
-  switch(type) {
+// =================== 统一绘制入口（所有图形同一套“锚点 + 带符号 w/h”） ===================
+function drawShapeByType(type, x, y, w, h, col, isPreview) {
+  switch (type) {
     case 0: // rect
       rect(x, y, w, h);
       break;
-    case 1: // ellipse
-      ellipse(x + w/2, y + h/2, w, h);
+
+    case 1: { // ellipse：中心随 w/h 带符号移动，大小取 abs（这样不会中心跳）
+      const cx = x + w / 2;
+      const cy = y + h / 2;
+      ellipse(cx, cy, abs(w), abs(h));
       break;
-    case 2: // triangle
-      triangle(x + w/2, y, x, y + h, x + w, y + h);
+    }
+
+    case 2: // triangle（支持负 w/h）
+      drawTriFromBox(x, y, w, h);
       break;
-    case 3: // parallelogram
-      const skew = w * 0.25;
-      beginShape();
-      vertex(x + skew, y);
-      vertex(x + w, y);
-      vertex(x + w - skew, y + h);
-      vertex(x, y + h);
-      endShape(CLOSE);
+
+    case 3: // parallelogram（支持负 w/h）
+      drawParaFromBox(x, y, w, h);
       break;
-    default: // svg
-      const idx = type - 4;
-      if (idx >= 0 && idx < svgs.length && svgs[idx]) {
-        if (col) tint(col);
-        image(svgs[idx], x, y, w, h);
-      }
+
+    default: // svg（✅ 支持翻转：负缩放）
+      drawSvgShapeSigned(type, x, y, w, h, col);
       break;
   }
 }
 
-// 计算预览框
-function getPreviewBox(p1, p2, isShift) {
-  let x = min(p1.x, p2.x);
-  let y = min(p1.y, p2.y);
-  let w = abs(p2.x - p1.x) + 1;
-  let h = abs(p2.y - p1.y) + 1;
+// =================== 形状辅助（支持负宽高） ===================
+function drawTriFromBox(x, y, w, h) {
+  const x0 = x, y0 = y;
+  const x1 = x + w, y1 = y + h;
 
-  if (isShift) {
-    const s = max(w, h);
-    w = s; h = s;
-    if (p2.x < p1.x) x = p1.x - s + 1;
-    if (p2.y < p1.y) y = p1.y - s + 1;
+  const topY = min(y0, y1);
+  const botY = max(y0, y1);
+  const leftX = min(x0, x1);
+  const rightX = max(x0, x1);
+  const midX = (leftX + rightX) / 2;
+
+  triangle(midX, topY, leftX, botY, rightX, botY);
+}
+
+function drawParaFromBox(x, y, w, h) {
+  const x0 = min(x, x + w);
+  const y0 = min(y, y + h);
+  const ww = abs(w);
+  const hh = abs(h);
+
+  beginShape();
+  vertex(x0 + ww / 4, y0);
+  vertex(x0 + ww, y0);
+  vertex(x0 + (3 * ww) / 4, y0 + hh);
+  vertex(x0, y0 + hh);
+  endShape(CLOSE);
+}
+
+// =================== SVG 形状（✅ 统一：锚点 + 带符号 w/h + 负缩放翻转 + Anti-Jitter 无关） ===================
+function drawSvgShapeSigned(type, x, y, w, h, col) {
+  const idx = type - 4;
+  if (idx < 0 || idx >= svgs.length) return;
+  const img = svgs[idx];
+  if (!img) return;
+
+  const ctx = drawingContext;
+  ctx.imageSmoothingEnabled = true;
+  if (ctx.imageSmoothingQuality) ctx.imageSmoothingQuality = "high";
+
+  const bounds = svgBounds[idx];
+  let sx, sy, sw, sh;
+  if (bounds) {
+    sx = img.width * bounds.x0;
+    sy = img.height * bounds.y0;
+    sw = img.width * bounds.w;
+    sh = img.height * bounds.h;
+  } else {
+    sx = 0; sy = 0; sw = img.width; sh = img.height;
   }
-  return { x, y, w, h };
-}
 
-// =================== UI 与辅助 ===================
-function drawGrid() {
-  const w = width - cw;
-  const h = height;
-  noStroke(); fill(245); rect(0, 0, w, h);
-  stroke(220); strokeWeight(1);
-  for (let x = 0; x <= w; x += cellSize) line(x, 0, x, h);
-  for (let y = 0; y <= h; y += cellSize) line(0, y, w, y);
-}
+  const signX = w >= 0 ? 1 : -1;
+  const signY = h >= 0 ? 1 : -1;
 
-function drawLeftPanel() {
-  noStroke(); fill("#1F1E24"); rect(0, 0, cw, height);
-  drawColorPanelNew();
-  drawRecentColors();
-  undoButton.display();
-  clearButton.display();
-  gridButton.display();
-  saveButton.display();
-  for (let b of buttons) b.display();
-}
+  const aw = abs(w);
+  const ah = abs(h);
 
-function handleUIInteractions() {
-  if (undoButton.hover()) { undo(); return; }
-  if (clearButton.hover()) { shapes = []; clearRedo(); selectedIndex = -1; return; }
-  if (gridButton.hover()) { showGrid = !showGrid; return; }
-  if (saveButton.hover()) { saveCanvas("grid-art", "png"); return; }
-  if (handleColorPress()) return;
-  for (let b of buttons) b.click();
-}
+  push();
+  // ✅ 以锚点(x,y)为原点做带符号缩放 => 翻转自然出现，且锚点绝不跳
+  translate(x, y);
+  scale(signX, signY);
 
-function undo() {
-  if (shapes.length > 0) {
-    undoStack.push(shapes.pop());
-    selectedIndex = -1;
-  }
-}
+  if (col) tint(col);
+  else tint(255);
 
-// 颜色相关逻辑保持原样
-function drawColorPanelNew() {
-  const r = 14;
-  noStroke(); fill(38);
-  rect(COLOR_MAIN.x-8, COLOR_MAIN.y-8, (COLOR_MAIN.w+COLOR_HUE.w+10)+16, COLOR_MAIN.h+16, 16);
-  stroke(70); fill(20);
-  rect(COLOR_MAIN.x, COLOR_MAIN.y, COLOR_MAIN.w, COLOR_MAIN.h, r);
+  // 在局部坐标系里始终画正尺寸（aw/ah），符号由 scale 承担
   imageMode(CORNER);
-  image(sbGraphic, COLOR_MAIN.x, COLOR_MAIN.y, COLOR_MAIN.w, COLOR_MAIN.h);
-  rect(COLOR_HUE.x, COLOR_HUE.y, COLOR_HUE.w, COLOR_HUE.h, r);
-  image(hueGraphic, COLOR_HUE.x, COLOR_HUE.y, COLOR_HUE.w, COLOR_HUE.h);
-  const hx = COLOR_MAIN.x + (sat/100)*COLOR_MAIN.w;
-  const hy = COLOR_MAIN.y + (1-bri/100)*COLOR_MAIN.h;
-  stroke(255); noFill(); circle(hx, hy, 14); stroke(0, 140); circle(hx, hy, 10);
-  const hueY = COLOR_HUE.y + (hue/360)*COLOR_HUE.h;
-  stroke(255); strokeWeight(3); line(COLOR_HUE.x-3, hueY, COLOR_HUE.x+COLOR_HUE.w+3, hueY);
+  image(img, 0, 0, aw, ah, sx, sy, sw, sh);
+
+  noTint();
+  pop();
 }
 
-function drawRecentColors() {
-  for (let i = 0; i < RECENT_RECTS.length; i++) {
-    const r = RECENT_RECTS[i];
-    stroke(40); strokeWeight(1); fill(recentColors[i] || color(0));
-    rect(r.x, r.y, r.w, r.h, 8);
-    if (recentColors[i] && currentColor && 
-        red(recentColors[i])===red(currentColor) && 
-        green(recentColors[i])===green(currentColor) && 
-        blue(recentColors[i])===blue(currentColor)) {
-      noFill(); stroke(255); strokeWeight(2); rect(r.x-3, r.y-3, r.w+6, r.h+6, 10);
-    }
-  }
-}
-
-function handleColorPress() {
-  if (mouseX >= COLOR_MAIN.x && mouseX <= COLOR_MAIN.x + COLOR_MAIN.w && mouseY >= COLOR_MAIN.y && mouseY <= COLOR_MAIN.y + COLOR_MAIN.h) {
-    isColorDragging = true; colorDragMode = "sb"; updateColorByMouse(); return true;
-  }
-  if (mouseX >= COLOR_HUE.x && mouseX <= COLOR_HUE.x + COLOR_HUE.w && mouseY >= COLOR_HUE.y && mouseY <= COLOR_HUE.y + COLOR_HUE.h) {
-    isColorDragging = true; colorDragMode = "hue"; updateColorByMouse(); return true;
-  }
-  for (let i = 0; i < RECENT_RECTS.length; i++) {
-    const r = RECENT_RECTS[i];
-    if (mouseX >= r.x && mouseX <= r.x + r.w && mouseY >= r.y && mouseY <= r.y + r.h) {
-      if (recentColors[i]) { currentColor = color(recentColors[i]); addRecentColor(currentColor); }
-      return true;
-    }
-  }
-  return false;
-}
-
-function updateColorByMouse() {
-  if (colorDragMode === "sb") {
-    sat = map(clamp(mouseX, COLOR_MAIN.x, COLOR_MAIN.x+COLOR_MAIN.w), COLOR_MAIN.x, COLOR_MAIN.x+COLOR_MAIN.w, 0, 100);
-    bri = map(clamp(mouseY, COLOR_MAIN.y, COLOR_MAIN.y+COLOR_MAIN.h), COLOR_MAIN.y, COLOR_MAIN.y+COLOR_MAIN.h, 100, 0);
-  } else if (colorDragMode === "hue") {
-    hue = map(clamp(mouseY, COLOR_HUE.y, COLOR_HUE.y+COLOR_HUE.h), COLOR_HUE.y, COLOR_HUE.y+COLOR_HUE.h, 0, 360);
-    rebuildSBGraphic();
-  }
-  updateCurrentColor(false);
-}
-
-function updateCurrentColor(addRecent) {
-  push(); colorMode(HSB, 360, 100, 100); currentColor = color(hue, sat, bri); pop();
-  if (addRecent) addRecentColor(currentColor);
-}
-
-function addRecentColor(c) {
-  const nc = color(c);
-  recentColors = recentColors.filter(rc => !(red(rc)===red(nc) && green(rc)===green(nc) && blue(rc)===blue(nc)));
-  recentColors.unshift(nc);
-  if (recentColors.length > 5) recentColors.length = 5;
-}
-
+// =================== 左侧图标按钮 ===================
 class IconButton {
-  constructor(x, y, s, index) { this.x = x; this.y = y; this.s = s; this.index = index; this.state = false; this.img = icons[index]; }
+  constructor(x, y, s, index) {
+    this.x = x;
+    this.y = y;
+    this.s = s;
+    this.index = index;
+    this.img = icons[index];
+    this.state = false;
+  }
+
   display() {
-    push(); translate(this.x, this.y); rectMode(CENTER); imageMode(CENTER); noStroke();
-    fill(this.hover() || this.index === currentShape ? "#504F53" : "#3A393D");
+    push();
+    translate(this.x, this.y);
+    rectMode(CENTER);
+    imageMode(CENTER);
+    noStroke();
+
+    if (this.hover() || this.state) fill(80, 79, 83);
+    else fill("#3A393D");
     rect(0, 0, this.s, this.s, this.s * 0.35);
-    if (this.img) { tint(255); let f = this.index < 4 ? 0.75 : 0.9; image(this.img, 0, 0, this.s*f, this.s*f); }
+
+    if (this.img) {
+      tint(255);
+      let factor = this.index < 4 ? 0.75 : 0.9;
+      image(this.img, 0, 0, this.s * factor, this.s * factor);
+      noTint();
+    }
     pop();
   }
-  click() { if (this.hover()) { currentShape = this.index; selectedIndex = -1; } }
-  hover() { return abs(mouseX - this.x) < this.s/2 && abs(mouseY - this.y) < this.s/2; }
+
+  click() {
+    if (this.hover()) {
+      for (let b of buttons) b.state = false;
+      this.state = true;
+      currentShape = this.index;
+    }
+  }
+
+  hover() {
+    return (
+      mouseX >= this.x - this.s / 2 &&
+      mouseX <= this.x + this.s / 2 &&
+      mouseY >= this.y - this.s / 2 &&
+      mouseY <= this.y + this.s / 2
+    );
+  }
 }
 
+// =================== 功能按钮 ===================
 class CapButton {
-  constructor(rect, str) { this.x = rect.x+rect.w/2; this.y = rect.y+rect.h/2; this.w = rect.w; this.h = rect.h; this.str = str; }
-  display() {
-    push(); translate(this.x, this.y); rectMode(CENTER);
-    fill(this.hover() ? "#5A595D" : "#464548"); rect(0, 0, this.w, this.h, 40);
-    fill(255); textAlign(CENTER, CENTER); textSize(this.h*0.4); text(this.str, 0, 0); pop();
+  constructor(x, y, w, h, str) {
+    this.x = x;
+    this.y = y;
+    this.w = w;
+    this.h = h;
+    this.str = str;
   }
-  hover() { return abs(mouseX - this.x) < this.w/2 && abs(mouseY - this.y) < this.h/2; }
+
+  display() {
+    push();
+    translate(this.x, this.y);
+    rectMode(CENTER);
+
+    if (this.hover()) fill(90, 89, 93);
+    else fill("#464548");
+    rect(0, 0, this.w, this.h, 40);
+
+    fill(255);
+    textAlign(CENTER, CENTER);
+    textSize(this.h * 0.5);
+    text(this.str, 0, 0);
+
+    pop();
+  }
+
+  hover() {
+    return (
+      mouseX >= this.x - this.w / 2 &&
+      mouseX <= this.x + this.w / 2 &&
+      mouseY >= this.y - this.h / 2 &&
+      mouseY <= this.y + this.h / 2
+    );
+  }
 }
 
+// =================== 键盘 ===================
 function keyPressed() {
-  if ((keyCode === BACKSPACE || keyCode === DELETE) && selectedIndex !== -1) {
-    shapes.splice(selectedIndex, 1); selectedIndex = -1; clearRedo();
+  // Delete / Backspace 删除选中
+  if ((keyCode === BACKSPACE || keyCode === DELETE) && selectedIndex >= 0) {
+    shapes.splice(selectedIndex, 1);
+    selectedIndex = -1;
+    clearRedo();
+    return false;
   }
-  if (key === 'z' || key === 'Z') undo();
+
+  // Undo/Redo
+  if (key === "z" || key === "Z") undo();
+  if (key === "y" || key === "Y") redo();
 }
