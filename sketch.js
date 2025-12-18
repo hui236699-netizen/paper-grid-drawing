@@ -1,3 +1,27 @@
+这是一个非常符合直觉的设计需求。Adobe Illustrator、Figma 和 PPT 确实都是这样做的：**靠近角落是缩放，再往外一点是旋转**。
+
+为了实现这个功能，同时保持“网格吸附”和“45度步进”，我需要对数学逻辑做一点升级。
+
+**核心改动点：**
+
+1. **移除旋转手柄**：不再画那个顶部的“棒棒糖”。
+2. **双层感应区**：
+
+   * **内圈（Resize）**：鼠标直接覆盖在角落控制点上 -> 触发缩放。
+   * **外圈（Rotate）**：鼠标在角落控制点稍微往外一点的区域 -> 触发旋转。
+3. **坐标系转换**：因为图形现在可以旋转，判断鼠标是否点中角落时，我会把鼠标坐标**逆向旋转**回图形的坐标系中判断，这样无论图形转成什么角度，控制点永远准确。
+4. **45度吸附**：计算鼠标相对于中心的角度，强制吸附到 `PI/4` (45
+5. **移除旋转手柄**：不再画那个顶部的“棒棒糖”。
+6. **双层感应区**：
+
+   * **内圈（Resize）**：鼠标直接覆盖在角落控制点上 -> 触发缩放。
+   * **外圈（Rotate）**：鼠标在角落控制点稍微往外一点的区域 -> 触发旋转。
+7. **坐标系转换**：因为图形现在可以旋转，判断鼠标是否点中角落时，我会把鼠标坐标**逆向旋转**回图形的坐标系中判断，这样无论图形转成什么角度，控制点永远准确。
+8. **45度吸附**：计算鼠标相对于中心的角度，强制吸附到 `PI/4` (45度) 的倍数。
+
+以下是完整的、优化后的代码：
+
+```javascript
 // =================== 全局设置 ===================
 
 let cw = 240;
@@ -6,20 +30,22 @@ let cellSize = 36;
 // 交互状态机
 const STATE_IDLE = 0;
 const STATE_DRAWING = 1;
-const STATE_MOVING = 2; // 移动整个图形
+const STATE_MOVING = 2;   // 移动整个图形
 const STATE_RESIZING = 3; // 拖动控制点调整大小
+const STATE_ROTATING = 4; // 旋转
 
 let appState = STATE_IDLE;
 
 // 绘制相关
-let drawAnchor = null; // 绘制起始点 (grid x, y)
-let drawCurrent = null; // 绘制当前点 (grid x, y)
+let drawAnchor = null; 
+let drawCurrent = null; 
 
 // 选中/变形相关
 let selectedIndex = -1;
-let transformHandle = null; // 当前拖拽的是哪个控制点 ('nw', 'se', 'rotate' 等)
-let transformStartShape = null; // 变形前的图形状态备份
-let transformStartMouse = null; // 变形开始时的鼠标格点位置
+let transformHandle = null;     // 'nw', 'se', 'rotate_nw' 等
+let transformStartShape = null; // 备份
+let transformStartMouse = null; // 备份鼠标位置
+let transformStartAngle = 0;    // 旋转起始角度
 
 // 图形数据
 let currentShape = 0;
@@ -56,37 +82,39 @@ function setCanvasDPR() {
 function gridCols() { return max(1, floor((width - cw) / cellSize)); }
 function gridRows() { return max(1, floor(height / cellSize)); }
 
-// ✅ 核心修复：纯粹的整数网格坐标，消除漂移
+// 纯网格坐标 (Integer)
 function mouseToGrid() {
   const gx = floor((mouseX - cw) / cellSize);
   const gy = floor(mouseY / cellSize);
   return { x: gx, y: gy };
 }
 
-// =================== 布局与预加载 (保持原样) ===================
+// 像素坐标 (Float) - 用于旋转计算
+function mouseLocal() {
+  return { x: mouseX - cw, y: mouseY };
+}
+
+// =================== 布局与预加载 ===================
 function computeLayout() {
   cw = clamp(width * 0.18, 200, 320);
   const rightW = max(1, width - cw);
-  const byWidth = rightW / 26;
-  const byHeight = height / 22;
-  cellSize = clamp(min(byWidth, byHeight), 24, 52);
+  cellSize = clamp(min(rightW / 26, height / 22), 24, 52);
 
   const pad = 16, gap = 10;
   const hueW = clamp(cw * 0.09, 18, 28);
   const maxSB = clamp(height * 0.28, 170, 260);
   const sbW = cw - pad * 2 - hueW - gap;
-  const sbSize = clamp(min(sbW, maxSB), 150, maxSB);
-  const sbSizeI = max(1, floor(sbSize));
-  const hueWI = max(1, floor(hueW));
+  const sbSize = floor(clamp(min(sbW, maxSB), 150, maxSB));
+  const hueWI = floor(hueW);
   const topY = pad;
 
-  COLOR_MAIN = { x: pad, y: topY, w: sbSizeI, h: sbSizeI };
-  COLOR_HUE  = { x: pad + sbSizeI + gap, y: topY, w: hueWI,  h: sbSizeI };
+  COLOR_MAIN = { x: pad, y: topY, w: sbSize, h: sbSize };
+  COLOR_HUE  = { x: pad + sbSize + gap, y: topY, w: hueWI,  h: sbSize };
 
   RECENT_RECTS = [];
   const recentCount = 5, recentGap = 10;
   const rW = clamp((cw - pad * 2 - recentGap * (recentCount - 1)) / recentCount, 22, 34);
-  const recentY = topY + sbSizeI + 18;
+  const recentY = topY + sbSize + 18;
   for (let i = 0; i < recentCount; i++) RECENT_RECTS.push({ x: pad + i * (rW + recentGap), y: recentY, w: rW, h: rW });
 
   const btnGapX = 12;
@@ -220,7 +248,7 @@ function draw() {
   // 1. 绘制所有已确认的图形
   for (let s of shapes) s.display();
 
-  // 2. 绘制正在创建的图形预览（硬吸附，无延迟）
+  // 2. 绘制正在创建的图形预览
   if (appState === STATE_DRAWING && drawAnchor && drawCurrent) {
     const box = getPreviewBox(drawAnchor, drawCurrent, keyIsDown(SHIFT));
     const pf = color(red(currentColor), green(currentColor), blue(currentColor), 80);
@@ -228,12 +256,11 @@ function draw() {
     stroke(currentColor);
     strokeWeight(2);
     fill(pf);
-    // 预览时不旋转，rot=0
     drawShapePrimitive(currentShape, box.x * cellSize, box.y * cellSize, box.w * cellSize, box.h * cellSize, 0);
     pop();
   }
 
-  // 3. 绘制选区框（如果在空闲、移动或变形状态，且有选中项）
+  // 3. 绘制选区框
   if (selectedIndex !== -1 && selectedIndex < shapes.length) {
     if (appState !== STATE_DRAWING) {
       drawSelectionBox(shapes[selectedIndex]);
@@ -246,27 +273,31 @@ function draw() {
   drawLeftPanel();
 }
 
-// =================== 交互逻辑核心（重写） ===================
+// =================== 交互逻辑核心 ===================
 
 function mousePressed() {
-  // 左侧 UI 处理
-  if (mouseX <= cw) {
-    handleUIInteractions();
-    return;
-  }
+  // 左侧 UI
+  if (mouseX <= cw) { handleUIInteractions(); return; }
 
-  // 右侧画布处理
   const g = mouseToGrid();
+  const mLocal = mouseLocal();
   
-  // 1. 检查选区控制点 (Handles)
+  // 1. 检查控制点 (Resize / Rotate)
   if (selectedIndex !== -1) {
     const s = shapes[selectedIndex];
-    const handle = getHitHandle(s, mouseX - cw, mouseY);
+    const handle = getHitHandle(s, mLocal.x, mLocal.y);
+    
     if (handle) {
-      if (handle === 'rotate') {
-        // 旋转是即时动作，点击即转 90 度
-        rotateShape(s);
-        clearRedo();
+      if (handle.startsWith('rot_')) {
+        // 开始旋转
+        appState = STATE_ROTATING;
+        transformHandle = handle;
+        transformStartShape = s.clone();
+        
+        // 计算初始角度，以便后续算 delta
+        const cx = (s.x + s.w / 2) * cellSize;
+        const cy = (s.y + s.h / 2) * cellSize;
+        transformStartAngle = atan2(mLocal.y - cy, mLocal.x - cx);
       } else {
         // 开始调整大小
         appState = STATE_RESIZING;
@@ -278,64 +309,50 @@ function mousePressed() {
     }
   }
 
-  // 2. 检查是否点击了图形 (Hit Test)
-  const hitIndex = hitTestShape(g.x, g.y);
+  // 2. 检查 Hit Test (考虑旋转)
+  const hitIndex = hitTestShape(mLocal.x, mLocal.y);
   
   if (hitIndex !== -1) {
-    // 点击了图形 -> 选中并准备移动
     selectedIndex = hitIndex;
     appState = STATE_MOVING;
-    transformStartShape = shapes[hitIndex].clone(); // 备份位置用于计算差量
+    transformStartShape = shapes[hitIndex].clone(); 
     transformStartMouse = g;
-    
-    // 如果点击的是已经选中的，不用变；如果是新的，切换选中
     return;
   }
 
-  // 3. 点击了空白处 -> 取消选中 或 开始绘制
+  // 3. 点击空白 -> 新建绘制
   if (selectedIndex !== -1) {
-    // 点击空白取消选中
     selectedIndex = -1;
     return;
   }
 
-  // 开始新绘制
   appState = STATE_DRAWING;
   drawAnchor = g;
-  drawCurrent = g; // 初始为 1x1
-  // 确保颜色刷新
+  drawCurrent = g;
   updateCurrentColor(false);
 }
 
 function mouseDragged() {
-  if (isColorDragging) {
-    updateColorByMouse();
-    return;
-  }
+  if (isColorDragging) { updateColorByMouse(); return; }
 
   const g = mouseToGrid();
+  const mLocal = mouseLocal();
 
   if (appState === STATE_DRAWING) {
-    drawCurrent = g; // 直接跟手，无延迟
+    drawCurrent = g;
   } 
   else if (appState === STATE_MOVING) {
     const dx = g.x - transformStartMouse.x;
     const dy = g.y - transformStartMouse.y;
     const s = shapes[selectedIndex];
-    
-    // 限制在画布内
-    const cols = gridCols();
-    const rows = gridRows();
-    const newX = transformStartShape.x + dx;
-    const newY = transformStartShape.y + dy;
-
-    // 简单边界检查
-    // 这里允许拖出去一部分，但保留操作感
-    s.x = newX;
-    s.y = newY;
+    s.x = transformStartShape.x + dx;
+    s.y = transformStartShape.y + dy;
   } 
   else if (appState === STATE_RESIZING) {
     updateResize(g);
+  }
+  else if (appState === STATE_ROTATING) {
+    updateRotate(mLocal.x, mLocal.y);
   }
 }
 
@@ -347,199 +364,200 @@ function mouseReleased() {
   }
 
   if (appState === STATE_DRAWING) {
-    // 结束绘制，生成图形
     const box = getPreviewBox(drawAnchor, drawCurrent, keyIsDown(SHIFT));
-    // 创建图形，rot 默认为 0
     shapes.push(new Shape(box.x, box.y, box.w, box.h, currentShape, currentColor, 0));
-    selectedIndex = shapes.length - 1; // 绘制完自动选中，方便后续调整
+    selectedIndex = shapes.length - 1;
     clearRedo();
     appState = STATE_IDLE;
     drawAnchor = null;
   } 
-  else if (appState === STATE_MOVING) {
-    // 移动结束
+  else if (appState === STATE_MOVING || appState === STATE_RESIZING || appState === STATE_ROTATING) {
     const s = shapes[selectedIndex];
-    // 如果并没有移动，视为一次单纯的点击选中
-    if (s.x === transformStartShape.x && s.y === transformStartShape.y) {
-      // no-op
-    } else {
+    // 如果有变化才清空 redo
+    if (s.x !== transformStartShape.x || s.y !== transformStartShape.y || 
+        s.w !== transformStartShape.w || s.h !== transformStartShape.h || 
+        s.rot !== transformStartShape.rot) {
       clearRedo();
     }
     appState = STATE_IDLE;
-  } 
-  else if (appState === STATE_RESIZING) {
-    clearRedo();
-    appState = STATE_IDLE;
     transformHandle = null;
-  }
+  } 
 }
 
-// =================== 选区与变形逻辑 ===================
+// =================== 选区、变形与旋转逻辑 ===================
 
 function drawSelectionBox(s) {
-  const x = s.x * cellSize;
-  const y = s.y * cellSize;
   const w = s.w * cellSize;
   const h = s.h * cellSize;
+  const cx = (s.x + s.w/2) * cellSize;
+  const cy = (s.y + s.h/2) * cellSize;
 
   push();
+  // 关键：将坐标系移动到图形中心并旋转，这样选区框就跟着图形转了
+  translate(cx, cy);
+  rotate(s.rot); // 使用弧度
+  translate(-w/2, -h/2); // 回到左上角进行局部绘制
+
+  // 1. 虚线框
   noFill();
-  stroke("#3B82F6"); // 亮蓝色
+  stroke("#3B82F6"); 
   strokeWeight(2);
-  // 虚线边框
   drawingContext.setLineDash([5, 5]);
-  rect(x, y, w, h);
+  rect(0, 0, w, h);
   drawingContext.setLineDash([]);
 
-  // 绘制8个控制点
-  const handleSize = 10;
+  // 2. 控制点
+  const handleSize = 8;
   fill(255);
   stroke("#3B82F6");
   strokeWeight(1);
   rectMode(CENTER);
 
-  // 辅助函数绘制点
-  const drawHandle = (hx, hy) => {
-    rect(hx, hy, handleSize, handleSize);
-  };
-
-  // 角点
-  drawHandle(x, y);       // nw
-  drawHandle(x + w, y);   // ne
-  drawHandle(x + w, y + h); // se
-  drawHandle(x, y + h);   // sw
+  // 绘制角落点 (这些点用来 Resizing)
+  rect(0, 0, handleSize, handleSize);     // nw
+  rect(w, 0, handleSize, handleSize);     // ne
+  rect(w, h, handleSize, handleSize);     // se
+  rect(0, h, handleSize, handleSize);     // sw
   
-  // 边中点
-  drawHandle(x + w/2, y); // n
-  drawHandle(x + w/2, y + h); // s
-  drawHandle(x, y + h/2); // w
-  drawHandle(x + w, y + h/2); // e
-
-  // 旋转柄 (上方伸出一根线)
-  const rotX = x + w/2;
-  const rotY = y - 25;
-  line(x + w/2, y, rotX, rotY);
-  circle(rotX, rotY, 12);
-  
-  // 旋转图标（简单的弧线）
-  noFill();
-  arc(rotX, rotY, 8, 8, 0, PI * 1.5);
+  // 绘制边中点
+  rect(w/2, 0, handleSize, handleSize);   // n
+  rect(w/2, h, handleSize, handleSize);   // s
+  rect(0, h/2, handleSize, handleSize);   // w
+  rect(w, h/2, handleSize, handleSize);   // e
 
   pop();
 }
 
-// 检测鼠标是否点击了某个控制柄
+// 核心：在旋转后的局部坐标系中检测控制点
 function getHitHandle(s, mx, my) {
-  const x = s.x * cellSize;
-  const y = s.y * cellSize;
+  const cx = (s.x + s.w/2) * cellSize;
+  const cy = (s.y + s.h/2) * cellSize;
+  
+  // 1. 将鼠标坐标转换到图形的“局部未旋转空间”
+  // 逆变换：先减去中心，再逆旋转
+  const dx = mx - cx;
+  const dy = my - cy;
+  const cosA = cos(-s.rot);
+  const sinA = sin(-s.rot);
+  const localX = dx * cosA - dy * sinA;
+  const localY = dx * sinA + dy * cosA;
+
+  // 此时 localX/Y 是相对于图形中心 (0,0) 的坐标
+  // 我们需要相对于左上角的坐标以便计算 (因为 w/h 是从左上角算的)
   const w = s.w * cellSize;
   const h = s.h * cellSize;
-  const tol = 8; // 像素容差
+  const lx = localX + w/2;
+  const ly = localY + h/2;
 
-  const check = (hx, hy) => dist(mx, my, hx, hy) < tol;
+  const resizeTol = 10; // 内部半径：缩放
+  const rotateTol = 30; // 外部半径：旋转
 
-  // 旋转柄优先
-  const rotX = x + w/2;
-  const rotY = y - 25;
-  if (check(rotX, rotY)) return 'rotate';
+  const check = (hx, hy) => dist(lx, ly, hx, hy);
 
-  // 角点
-  if (check(x, y)) return 'nw';
-  if (check(x+w, y)) return 'ne';
-  if (check(x+w, y+h)) return 'se';
-  if (check(x, y+h)) return 'sw';
+  // 检查四个角落
+  const corners = [
+    { id: 'nw', x: 0, y: 0 },
+    { id: 'ne', x: w, y: 0 },
+    { id: 'se', x: w, y: h },
+    { id: 'sw', x: 0, y: h }
+  ];
 
-  // 边点
-  if (check(x+w/2, y)) return 'n';
-  if (check(x+w/2, y+h)) return 's';
-  if (check(x, y+h/2)) return 'w';
-  if (check(x+w, y+h/2)) return 'e';
+  for (let c of corners) {
+    const d = check(c.x, c.y);
+    if (d <= resizeTol) return c.id; // 命中核心 -> 缩放
+    if (d <= rotateTol) return 'rot_' + c.id; // 命中外围 -> 旋转
+  }
+
+  // 检查边中点 (只有缩放)
+  if (check(w/2, 0) <= resizeTol) return 'n';
+  if (check(w/2, h) <= resizeTol) return 's';
+  if (check(0, h/2) <= resizeTol) return 'w';
+  if (check(w, h/2) <= resizeTol) return 'e';
 
   return null;
 }
 
-// 核心变形算法：基于网格
 function updateResize(g) {
   const s = shapes[selectedIndex];
   const start = transformStartShape;
   const startMouse = transformStartMouse;
   
-  // 鼠标相对位移 (grid units)
   const dx = g.x - startMouse.x;
   const dy = g.y - startMouse.y;
 
-  let nx = start.x;
-  let ny = start.y;
-  let nw = start.w;
-  let nh = start.h;
-
+  let nx = start.x, ny = start.y, nw = start.w, nh = start.h;
   const h = transformHandle;
 
-  // 根据拖动的点调整 x,y,w,h
+  // 这里的 resize 逻辑是基于“网格对齐”的，所以暂时忽略旋转带来的轴向变化
+  // 保持“原始矩形”在网格上的缩放，旋转只是由于 rot 属性叠加的效果
   if (h.includes('e')) nw = start.w + dx;
   if (h.includes('w')) { nx = start.x + dx; nw = start.w - dx; }
   if (h.includes('s')) nh = start.h + dy;
   if (h.includes('n')) { ny = start.y + dy; nh = start.h - dy; }
 
-  // 翻转处理：如果宽度变成负数，自动交换锚点
-  // 比如从右向左拉过头，nx 应该变成新的左边界，nw 取绝对值
-  let finalX = nx;
-  let finalY = ny;
-  let finalW = nw;
-  let finalH = nh;
+  let finalX = nx, finalY = ny, finalW = nw, finalH = nh;
 
-  if (finalW < 0) {
-    finalX = nx + finalW; // 新的左边
-    finalW = abs(finalW);
-  }
-  if (finalH < 0) {
-    finalY = ny + finalH;
-    finalH = abs(finalH);
-  }
-
-  // 最小尺寸限制 1x1
+  if (finalW < 0) { finalX = nx + finalW; finalW = abs(finalW); }
+  if (finalH < 0) { finalY = ny + finalH; finalH = abs(finalH); }
   if (finalW === 0) finalW = 1;
   if (finalH === 0) finalH = 1;
 
-  s.x = finalX;
-  s.y = finalY;
-  s.w = finalW;
-  s.h = finalH;
+  s.x = finalX; s.y = finalY; s.w = finalW; s.h = finalH;
 }
 
-// 旋转：交换宽高，步进 90 度
-function rotateShape(s) {
-  // 1. 增加旋转角度计数 (0-3)
-  s.rot = (s.rot + 1) % 4;
+function updateRotate(mx, my) {
+  const s = shapes[selectedIndex];
+  const cx = (s.x + s.w/2) * cellSize;
+  const cy = (s.y + s.h/2) * cellSize;
+  
+  // 计算当前鼠标对于中心的角度
+  const currentAngle = atan2(my - cy, mx - cx);
+  
+  // 45度吸附 logic
+  // 将角度吸附到 PI/4 的倍数
+  const snapStep = PI / 4; // 45 degrees
+  let snappedAngle = round(currentAngle / snapStep) * snapStep;
 
-  // 2. 几何交换宽高，使其适应网格
-  // 如果不交换，仅仅旋转渲染，会导致图形在网格上错位（比如 2x3 的矩形转 90 度变成 3x2，但中心点对齐很麻烦）
-  // 更好的“像素画/网格”体验是直接改变包围盒
-  const oldW = s.w;
-  const oldH = s.h;
-  
-  // 保持中心点大致不变
-  const cx = s.x + oldW / 2;
-  const cy = s.y + oldH / 2;
-  
-  s.w = oldH;
-  s.h = oldW;
-  
-  s.x = round(cx - s.w / 2);
-  s.y = round(cy - s.h / 2);
+  s.rot = snappedAngle;
 }
 
-// 计算绘制时的预览框 (normalize 负数尺寸)
+// 命中检测：同样需要逆旋转鼠标来检测
+function hitTestShape(mx, my) {
+  for (let i = shapes.length - 1; i >= 0; i--) {
+    const s = shapes[i];
+    const cx = (s.x + s.w/2) * cellSize;
+    const cy = (s.y + s.h/2) * cellSize;
+    
+    // 逆变换
+    const dx = mx - cx;
+    const dy = my - cy;
+    const cosA = cos(-s.rot);
+    const sinA = sin(-s.rot);
+    const localX = dx * cosA - dy * sinA;
+    const localY = dx * sinA + dy * cosA; // 此时是相对于中心
+
+    // 转回相对于左上角 (0,0)
+    const w = s.w * cellSize;
+    const h = s.h * cellSize;
+    const testX = localX + w/2;
+    const testY = localY + h/2;
+
+    if (testX >= 0 && testX <= w && testY >= 0 && testY <= h) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 function getPreviewBox(p1, p2, isShift) {
   let x = min(p1.x, p2.x);
   let y = min(p1.y, p2.y);
-  let w = abs(p2.x - p1.x) + 1; // 包含起点和终点，所以 +1
+  let w = abs(p2.x - p1.x) + 1;
   let h = abs(p2.y - p1.y) + 1;
 
   if (isShift) {
     const s = max(w, h);
     w = s; h = s;
-    // 如果向左上拉，需要修正 x,y
     if (p2.x < p1.x) x = p1.x - s + 1;
     if (p2.y < p1.y) y = p1.y - s + 1;
   }
@@ -555,7 +573,7 @@ class Shape {
     this.h = h;
     this.type = type;
     this.c = color(c);
-    this.rot = rot || 0; // 0, 1, 2, 3 (x90 deg)
+    this.rot = rot || 0; // 弧度
   }
 
   clone() {
@@ -569,46 +587,26 @@ class Shape {
     const pw = this.w * cellSize;
     const ph = this.h * cellSize;
 
-    drawShapePrimitive(this.type, px, py, pw, ph, this.rot, this.c);
+    // 移动到中心 -> 旋转 -> 移回左上角绘制 (以保持原语绘制逻辑简单)
+    translate(px + pw/2, py + ph/2);
+    rotate(this.rot);
+    translate(-pw/2, -ph/2);
+
+    // 注意：这里的绘制原语还是画在 (0,0) 到 (pw, ph)
+    // 但因为外层做了 transform，所以视觉上是旋转的
+    drawShapePrimitive(this.type, 0, 0, pw, ph, 0); // 内部 rot 传 0，因为外部已转
     pop();
   }
 }
 
-// 统一绘制原语 (增加了 rotation 参数)
-function drawShapePrimitive(type, x, y, w, h, rot, col) {
-  if (col) { noStroke(); fill(col); }
+function drawShapePrimitive(type, x, y, w, h, rot) {
+  // 注意：这里的 rot 参数已经不再需要用于变换 context 了，
+  // 因为我们在 display 里已经转过了。
+  // 但是对于 SVG 或者某些需要内部方向的图形，如果需要额外处理可以保留。
+  // 在本例中，因为是从外部整体旋转，所以内部不再需要处理 rot。
   
-  // 对于 Rect, Ellipse, Triangle，直接在包围盒内画即可。
-  // 但是对于 SVG 和 三角形，旋转属性需要生效。
-  // 注意：因为我们在 rotateShape 里已经交换了 w/h，
-  // 所以这里的 rot 主要是为了控制 SVG 的方向或者三角形的朝向。
-  
-  push();
-  // 移动到中心进行旋转渲染
-  translate(x + w/2, y + h/2);
-  rotate(rot * HALF_PI);
-  translate(-w/2, -h/2); // 这里的坐标系其实是基于交换宽高后的，所以回退时要注意
-  // 修正：旋转后局部坐标系的 w/h 含义变了
-  // 如果 rot=1 (90deg)，视觉上的宽其实是 h，高是 w。
-  // 但为了简化，我们假设 Shape 里的 w/h 永远是轴对齐包围盒 (AABB)。
-  // 只有 SVG 需要真正的纹理旋转。
-  
-  // 实际上，因为我在 rotateShape 里交换了 w/h，
-  // 对于矩形和椭圆，rot 参数其实不重要（除了视觉上的长短轴已经变了）。
-  // 对于三角形和 SVG，我们需要反向思考：
-  // 如果 w/h 已经交换，那我们画图时应该画在一个 (0,0, w, h) 的框里吗？
-  // 是的。但是 SVG 需要旋转内容。
-  
-  // 让我们简化策略：
-  // 形状的 w/h 总是当前占用的网格大小。
-  // rot 仅仅影响 SVG 的内部贴图方向。基本形状（矩形椭圆）不需要旋转（因为对称）。
-  // 三角形需要跟随旋转。
+  if (currentColor) { /* fill is handled outside usually, but helper functions might need it */ }
 
-  // 为了让旋转逻辑通用，我们回退掉上面的 translate/rotate，
-  // 仅针对特定形状做旋转处理，或者直接画在 (x,y,w,h) 里。
-  pop();
-
-  // 重新实现：
   switch(type) {
     case 0: // rect
       rect(x, y, w, h);
@@ -617,115 +615,32 @@ function drawShapePrimitive(type, x, y, w, h, rot, col) {
       ellipse(x + w/2, y + h/2, w, h);
       break;
     case 2: // triangle
-      // 三角形需要根据 rot 调整顶点方向
-      drawRotatedTriangle(x, y, w, h, rot);
+      triangle(x + w/2, y, x, y + h, x + w, y + h);
       break;
     case 3: // parallelogram
-      drawParallelogram(x, y, w, h); // 暂不复杂旋转
+      const skew = w * 0.25;
+      beginShape();
+      vertex(x + skew, y);
+      vertex(x + w, y);
+      vertex(x + w - skew, y + h);
+      vertex(x, y + h);
+      endShape(CLOSE);
       break;
     default: // svg
-      drawSvgShape(type, x, y, w, h, col, rot);
+      drawSvgShape(type, x, y, w, h);
       break;
   }
 }
 
-function drawRotatedTriangle(x, y, w, h, rot) {
-  // 默认(rot=0): 尖朝上
-  // rot=1: 尖朝右
-  // rot=2: 尖朝下
-  // rot=3: 尖朝左
-  
-  let x1, y1, x2, y2, x3, y3;
-  
-  // 映射到当前的 w, h 盒子内
-  if (rot === 0) { // 上
-    x1 = x + w/2; y1 = y;
-    x2 = x;       y2 = y + h;
-    x3 = x + w;   y3 = y + h;
-  } else if (rot === 1) { // 右
-    x1 = x + w;   y1 = y + h/2;
-    x2 = x;       y2 = y;
-    x3 = x;       y3 = y + h;
-  } else if (rot === 2) { // 下
-    x1 = x + w/2; y1 = y + h;
-    x2 = x + w;   y2 = y;
-    x3 = x;       y3 = y;
-  } else { // 左
-    x1 = x;       y1 = y + h/2;
-    x2 = x + w;   y2 = y + h;
-    x3 = x + w;   y3 = y;
-  }
-  triangle(x1, y1, x2, y2, x3, y3);
-}
-
-function drawParallelogram(x, y, w, h) {
-  // 简单绘制充满框
-  const skew = w * 0.25;
-  beginShape();
-  vertex(x + skew, y);
-  vertex(x + w, y);
-  vertex(x + w - skew, y + h);
-  vertex(x, y + h);
-  endShape(CLOSE);
-}
-
-function drawSvgShape(type, x, y, w, h, col, rot) {
+function drawSvgShape(type, x, y, w, h) {
   const idx = type - 4;
   if (idx < 0 || idx >= svgs.length) return;
   const img = svgs[idx];
   if (!img) return;
-
-  const bounds = svgBounds[idx];
-  // 提取原始 SVG 里的有效区域比例
-  const bx = bounds ? bounds.x0 : 0;
-  const by = bounds ? bounds.y0 : 0;
-  const bw = bounds ? bounds.w : 1;
-  const bh = bounds ? bounds.h : 1;
-
-  push();
-  // 移动到中心
-  translate(x + w/2, y + h/2);
-  rotate(rot * HALF_PI);
-  
-  // 此时坐标系旋转了。
-  // 我们需要把图片画在一个框里。
-  // 如果 rot=0/2，框的大小是 (w, h)。
-  // 如果 rot=1/3，框的大小是 (h, w) (因为 w/h 在外层 Shape 里已经交换过了，这里需要逆向匹配回来，或者直接匹配当前长短边)
-  
-  // 简单做法：总是画在 -currentW/2, -currentH/2
-  // 但要注意，旋转后，本地坐标系的 X 轴对应屏幕的什么方向。
-  
-  // 逻辑修正：
-  // 假设我们有一个 2x4 的格子 (Shape w=2, h=4)。
-  // 如果 rot=0，我们画一个 2x4 的图。
-  // 如果 rot=1，Shape 变成了 4x2。我们在 4x2 的中心转了 90度。
-  // 此时本地坐标系的 X 轴指向下方。我们需要画一个 "高4宽2" 的图（原始比例）。
-  // 所以：
-  let drawW = (rot % 2 === 0) ? w : h;
-  let drawH = (rot % 2 === 0) ? h : w;
-
-  if (col) tint(col);
-  
-  imageMode(CENTER);
-  // 为了保证裁剪正确，稍微复杂一点，这里简化为直接绘制整图
-  // 如果需要极其精确的 svgBounds 裁剪，需要根据 rot 变换源坐标，略繁琐，这里使用整图缩放体验通常足够好
-  image(img, 0, 0, drawW, drawH);
-  
-  pop();
+  image(img, x, y, w, h);
 }
 
-function hitTestShape(gx, gy) {
-  // 倒序遍历（选最上面的）
-  for (let i = shapes.length - 1; i >= 0; i--) {
-    const s = shapes[i];
-    if (gx >= s.x && gx < s.x + s.w && gy >= s.y && gy < s.y + s.h) {
-      return i;
-    }
-  }
-  return -1;
-}
-
-// =================== 辅助绘制 ===================
+// =================== 辅助绘制 & UI ===================
 function drawGrid() {
   const w = width - cw;
   const h = height;
@@ -735,7 +650,6 @@ function drawGrid() {
   for (let y = 0; y <= h; y += cellSize) line(0, y, w, y);
 }
 
-// =================== UI 部分 (面板内容) ===================
 function drawLeftPanel() {
   noStroke(); fill("#1F1E24"); rect(0, 0, cw, height);
   drawColorPanelNew();
@@ -763,7 +677,7 @@ function undo() {
   }
 }
 
-// 颜色相关逻辑保持原样
+// 颜色相关逻辑
 function drawColorPanelNew() {
   const r = 14;
   noStroke(); fill(38);
@@ -835,7 +749,6 @@ function addRecentColor(c) {
   if (recentColors.length > 5) recentColors.length = 5;
 }
 
-// UI Classes
 class IconButton {
   constructor(x, y, s, index) { this.x = x; this.y = y; this.s = s; this.index = index; this.state = false; this.img = icons[index]; }
   display() {
@@ -865,3 +778,4 @@ function keyPressed() {
   }
   if (key === 'z' || key === 'Z') undo();
 }
+```
